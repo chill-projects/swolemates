@@ -530,6 +530,12 @@ export type Database = {
           linked_with: string
         }[]
       }
+      save_strength_workout: {
+        Args: { payload: Json }
+        Returns: {
+          workout_id: string
+        }[]
+      }
     }
     Enums: {
       activity_level:

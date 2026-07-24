@@ -40,67 +40,25 @@ export async function saveStrengthWorkout(payload: {
     redirect("/login");
   }
 
-  const { data: workout, error: workoutError } = await supabase
-    .from("workouts")
-    .insert({
-      user_id: user.id,
-      workout_type: "strength",
+  // Single RPC so the workout + all its exercises/sets persist as one
+  // atomic transaction — see supabase/migrations/0010_save_strength_workout_rpc.sql.
+  // A partway failure (e.g. a bad exercise) rolls back everything, instead
+  // of leaving earlier exercises/sets permanently committed.
+  const { data, error } = await supabase.rpc("save_strength_workout", {
+    payload: {
       title: payload.title || null,
-      completed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
+      exercises: payload.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        sets: exercise.sets,
+      })),
+    },
+  });
 
-  if (workoutError) {
-    throw new Error(workoutError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 
-  for (const [index, exercise] of payload.exercises.entries()) {
-    const { data: workoutExercise, error: exerciseError } = await supabase
-      .from("workout_exercises")
-      .insert({
-        workout_id: workout.id,
-        exercise_id: exercise.exerciseId,
-        order_index: index,
-      })
-      .select("id")
-      .single();
-
-    if (exerciseError) {
-      throw new Error(exerciseError.message);
-    }
-
-    const setsToInsert = exercise.sets.map((set, setIndex) =>
-      set.setType === "reps"
-        ? {
-            workout_exercise_id: workoutExercise.id,
-            set_number: setIndex + 1,
-            set_type: "reps" as const,
-            actual_weight: set.actualWeight,
-            actual_reps: set.actualReps,
-            is_warmup: set.isWarmup,
-          }
-        : {
-            workout_exercise_id: workoutExercise.id,
-            set_number: setIndex + 1,
-            set_type: "time" as const,
-            work_seconds: set.workSeconds,
-            rest_seconds: set.restSeconds,
-            actual_weight: set.actualWeight,
-            is_warmup: set.isWarmup,
-          },
-    );
-
-    const { error: setsError } = await supabase
-      .from("workout_sets")
-      .insert(setsToInsert);
-
-    if (setsError) {
-      throw new Error(setsError.message);
-    }
-  }
-
-  redirect(`/workouts/${workout.id}`);
+  redirect(`/workouts/${data[0].workout_id}`);
 }
 
 export async function saveActivity(payload: {
