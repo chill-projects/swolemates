@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { saveStrengthWorkout } from "./actions";
+import { validateWorkout } from "@/lib/workoutValidation";
 import { Card } from "@/components/ui/Card";
 
 type ExerciseOption = {
@@ -150,37 +151,10 @@ export function WorkoutBuilder({
   async function handleSave() {
     setError(null);
 
-    if (entries.length === 0) {
-      setError("Add at least one exercise.");
+    const validationError = validateWorkout(entries);
+    if (validationError) {
+      setError(validationError);
       return;
-    }
-
-    for (const entry of entries) {
-      if (entry.sets.length === 0) {
-        setError(`${entry.exerciseName} needs at least one set.`);
-        return;
-      }
-      for (const set of entry.sets) {
-        if (set.setType === "reps") {
-          if (set.actualReps === "" || Number(set.actualReps) <= 0) {
-            setError(`${entry.exerciseName}: every rep set needs reps > 0.`);
-            return;
-          }
-          if (set.actualWeight === "" || Number(set.actualWeight) < 0) {
-            setError(
-              `${entry.exerciseName}: every rep set needs a weight (0 is fine for bodyweight).`,
-            );
-            return;
-          }
-        } else {
-          if (set.workSeconds === "" || Number(set.workSeconds) <= 0) {
-            setError(
-              `${entry.exerciseName}: every timed set needs work seconds > 0.`,
-            );
-            return;
-          }
-        }
-      }
     }
 
     setSaving(true);

@@ -2,16 +2,7 @@
 
 import { useState } from "react";
 import { saveActivity } from "./actions";
-import type { Database } from "@/lib/supabase/database.types";
-
-type ActivityType = Database["public"]["Enums"]["activity_type"];
-
-const ACTIVITY_TYPES: { value: ActivityType; label: string }[] = [
-  { value: "yoga", label: "Yoga" },
-  { value: "pilates", label: "Pilates" },
-  { value: "cardio", label: "Cardio" },
-  { value: "other", label: "Other" },
-];
+import { ACTIVITY_TYPES, type ActivityType } from "@/lib/activityTypes";
 
 export function ActivityForm() {
   const [title, setTitle] = useState("");

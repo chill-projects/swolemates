@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { activityLabel } from "@/lib/activityTypes";
 import { Card } from "@/components/ui/Card";
 
 export default async function WorkoutDetailPage({
@@ -98,17 +99,4 @@ export default async function WorkoutDetailPage({
       ))}
     </div>
   );
-}
-
-function activityLabel(type: string | null) {
-  switch (type) {
-    case "yoga":
-      return "Yoga";
-    case "pilates":
-      return "Pilates";
-    case "cardio":
-      return "Cardio";
-    default:
-      return "Activity";
-  }
 }
