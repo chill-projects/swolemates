@@ -87,6 +87,15 @@ slash, and `/mcp` variants — tokens carry `aud` matching `PUBLIC_URL`), everyt
 renamed to "Swolemates". Values live in Railway as `AUTHKIT_DOMAIN` and
 `WORKOS_CLIENT_ID`.
 
+> **Two kinds of WorkOS client IDs — don't mix them.** The *environment* client ID
+> (WorkOS dashboard front page) only works with the legacy
+> `api.workos.com/user_management` flow. The `/oauth2/*` endpoints on the AuthKit
+> domain — what both our SPA and MCP use — only accept **Connect application** client
+> IDs. The SPA's is the first-party public app **"Swolemates Web"**
+> (`client_01KYR2Q17J08VF6AH0P5W17DTD`); that's what `WORKOS_CLIENT_ID` must hold.
+> Using the environment ID there produces `error=application_not_found` at sign-in.
+> Redirect URIs also live per-application, not just per-environment.
+
 **Phase 3 gate — the one remaining human step (~2 min each):**
 
 1. **Browser:** open https://swolemates-production.up.railway.app, sign up, add an item.
