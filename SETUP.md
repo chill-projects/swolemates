@@ -59,10 +59,14 @@ Still worth doing in the dashboard when convenient (Claude can't reach these swi
 no CLI/API equivalent):
 
 - **Wait for CI: ON** (app service → Settings) — blocks deploys on red GitHub checks.
-- **Serverless/sleeping: OFF** — cold starts break Claude tool calls. Off is the default;
-  just don't turn it on.
-- **PR environments: ON** (project → Settings → Environments) — every PR gets a public
-  HTTPS URL, which is how connectors get tested against real claude.ai before merge.
+- **PR environments: ON** (project → Settings → General → "PR environments", may be
+  labeled "Bot PR environments") — every PR gets a public HTTPS URL, which is how
+  connectors get tested against real claude.ai before merge. Dashboard-only; the CLI
+  and public API can't flip it.
+
+> **Serverless is currently ON** (`sleepApplication: true` in `railway.json`) to save
+> money while the app has no users. Cold starts break claude.ai connector tool calls —
+> **flip it back to `false` before the phase 3 connector test.**
 
 > `PUBLIC_URL` is the OAuth token audience. The app now refuses to boot in production if
 > it's missing or localhost — if a deploy dies at startup with a config error, that's the
