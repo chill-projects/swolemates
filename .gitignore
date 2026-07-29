@@ -27,5 +27,6 @@ node_modules/
 .vscode/
 *.pem
 
-# Claude Code local state
-.claude/
+# Claude Code local state (but shared project skills are tracked)
+.claude/*
+!.claude/skills/
