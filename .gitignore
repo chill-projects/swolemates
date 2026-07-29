@@ -26,3 +26,6 @@ node_modules/
 .idea/
 .vscode/
 *.pem
+
+# Claude Code local state
+.claude/

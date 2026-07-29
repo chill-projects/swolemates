@@ -43,6 +43,21 @@ async def test_production_config_rejects_missing_authkit() -> None:
         Settings(environment="production", authkit_domain="", workos_client_id="")
 
 
+async def test_production_config_rejects_the_localhost_public_url() -> None:
+    """public_url is the OAuth token audience.
+
+    Its default is a localhost URL, so an unset value in production isn't empty — it's
+    wrong. Every token would then fail audience validation and the symptom would be a
+    login loop, not a boot failure. Fail loudly at startup instead.
+    """
+    with pytest.raises(ValueError, match="public_url"):
+        Settings(
+            environment="production",
+            authkit_domain="https://example.authkit.app",
+            workos_client_id="client_123",
+        )
+
+
 @pytest.mark.parametrize(
     "header",
     ["token abc", "Bearer", "Bearer "],

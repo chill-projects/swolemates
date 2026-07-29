@@ -15,27 +15,24 @@ ordered by when you'll actually need them.
 | `uv` | ✅ installed (0.6.6) | Python deps + the Python toolchain |
 | `node` / `npm` | ✅ installed (24 / 10.9) | Frontend build |
 | PostgreSQL | ✅ no install needed | `make db` runs a real Postgres 16 via `pgserver`, no Docker |
-| Docker | ❌ not installed | **Optional.** Only needed for `make build`. CI builds the image on every push either way — see the follow-up at the bottom of this file. |
+| OrbStack | ✅ installed (2.2.1) | Provides Docker 29.4. **Launch it before `make build`** — `docker` is only on your PATH while OrbStack is running. |
+
+If `docker` reports "command not found", OrbStack isn't running:
+
+```bash
+open -a OrbStack
+```
+
+The socket comes up in a couple of seconds. Its own CLI lives at `~/.orbstack/bin/docker`
+if you'd rather not depend on the PATH shim.
 
 ### Homebrew
 
-Everything below is optional on this machine — `uv` and `node` are already installed and
-the dev database needs nothing. This is here for a fresh machine, or when you want the
-local Docker check.
+Nothing here is needed on this machine — it's for a fresh one.
 
 ```bash
-# Container runtime — pick one. OrbStack is much lighter on macOS.
-brew install --cask orbstack
-brew install --cask docker          # Docker Desktop, if you'd rather
-
-# Only needed on a fresh machine
 brew install uv node
-```
-
-After installing OrbStack, launch it once so it can set up the Docker socket, then:
-
-```bash
-make build
+brew install --cask orbstack       # container runtime; Docker Desktop also works
 ```
 
 **Alternative Postgres.** `make db` needs nothing installed, but if you'd rather run a
@@ -176,26 +173,30 @@ healthcheck instead of silently serving an unauthenticated MCP endpoint.
 
 ## Follow-ups
 
-### Verify the container image actually builds
+### ✅ Container image — verified 2026-07-29
 
-**Status:** unverified. Docker isn't installed on this machine, so `Dockerfile` has never
-been built anywhere.
+`make build` succeeds on the first attempt against OrbStack, ~190 MB. Verified running,
+not just building: `/health` 200, `/health/ready` 200 (psycopg really talks to Postgres
+from inside the image), the SPA index and both asset bundles serve, SPA fallback works,
+`/mcp/` is mounted, and the process runs as non-root `app` (uid 10001). No `.env` or
+`node_modules` leaked into the image. No Dockerfile changes were needed.
 
-It's a two-stage build (Node builds the SPA → copied into a Python image) and the parts
-most likely to be wrong are the `npm run build -- --outDir dist` override, the
-`uv sync --locked` layer, and the non-root `USER app` switch. None of that is exercised
-by `make test`.
+### Confirm the image builds for amd64
 
-Three ways to close it, cheapest first:
+**Status:** unverified. The local build was `linux/arm64` on Apple Silicon; Railway
+typically runs `amd64`. Every base image is multi-arch and there are no arch-specific
+build steps, so it should be fine — but "should be" isn't verified.
 
-1. **Push the branch.** `.github/workflows/ci.yml` has a `docker` job that builds the
-   image on every push. Costs nothing and needs no local install — this alone answers
-   the question.
-2. **Let Railway build it.** Railway builds from the Dockerfile on first deploy, so a
-   broken image shows up there. Slower feedback than CI, and a failure is entangled with
-   whatever else is new on a first deploy.
-3. **Build locally.** Install OrbStack (see §0) and run `make build`. Worth doing only if
-   you end up iterating on the Dockerfile often enough that CI round-trips get annoying.
+The `docker` job in `.github/workflows/ci.yml` runs on `ubuntu-latest`, so this closes
+itself the moment the branch is pushed. To check locally instead:
 
-Option 1 happens automatically the moment the branch is pushed, so this may well resolve
-itself before anyone acts on it.
+```bash
+docker build --platform linux/amd64 -t swolemates:amd64 .
+```
+
+### Exercise migrations and an authenticated route inside the container
+
+**Status:** unverified. `/health/ready` only issues `SELECT 1`, so nothing has confirmed
+that `alembic upgrade head` — the Railway pre-deploy command — actually runs from inside
+the image, or that an authenticated `/api` route or a real MCP tool call works there.
+Worth folding into the phase 3 auth spike rather than doing separately.

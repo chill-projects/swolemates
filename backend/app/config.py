@@ -35,14 +35,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _production_requires_real_auth(self) -> "Settings":
-        if self.environment == "production":
-            missing = [
-                name
-                for name in ("authkit_domain", "workos_client_id", "public_url")
-                if not getattr(self, name)
-            ]
-            if missing:
-                raise ValueError(f"environment=production requires {', '.join(missing)} to be set")
+        if self.environment != "production":
+            return self
+
+        missing = [
+            name for name in ("authkit_domain", "workos_client_id") if not getattr(self, name)
+        ]
+        # public_url has a localhost default, so "not set" can't be detected by emptiness.
+        # Left unset in production it becomes the OAuth token audience, every token fails
+        # to validate, and the symptom is an unexplained login loop rather than a boot
+        # error. Reject the default explicitly.
+        if not self.public_url or "localhost" in self.public_url:
+            missing.append("public_url (must be the real public origin, not localhost)")
+        if missing:
+            raise ValueError(f"environment=production requires {', '.join(missing)} to be set")
         return self
 
     @property
