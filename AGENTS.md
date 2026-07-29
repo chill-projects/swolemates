@@ -58,20 +58,27 @@ CI runs. See `README.md` for the full list and `SETUP.md` for one-time account s
 ## Operating notes for agents
 
 Will's standing preference: **act on his behalf whenever possible** rather than handing
-back instructions. This machine has authenticated CLIs — use them directly:
+back instructions.
 
-- `gh` — logged in as `wfstevens`. Push, open PRs, watch CI (`gh run list/view`), read
-  job logs. The repo is `chill-projects/swolemates` (shared, public).
-- `railway` — logged in and linked to the `swolemates` project. Pull build/deploy logs
-  (`railway logs -b|-d <deployment-id>`), list deployments, set variables
-  (`railway variables --set`), redeploy (`railway deployment redeploy -y --from-source`).
-  Debug deploys yourself from logs; don't ask Will to read the dashboard.
+**Railway and WorkOS are managed through their desktop Connectors — only.** Enable the
+Railway and WorkOS connectors for your chat (Claude desktop → connectors); their tools
+cover deployments, logs, variables, redeploys (Railway) and the full dashboard API
+(WorkOS `query`/`mutate`/`list_operations`). The Railway CLI and ad-hoc WorkOS MCP
+configs were deliberately uninstalled — don't reinstall them; if a connector tool is
+missing from the session, ask to have the connector enabled rather than reaching for a
+CLI. This keeps every collaborator on the identical loop.
+
+Other tooling on this machine:
+
+- `gh` — authenticated. Push, open PRs, watch CI (`gh run list/view`), read job logs.
+  The repo is `chill-projects/swolemates` (shared, public).
 - `docker` via OrbStack — run `open -a OrbStack` first; the CLI is only on PATH while
   it's running.
 
 Still ask first for: creating billable resources (new Railway services/databases),
-anything interactive-auth (`railway login/link`, OAuth consents), and account signup —
-those are Will's. Committing and pushing follow the normal rules (ask unless told).
+anything interactive-auth (connector enablement, OAuth consents), and account signup —
+those are the humans'. Committing and pushing follow the normal rules (ask unless told).
 
 Live deploy: https://swolemates-production.up.railway.app · Railway "production"
-environment. `ENVIRONMENT=test` there until WorkOS AuthKit is wired (see `SETUP.md` §2).
+environment, wired to WorkOS AuthKit (`friendly-canyon-24.authkit.app`, environment
+"Production" in the Swolemates WorkOS project).

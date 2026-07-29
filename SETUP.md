@@ -1,10 +1,16 @@
 # Setup — who does what
 
 The division of labor for getting services stood up, written so **Claude does most of
-it**. Claude has authenticated CLIs for GitHub (`gh`) and Railway (`railway`) on this
-machine and acts on your behalf with them by default — see the operating notes in
-[AGENTS.md](AGENTS.md). Your part is the things Claude can't or won't do: creating
-accounts, clicking OAuth consent screens, and payments.
+it**. Your part is the things Claude can't or won't do: creating accounts, clicking
+OAuth consent screens, and payments.
+
+**Railway and WorkOS are driven through their desktop Connectors — the only supported
+path.** In the Claude desktop app, enable the **Railway** and **WorkOS** connectors for
+your chat and sign in once through each one's OAuth screen. That's the entire per-person
+setup; afterwards Claude reads logs, sets variables, redeploys, and edits WorkOS config
+directly. (The Railway CLI and hand-rolled MCP configs were removed on purpose — one
+tool, same loop for every collaborator.) GitHub still goes through the `gh` CLI:
+`brew install gh && gh auth login`.
 
 **Nothing here is needed to run the app locally** — `make setup && make db && make dev`
 works with no accounts at all.
@@ -20,8 +26,8 @@ works with no accounts at all.
 | Pre-deploy migrations | ✅ verified — `alembic upgrade head` ran in-container on deploy |
 | GitHub | ✅ `chill-projects/swolemates` (public), CI green on `main` (4 jobs incl. docker/amd64) |
 | Container image | ✅ builds + runs on arm64 (local) and amd64 (CI), non-root, ~190 MB |
-| Auth | ⬜ **the current blocker** — `ENVIRONMENT=test` disables the dev bypass, so the live SPA gets 401s and shows "Couldn't load items." WorkOS doesn't exist yet. |
-| SPA login flow | 🔶 written (`frontend/src/auth/`), not yet deployed or tested against a real AuthKit tenant |
+| Auth | ✅ wired — WorkOS "Swolemates" project, Production env `friendly-canyon-24.authkit.app`, password auth + CIMD + DCR on, redirects + resource indicators set, Railway running `ENVIRONMENT=production` |
+| SPA login flow | 🔶 deployed, **untested against the real tenant** — the phase 3 gate below |
 
 ---
 
@@ -73,28 +79,22 @@ no CLI/API equivalent):
 > it's missing or localhost — if a deploy dies at startup with a config error, that's the
 > guard doing its job, not a bug.
 
-## 2. WorkOS AuthKit — ⬜ your move (~15 min of dashboard clicks)
+## 2. WorkOS AuthKit — ✅ done (via the WorkOS connector, 2026-07-29)
 
-Free to 1M MAU. This is the phase 3 blocker; everything else waits on it.
+Configured entirely through the connector, no dashboard clicks: password auth on,
+CIMD + DCR on, both redirect URIs set, resource indicators set (bare origin, trailing
+slash, and `/mcp` variants — tokens carry `aud` matching `PUBLIC_URL`), everything
+renamed to "Swolemates". Values live in Railway as `AUTHKIT_DOMAIN` and
+`WORKOS_CLIENT_ID`.
 
-1. Sign up at [workos.com](https://workos.com), create an organization.
-2. **AuthKit → enable.** Note the domain: `https://<something>.authkit.app`.
-3. **Authentication → enable Email + Password** (Google sign-in optional, free).
-4. **Redirects** — add all three:
-   - `http://localhost:5173/callback`
-   - `https://swolemates-production.up.railway.app/callback`
-   - the PR-environment pattern once you know it (or add per-PR later)
-5. **Applications → Dynamic Client Registration: enable.** Claude registers as an OAuth
-   client via DCR; clients must use `token_endpoint_auth_method: "none"`.
-6. Copy the **Client ID**.
+**Phase 3 gate — the one remaining human step (~2 min each):**
 
-Then hand Claude the AuthKit domain + client ID and say "wire up WorkOS". Claude sets
-the Railway variables, flips `ENVIRONMENT=production`, redeploys, and verifies.
+1. **Browser:** open https://swolemates-production.up.railway.app, sign up, add an item.
+2. **Connector:** add `https://swolemates-production.up.railway.app/mcp` to claude.ai as
+   a custom connector, complete its login, ask Claude to call `whoami`.
 
-**Phase 3 gate (you, ~2 min):** add
-`https://swolemates-production.up.railway.app/mcp` to claude.ai as a custom connector,
-complete the login, call `whoami`. Your WorkOS `sub` back = the riskiest part of the
-whole design is done.
+Your WorkOS `sub` back from both = the riskiest part of the whole design is done. When
+PR environments are used later, add each preview URL to Redirects (via the connector).
 
 ## 3. GitHub — ✅ done, one option open
 
@@ -120,13 +120,14 @@ two-user volume. Create whichever when phase 6 starts; Claude wires it.
 | `node` 24 / npm 10.9 | frontend build |
 | Postgres | none needed — `make db` runs a real Postgres 16 via `pgserver` |
 | OrbStack 2.2.1 | `docker` is only on PATH while OrbStack runs: `open -a OrbStack` |
-| `gh` | authenticated as `wfstevens` |
-| `railway` 5.30.1 | logged in, linked to the `swolemates` project |
+| `gh` | authenticated |
+| Railway + WorkOS | **desktop Connectors, not CLIs** — enable both for your chat and sign in once each |
 
-Fresh-machine bootstrap: `brew install uv node gh railway && brew install --cask orbstack`,
-then `gh auth login`, `railway login`, `railway link`. Optional system Postgres instead of
-`make db`: `brew install postgresql@17`, `createdb swolemates`, point `DATABASE_URL` at it
-in `backend/.env`.
+Fresh-machine bootstrap (i.e. Michelle's setup): `brew install uv node gh &&
+brew install --cask orbstack`, then `gh auth login`, then enable the Railway and WorkOS
+connectors in the Claude desktop app. Optional system Postgres instead of `make db`:
+`brew install postgresql@17`, `createdb swolemates`, point `DATABASE_URL` at it in
+`backend/.env`.
 
 ---
 
@@ -147,13 +148,11 @@ a misconfigured deploy fails its healthcheck instead of serving an open MCP endp
 
 ---
 
-## Tooling gaps noticed while setting this up
+## Tooling decisions
 
-- **`railway setup agent`** installs Railway's official agent skills + MCP server
-  (deploy/logs/status/docs tools). Not yet run — it edits local editor/MCP config, so
-  run it yourself or ask Claude to (it may hit a permission prompt). Until then the
-  plain CLI covers everything we've needed.
-- **No Railway connector exists in the MCP registry** — the CLI (or the official MCP
-  server above) is the way in.
+- **Connectors only for Railway and WorkOS.** Both desktop connectors are enabled and
+  proven (the entire WorkOS §2 configuration above was done through one). The Railway
+  CLI was uninstalled and the hand-added WorkOS MCP entry removed — one supported path,
+  so every collaborator's loop is identical.
 - Operating preferences for agents working in this repo live in **AGENTS.md**, including
-  the standing "act on Will's behalf with the linked CLIs" note.
+  the standing "act on Will's behalf" note and the connectors-only rule.

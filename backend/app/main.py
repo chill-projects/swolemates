@@ -3,7 +3,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,6 +75,27 @@ async def ready(session: DbSession) -> JSONResponse:
 
 app.include_router(api_router, prefix="/api")
 app.mount("/mcp", mcp_app)
+
+
+@app.get("/.well-known/{suffix:path}", include_in_schema=False)
+async def well_known(suffix: str, request: Request) -> Response:
+    """Forward root /.well-known/* into the mounted MCP app.
+
+    RFC 9728: an MCP client that gets a 401 from /mcp fetches OAuth resource metadata
+    at the ORIGIN ROOT (/.well-known/oauth-protected-resource), but FastMCP serves it
+    inside its mount (/mcp/.well-known/...). Without this forward the SPA catch-all
+    swallows the path and returns index.html, and the claude.ai connector flow dies at
+    its very first step. Verified against the live 401's WWW-Authenticate header.
+    """
+    transport = httpx.ASGITransport(app=mcp_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp") as client:
+        upstream = await client.get(f"/.well-known/{suffix}", params=request.query_params)
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+    )
+
 
 # --- SPA ---------------------------------------------------------------------------
 # Mounted last so /api, /mcp and /health always win. Unknown paths fall through to
