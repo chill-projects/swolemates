@@ -1,12 +1,11 @@
 import { useState } from "react";
 
-import { useAddTmpxItem, useDeleteTmpxItem, useTmpxItems, useWhoami } from "../api/tmpx";
+import { useAddTmpxItem, useDeleteTmpxItem, useTmpxItems } from "../api/tmpx";
 
-export function TmpxPage() {
+export function TmpxPage({ userSub }: { userSub: string }) {
   const [name, setName] = useState("");
   const [value, setValue] = useState(0);
 
-  const whoami = useWhoami();
   const items = useTmpxItems();
   const addItem = useAddTmpxItem();
   const deleteItem = useDeleteTmpxItem();
@@ -14,7 +13,7 @@ export function TmpxPage() {
   return (
     <section>
       <p className="muted">
-        Signed in as <code>{whoami.data?.user_sub ?? "…"}</code>
+        Signed in as <code>{userSub}</code>
       </p>
 
       <form

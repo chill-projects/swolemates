@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/api/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Config
+         * @description Public: what the SPA needs to start an AuthKit login.
+         *
+         *     Unauthenticated by design — the browser has to read this *before* it has a token.
+         *     It exposes only the client id and issuer, both of which are public values in an
+         *     OAuth public-client flow. No secret is involved; AuthKit is PKCE-only here.
+         */
+        get: operations["authConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tmpx": {
         parameters: {
             query?: never;
@@ -104,6 +128,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AuthConfigOut */
+        AuthConfigOut: {
+            /** Authkit Domain */
+            authkit_domain: string;
+            /** Client Id */
+            client_id: string;
+            /** Configured */
+            configured: boolean;
+            /** Environment */
+            environment: string;
+            /** Redirect Uri */
+            redirect_uri: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -149,6 +186,11 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WhoamiOut */
+        WhoamiOut: {
+            /** User Sub */
+            user_sub: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -158,6 +200,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    authConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfigOut"];
+                };
+            };
+        };
+    };
     listTmpxItems: {
         parameters: {
             query?: never;
@@ -255,9 +317,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["WhoamiOut"];
                 };
             };
         };

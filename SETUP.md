@@ -1,202 +1,154 @@
-# Setup — accounts and services
+# Setup — who does what
 
-Work through these at your leisure. **Nothing here is needed to run the app locally** —
-`make setup && make db && make dev` works today with no accounts at all.
+The division of labor for getting services stood up, written so **Claude does most of
+it**. Claude has authenticated CLIs for GitHub (`gh`) and Railway (`railway`) on this
+machine and acts on your behalf with them by default — see the operating notes in
+[AGENTS.md](AGENTS.md). Your part is the things Claude can't or won't do: creating
+accounts, clicking OAuth consent screens, and payments.
 
-Each item says what it unblocks and which environment variables it produces. Items are
-ordered by when you'll actually need them.
-
----
-
-## 0. Local tooling — mostly done
-
-| Tool | Status | Notes |
-|---|---|---|
-| `uv` | ✅ installed (0.6.6) | Python deps + the Python toolchain |
-| `node` / `npm` | ✅ installed (24 / 10.9) | Frontend build |
-| PostgreSQL | ✅ no install needed | `make db` runs a real Postgres 16 via `pgserver`, no Docker |
-| OrbStack | ✅ installed (2.2.1) | Provides Docker 29.4. **Launch it before `make build`** — `docker` is only on your PATH while OrbStack is running. |
-
-If `docker` reports "command not found", OrbStack isn't running:
-
-```bash
-open -a OrbStack
-```
-
-The socket comes up in a couple of seconds. Its own CLI lives at `~/.orbstack/bin/docker`
-if you'd rather not depend on the PATH shim.
-
-### Homebrew
-
-Nothing here is needed on this machine — it's for a fresh one.
-
-```bash
-brew install uv node
-brew install --cask orbstack       # container runtime; Docker Desktop also works
-```
-
-**Alternative Postgres.** `make db` needs nothing installed, but if you'd rather run a
-system Postgres — say you want `psql` on your PATH, or a database that survives a repo
-wipe:
-
-```bash
-brew install postgresql@17
-brew services start postgresql@17
-createdb swolemates
-```
-
-Then put the URL in `backend/.env` and `make db` is bypassed entirely:
-
-```
-DATABASE_URL=postgresql+psycopg://$(whoami)@localhost:5432/swolemates
-```
-
-Nothing in the app cares which of the two you use.
+**Nothing here is needed to run the app locally** — `make setup && make db && make dev`
+works with no accounts at all.
 
 ---
 
-## 1. Railway — hosting + production Postgres
+## Current state (2026-07-29)
 
-**Unblocks:** phase 2. Deploying at all.
-**Cost:** ~$5–10/mo (Hobby plan, $5 credit included).
-
-1. Sign up at [railway.com](https://railway.com) with your GitHub account.
-2. **New Project → Deploy from GitHub repo →** `michelle-zhuang1/swolemates`.
-   Railway reads `railway.json`, so the Dockerfile, pre-deploy migration, and healthcheck
-   are already configured — don't re-enter them in the UI.
-3. In the project, **New → Database → Add PostgreSQL**. Railway injects `DATABASE_URL`
-   into the app service automatically. Don't set it by hand.
-4. On the app service, **Settings** and confirm:
-   - **Serverless / sleeping: OFF.** Cold starts break Claude tool calls — the connector
-     times out before the container wakes.
-   - **Wait for CI: ON.** Deploys only after GitHub Actions is green.
-   - **Pre-deploy command:** should already read `alembic upgrade head` from
-     `railway.json`. It must use the **unpooled** database URL so migrations aren't run
-     through PgBouncer.
-   - **Healthcheck path:** `/health`.
-5. **Settings → Networking → Generate Domain.** Copy the resulting HTTPS URL.
-6. **Variables** on the app service, add:
-   ```
-   ENVIRONMENT=production
-   PUBLIC_URL=https://<the domain from step 5>
-   ```
-7. **Settings → Environments → enable PR environments.** Each pull request gets its own
-   public HTTPS URL, which is how you test a connector against real claude.ai without
-   touching production.
-
-> `PUBLIC_URL` is the OAuth token audience. If it doesn't exactly match the URL Claude
-> connects to, every token is rejected and the failure looks like a login loop. Set it
-> once, correctly, and don't change it casually.
+| Piece | State |
+|---|---|
+| Live deploy | ✅ https://swolemates-production.up.railway.app — `/health` and `/health/ready` green |
+| Railway project | ✅ `swolemates` (app service + Postgres), CLI linked, `railway.json` respected |
+| Pre-deploy migrations | ✅ verified — `alembic upgrade head` ran in-container on deploy |
+| GitHub | ✅ `chill-projects/swolemates` (public), CI green on `main` (4 jobs incl. docker/amd64) |
+| Container image | ✅ builds + runs on arm64 (local) and amd64 (CI), non-root, ~190 MB |
+| Auth | ⬜ **the current blocker** — `ENVIRONMENT=test` disables the dev bypass, so the live SPA gets 401s and shows "Couldn't load items." WorkOS doesn't exist yet. |
+| SPA login flow | 🔶 written (`frontend/src/auth/`), not yet deployed or tested against a real AuthKit tenant |
 
 ---
 
-## 2. WorkOS AuthKit — login for both front doors
+## What Claude does (given one sentence of instruction)
 
-**Unblocks:** phase 3, the auth spike. This is the riskiest part of the whole plan, which
-is why it comes before any real features.
-**Cost:** free up to 1M monthly active users.
+Already proven in this repo — ask and it happens:
 
-1. Sign up at [workos.com](https://workos.com) and create an organization.
-2. **AuthKit → enable it.** Note the AuthKit domain — it looks like
-   `https://your-project-12345.authkit.app`.
-3. **Authentication → enable Email + Password** (matches the PRD). Add Google sign-in too
-   if you want it; it costs nothing and skips password reset support entirely.
-4. **AuthKit → Redirects.** Add:
-   - `http://localhost:5173/callback` — local SPA
-   - `https://<your Railway domain>/callback` — production SPA
-5. **Applications → Dynamic Client Registration: enable.** Claude registers itself as an
-   OAuth client this way; without DCR the connector cannot complete setup.
-   Registered clients need `token_endpoint_auth_method: "none"` — Claude is a public
-   client and has no secret to present.
-6. Copy the **Client ID** from the dashboard.
-7. Add to Railway variables:
-   ```
-   AUTHKIT_DOMAIN=https://your-project-12345.authkit.app
-   WORKOS_CLIENT_ID=client_01ABC...
-   ```
-8. For local testing against real WorkOS, put the same two values in `backend/.env` and
-   change `ENVIRONMENT=local` to `ENVIRONMENT=test` — that turns off the `DEV_USER_SUB`
-   bypass so you're exercising the real token path.
+- **Railway:** read build/deploy logs, set service variables, trigger redeploys, check
+  deployment status, wire `DATABASE_URL=${{Postgres.DATABASE_URL}}` references. Adding
+  billable services (databases, replicas) it will propose first, since that's your money.
+- **GitHub:** push, open PRs, watch CI runs, read job logs, set up branch protection.
+- **Docker:** build and smoke-test images against OrbStack (`open -a OrbStack` first).
+- **Code:** everything in `make test`, migrations, the typed-client regen (`make types`).
 
-**Gate for phase 3:** open a PR, get its Railway preview URL, add
-`https://<preview>/mcp` to claude.ai as a custom connector, complete the login, and call
-`whoami`. If it returns your WorkOS `sub`, the risky part is done.
+After you finish the WorkOS section below, Claude also: sets the Railway variables,
+flips `ENVIRONMENT` to `production`, redeploys, and verifies the token path end to end.
+
+## What only you can do
+
+1. **Create accounts** (Claude doesn't create accounts or accept ToS): WorkOS is the only
+   one left.
+2. **Interactive CLI auth**, if it ever needs re-doing: `railway login`, `railway link`,
+   `gh auth login`.
+3. **Click through OAuth consents** — the claude.ai connector login in phase 3.
+4. **Approve spend**: new Railway services, plan changes.
 
 ---
 
-## 3. GitHub — CI
+## 1. Railway — ✅ done
 
-**Unblocks:** the CI gate on deploys. Mostly automatic.
+Project `swolemates`, app service + Postgres, domain generated, variables set
+(`DATABASE_URL` by reference, `PUBLIC_URL`, `ENVIRONMENT=test` until WorkOS exists).
 
-1. Actions are enabled by default; `.github/workflows/ci.yml` runs on the first push.
-2. Optional but recommended — **Settings → Branches → add a rule for `main`:** require
-   the `backend`, `frontend`, and `generated-client` checks to pass before merge.
-3. No secrets are needed. CI runs its own throwaway Postgres and never touches WorkOS or
-   Railway.
+Still worth doing in the dashboard when convenient (Claude can't reach these switches —
+no CLI/API equivalent):
+
+- **Wait for CI: ON** (app service → Settings) — blocks deploys on red GitHub checks.
+- **Serverless/sleeping: OFF** — cold starts break Claude tool calls. Off is the default;
+  just don't turn it on.
+- **PR environments: ON** (project → Settings → Environments) — every PR gets a public
+  HTTPS URL, which is how connectors get tested against real claude.ai before merge.
+
+> `PUBLIC_URL` is the OAuth token audience. The app now refuses to boot in production if
+> it's missing or localhost — if a deploy dies at startup with a config error, that's the
+> guard doing its job, not a bug.
+
+## 2. WorkOS AuthKit — ⬜ your move (~15 min of dashboard clicks)
+
+Free to 1M MAU. This is the phase 3 blocker; everything else waits on it.
+
+1. Sign up at [workos.com](https://workos.com), create an organization.
+2. **AuthKit → enable.** Note the domain: `https://<something>.authkit.app`.
+3. **Authentication → enable Email + Password** (Google sign-in optional, free).
+4. **Redirects** — add all three:
+   - `http://localhost:5173/callback`
+   - `https://swolemates-production.up.railway.app/callback`
+   - the PR-environment pattern once you know it (or add per-PR later)
+5. **Applications → Dynamic Client Registration: enable.** Claude registers as an OAuth
+   client via DCR; clients must use `token_endpoint_auth_method: "none"`.
+6. Copy the **Client ID**.
+
+Then hand Claude the AuthKit domain + client ID and say "wire up WorkOS". Claude sets
+the Railway variables, flips `ENVIRONMENT=production`, redeploys, and verifies.
+
+**Phase 3 gate (you, ~2 min):** add
+`https://swolemates-production.up.railway.app/mcp` to claude.ai as a custom connector,
+complete the login, call `whoami`. Your WorkOS `sub` back = the riskiest part of the
+whole design is done.
+
+## 3. GitHub — ✅ done, one option open
+
+CI runs on every push; no secrets needed (CI brings its own Postgres). If you want
+`main` protected now that the project is shared, say "set up branch protection" —
+requiring the four checks before merge is one `gh api` call.
+
+## 4. Food-estimation API key — phase 6, not yet
+
+Photo food logging needs a vision model key: `ANTHROPIC_API_KEY`
+([console.anthropic.com](https://console.anthropic.com), matches the PRD) or
+`GEMINI_API_KEY` ([aistudio.google.com](https://aistudio.google.com), matches what the
+legacy code in `docs/legacy/logic/food-estimate.route.ts` actually did). Pennies at
+two-user volume. Create whichever when phase 6 starts; Claude wires it.
 
 ---
 
-## 4. Food-estimation API key — phase 6 only
+## Local tooling — ✅ all present
 
-**Unblocks:** the photo-based food logging port. Not needed before then.
+| Tool | Notes |
+|---|---|
+| `uv` 0.6.6 | Python deps + toolchain |
+| `node` 24 / npm 10.9 | frontend build |
+| Postgres | none needed — `make db` runs a real Postgres 16 via `pgserver` |
+| OrbStack 2.2.1 | `docker` is only on PATH while OrbStack runs: `open -a OrbStack` |
+| `gh` | authenticated as `wfstevens` |
+| `railway` 5.30.1 | logged in, linked to the `swolemates` project |
 
-The deleted Next app used Google Gemini (`@google/genai`) even though the PRD specifies
-Claude. Pick one when you get there:
-
-- **Anthropic** — [console.anthropic.com](https://console.anthropic.com) → API key →
-  `ANTHROPIC_API_KEY`. Matches PRD §4. Vision + structured JSON in one request.
-- **Google** — [aistudio.google.com](https://aistudio.google.com) → API key →
-  `GEMINI_API_KEY`. Matches what the code actually did, so the prompt and schema in
-  `docs/legacy/logic/food-estimate.route.ts` port across unchanged.
-
-Either way it's pennies a month at two-user volume.
+Fresh-machine bootstrap: `brew install uv node gh railway && brew install --cask orbstack`,
+then `gh auth login`, `railway login`, `railway link`. Optional system Postgres instead of
+`make db`: `brew install postgresql@17`, `createdb swolemates`, point `DATABASE_URL` at it
+in `backend/.env`.
 
 ---
 
-## Environment variables, all together
+## Environment variables
 
-| Variable | Local | Railway | Source |
+| Variable | Local | Railway | Who sets it |
 |---|---|---|---|
-| `ENVIRONMENT` | `local` (auto) | `production` | you |
-| `DATABASE_URL` | written by `make db` | injected | Railway Postgres |
-| `PUBLIC_URL` | `http://localhost:8000` | your Railway domain | you |
-| `AUTHKIT_DOMAIN` | blank | required | WorkOS |
-| `WORKOS_CLIENT_ID` | blank | required | WorkOS |
-| `DEV_USER_SUB` | `dev_user_00000000` | — | ignored outside local |
-| `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | phase 6 | phase 6 | you |
+| `ENVIRONMENT` | `local` (via `make db`) | `test` now → `production` after WorkOS | Claude |
+| `DATABASE_URL` | written by `make db` | `${{Postgres.DATABASE_URL}}` reference | Claude |
+| `PUBLIC_URL` | `http://localhost:8000` | the Railway domain | Claude |
+| `AUTHKIT_DOMAIN` | blank | after §2 | Claude, from your dashboard values |
+| `WORKOS_CLIENT_ID` | blank | after §2 | Claude, from your dashboard values |
+| `DEV_USER_SUB` | `dev_user_00000000` | — (inert outside local) | default |
+| `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | phase 6 | phase 6 | Claude, from your key |
 
-The app refuses to start with `ENVIRONMENT=production` unless `AUTHKIT_DOMAIN`,
-`WORKOS_CLIENT_ID` and `PUBLIC_URL` are all set, so a misconfigured deploy fails the
-healthcheck instead of silently serving an unauthenticated MCP endpoint.
+Production refuses to boot without the AuthKit pair and a non-localhost `PUBLIC_URL` —
+a misconfigured deploy fails its healthcheck instead of serving an open MCP endpoint.
 
 ---
 
-## Follow-ups
+## Tooling gaps noticed while setting this up
 
-### ✅ Container image — verified 2026-07-29
-
-`make build` succeeds on the first attempt against OrbStack, ~190 MB. Verified running,
-not just building: `/health` 200, `/health/ready` 200 (psycopg really talks to Postgres
-from inside the image), the SPA index and both asset bundles serve, SPA fallback works,
-`/mcp/` is mounted, and the process runs as non-root `app` (uid 10001). No `.env` or
-`node_modules` leaked into the image. No Dockerfile changes were needed.
-
-### Confirm the image builds for amd64
-
-**Status:** unverified. The local build was `linux/arm64` on Apple Silicon; Railway
-typically runs `amd64`. Every base image is multi-arch and there are no arch-specific
-build steps, so it should be fine — but "should be" isn't verified.
-
-The `docker` job in `.github/workflows/ci.yml` runs on `ubuntu-latest`, so this closes
-itself the moment the branch is pushed. To check locally instead:
-
-```bash
-docker build --platform linux/amd64 -t swolemates:amd64 .
-```
-
-### Exercise migrations and an authenticated route inside the container
-
-**Status:** unverified. `/health/ready` only issues `SELECT 1`, so nothing has confirmed
-that `alembic upgrade head` — the Railway pre-deploy command — actually runs from inside
-the image, or that an authenticated `/api` route or a real MCP tool call works there.
-Worth folding into the phase 3 auth spike rather than doing separately.
+- **`railway setup agent`** installs Railway's official agent skills + MCP server
+  (deploy/logs/status/docs tools). Not yet run — it edits local editor/MCP config, so
+  run it yourself or ask Claude to (it may hit a permission prompt). Until then the
+  plain CLI covers everything we've needed.
+- **No Railway connector exists in the MCP registry** — the CLI (or the official MCP
+  server above) is the way in.
+- Operating preferences for agents working in this repo live in **AGENTS.md**, including
+  the standing "act on Will's behalf with the linked CLIs" note.

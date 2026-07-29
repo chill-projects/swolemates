@@ -1,6 +1,39 @@
 {
   "components": {
     "schemas": {
+      "AuthConfigOut": {
+        "properties": {
+          "authkit_domain": {
+            "title": "Authkit Domain",
+            "type": "string"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "title": "Redirect Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured",
+          "authkit_domain",
+          "client_id",
+          "redirect_uri",
+          "environment"
+        ],
+        "title": "AuthConfigOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -103,6 +136,19 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WhoamiOut": {
+        "properties": {
+          "user_sub": {
+            "title": "User Sub",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_sub"
+        ],
+        "title": "WhoamiOut",
+        "type": "object"
       }
     }
   },
@@ -112,6 +158,28 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/config": {
+      "get": {
+        "description": "Public: what the SPA needs to start an AuthKit login.\n\nUnauthenticated by design \u2014 the browser has to read this *before* it has a token.\nIt exposes only the client id and issuer, both of which are public values in an\nOAuth public-client flow. No secret is involved; AuthKit is PKCE-only here.",
+        "operationId": "authConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Config",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/tmpx": {
       "get": {
         "operationId": "listTmpxItems",
@@ -221,11 +289,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Whoami",
-                  "type": "object"
+                  "$ref": "#/components/schemas/WhoamiOut"
                 }
               }
             },

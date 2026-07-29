@@ -12,6 +12,15 @@ async def test_health_does_not_require_a_database(client: AsyncClient) -> None:
     assert resp.json()["status"] == "ok"
 
 
+async def test_auth_config_is_public_and_reports_unconfigured(client: AsyncClient) -> None:
+    """The SPA reads this before it has a token; it must never require one."""
+    resp = await client.get("/api/auth/config")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is False
+    assert body["redirect_uri"].endswith("/callback")
+
+
 async def test_create_then_list(client: AsyncClient) -> None:
     created = await client.post("/api/tmpx", json={"name": "squat", "value": 225})
     assert created.status_code == 201
