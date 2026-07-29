@@ -11,6 +11,9 @@ export interface AuthConfig {
   authkit_domain: string;
   client_id: string;
   redirect_uri: string;
+  /** RFC 8707 resource indicator — requested in both OAuth legs so the token's `aud`
+   *  matches what the backend validates. */
+  resource: string;
   environment: string;
 }
 
@@ -53,6 +56,7 @@ export async function login(config: AuthConfig): Promise<void> {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.client_id);
   url.searchParams.set("redirect_uri", config.redirect_uri);
+  url.searchParams.set("resource", config.resource);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
   window.location.assign(url.toString());
@@ -90,6 +94,7 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
       grant_type: "authorization_code",
       client_id: config.client_id,
       redirect_uri: config.redirect_uri,
+      resource: config.resource,
       code_verifier: verifier,
       code,
     }),

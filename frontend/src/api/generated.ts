@@ -143,6 +143,8 @@ export interface components {
             environment: string;
             /** Redirect Uri */
             redirect_uri: string;
+            /** Resource */
+            resource: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

@@ -19,6 +19,9 @@ class AuthConfigOut(BaseModel):
     authkit_domain: str
     client_id: str
     redirect_uri: str
+    # RFC 8707 resource indicator the SPA must request; becomes the token's `aud`,
+    # which the backend validates. Must be listed as a Resource Indicator in WorkOS.
+    resource: str
     environment: str
 
 
@@ -51,6 +54,7 @@ async def auth_config(settings: AppSettings) -> AuthConfigOut:
         authkit_domain=settings.authkit_domain,
         client_id=settings.workos_client_id,
         redirect_uri=f"{settings.public_url.rstrip('/')}/callback",
+        resource=settings.public_url.rstrip("/"),
         # Lets the SPA explain itself when auth isn't wired up yet, rather than
         # rendering a bare error the user can do nothing about.
         environment=settings.environment,

@@ -22,6 +22,10 @@
           "redirect_uri": {
             "title": "Redirect Uri",
             "type": "string"
+          },
+          "resource": {
+            "title": "Resource",
+            "type": "string"
           }
         },
         "required": [
@@ -29,6 +33,7 @@
           "authkit_domain",
           "client_id",
           "redirect_uri",
+          "resource",
           "environment"
         ],
         "title": "AuthConfigOut",

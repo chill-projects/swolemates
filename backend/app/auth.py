@@ -44,12 +44,15 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
             detail="AUTHKIT_DOMAIN is not configured",
         )
     signing_key = _jwk_client(settings.authkit_domain).get_signing_key_from_jwt(token)
+    base = settings.public_url.rstrip("/")
     try:
         claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=settings.public_url,
+            # AuthKit echoes the requested `resource` as `aud`, and URL normalization
+            # can add a trailing slash along the way — accept both spellings of us.
+            audience=[base, f"{base}/"],
             issuer=settings.authkit_domain.rstrip("/"),
         )
     except jwt.PyJWTError as exc:
