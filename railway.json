@@ -12,6 +12,6 @@
     "restartPolicyMaxRetries": 3,
     "overlapSeconds": 20,
     "numReplicas": 1,
-    "sleepApplication": true
+    "sleepApplication": false
   }
 }

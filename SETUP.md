@@ -64,9 +64,10 @@ no CLI/API equivalent):
   connectors get tested against real claude.ai before merge. Dashboard-only; the CLI
   and public API can't flip it.
 
-> **Serverless is currently ON** (`sleepApplication: true` in `railway.json`) to save
-> money while the app has no users. Cold starts break claude.ai connector tool calls —
-> **flip it back to `false` before the phase 3 connector test.**
+> **Serverless stays OFF** (`sleepApplication: false`, pinned by `railway.json` — the
+> dashboard toggle is locked by the file, so change it there if ever needed). Cold
+> starts break claude.ai connector tool calls; the couple of dollars a month it would
+> save isn't worth debugging OAuth against a sleeping server.
 
 > `PUBLIC_URL` is the OAuth token audience. The app now refuses to boot in production if
 > it's missing or localhost — if a deploy dies at startup with a config error, that's the
