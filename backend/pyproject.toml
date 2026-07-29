@@ -1,0 +1,48 @@
+[project]
+name = "swolemates-backend"
+version = "0.1.0"
+description = "Swolemates backend — REST API, MCP server, and SPA host in one container"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.0",
+    "fastmcp>=3.4.5",
+    "sqlalchemy[asyncio]>=2.0.51",
+    "alembic>=1.18.5",
+    # psycopg 3 drives both the async app and sync Alembic from one URL scheme, and
+    # avoids the asyncpg prepared-statement conflict with PgBouncer in transaction mode.
+    "psycopg[binary,pool]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "httpx>=0.28.1",
+    "pyjwt[crypto]>=2.13.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.16.0",
+]
+# Note: the local dev database (pgserver) is deliberately NOT a dependency here. It has
+# no cp313 wheel, and pinning the whole project to 3.12 for a dev-only tool is the wrong
+# trade. `make db` runs it in a throwaway 3.12 environment instead; see scripts/devdb.py.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.isort]
+# The `alembic/` directory shadows the installed package, so ruff guesses wrong.
+known-third-party = ["alembic"]
+known-first-party = ["app", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.uv]
+package = false
