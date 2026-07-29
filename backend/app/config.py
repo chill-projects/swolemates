@@ -14,6 +14,11 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "test", "production"] = "local"
 
+    # Runtime log verbosity. Flipping this is a Railway variable change (container
+    # restart, no rebuild) — diagnostics should never need a deployment. DEBUG adds
+    # token aud/iss detail to auth rejections; INFO logs only the rejection reason.
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
     # Railway injects DATABASE_URL. It arrives as postgresql://... which SQLAlchemy would
     # route to psycopg2; normalize_database_url() rewrites the scheme to psycopg 3.
     database_url: str = "postgresql://swolemates:swolemates@localhost:5432/swolemates"

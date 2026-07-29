@@ -56,19 +56,23 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
             issuer=settings.authkit_domain.rstrip("/"),
         )
     except jwt.PyJWTError as exc:
-        # Log the *unverified* aud/iss so a mismatch names both sides. Safe: values are
-        # attacker-controlled strings used only for diagnosis, never for decisions.
-        try:
-            unverified = jwt.decode(token, options={"verify_signature": False})
-            log.warning(
-                "rejected bearer token: %s (token aud=%r iss=%r, expected aud=%r)",
-                exc,
-                unverified.get("aud"),
-                unverified.get("iss"),
-                [base, f"{base}/"],
-            )
-        except jwt.PyJWTError:
-            log.warning("rejected bearer token: %s (undecodable)", exc)
+        log.warning("rejected bearer token: %s", exc)
+        # aud/iss are public identifiers, not secrets — but forensic detail stays at
+        # DEBUG so production logs default to the reason only. Flip LOG_LEVEL=DEBUG in
+        # Railway (variable change, no rebuild) to see both sides of a mismatch.
+        # NEVER log the token itself or full claims (the JWT template adds email/name).
+        if log.isEnabledFor(logging.DEBUG):
+            try:
+                unverified = jwt.decode(token, options={"verify_signature": False})
+                log.debug(
+                    "token aud=%r iss=%r, expected aud=%r iss=%r",
+                    unverified.get("aud"),
+                    unverified.get("iss"),
+                    [base, f"{base}/"],
+                    settings.authkit_domain.rstrip("/"),
+                )
+            except jwt.PyJWTError:
+                log.debug("token was undecodable")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",

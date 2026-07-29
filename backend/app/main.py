@@ -17,9 +17,9 @@ from app.db import dispose_engine
 from app.deps import DbSession
 from app.mcp.server import mcp
 
-logging.basicConfig(level=logging.INFO)
-
 settings = get_settings()
+
+logging.basicConfig(level=settings.log_level)
 
 # The SPA is built into the image at /app/static. Absent in local dev, where Vite serves it.
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
