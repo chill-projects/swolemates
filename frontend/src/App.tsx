@@ -43,6 +43,12 @@ export function App() {
       }
       setReturningFromLogin(false);
       queryClient.invalidateQueries({ queryKey: ["whoami"] });
+    }).catch((err: unknown) => {
+      // A thrown exchange (network/CORS failure) previously left the app stuck on
+      // "Signing in…" forever — the promise rejected and nothing reset the state.
+      console.error("Login completion threw:", err);
+      setLoginError("Sign-in didn’t complete. Details are in the browser console.");
+      setReturningFromLogin(false);
     });
   }, [returningFromLogin, config.data, queryClient]);
 
