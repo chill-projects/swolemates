@@ -90,12 +90,13 @@ async def session(migrated_database: str) -> AsyncIterator[AsyncSession]:
 @pytest.fixture
 async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     """An HTTP client wired to the app, authenticated as TEST_USER."""
-    from app.auth import require_user
+    from app.auth import Principal, require_principal, require_user
     from app.db import get_session
     from app.main import app
 
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[require_user] = lambda: TEST_USER
+    app.dependency_overrides[require_principal] = lambda: Principal(sub=TEST_USER, claims={})
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

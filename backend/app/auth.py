@@ -66,11 +66,11 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
     return Principal(sub=sub, claims=claims)
 
 
-async def require_user(
+async def require_principal(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> str:
-    """FastAPI dependency resolving the request to a WorkOS `sub`.
+) -> Principal:
+    """FastAPI dependency resolving the request to a verified Principal (sub + claims).
 
     In local dev only, an absent Authorization header falls back to DEV_USER_SUB so the
     dev loop doesn't need an OAuth round trip for every call. Any other environment
@@ -79,7 +79,10 @@ async def require_user(
     header = request.headers.get("Authorization", "")
     if not header:
         if settings.is_local:
-            return settings.dev_user_sub
+            return Principal(
+                sub=settings.dev_user_sub,
+                claims={"email": "dev@localhost", "first_name": "Dev"},
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing bearer token",
@@ -93,7 +96,14 @@ async def require_user(
             detail="Expected 'Authorization: Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return verify_bearer_token(token, settings).sub
+    return verify_bearer_token(token, settings)
+
+
+async def require_user(
+    principal: Annotated[Principal, Depends(require_principal)],
+) -> str:
+    """The common case: most services only need the user id, not the full claims."""
+    return principal.sub
 
 
 def mcp_user_sub() -> str:

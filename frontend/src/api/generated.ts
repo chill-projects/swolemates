@@ -73,6 +73,9 @@ export interface paths {
         /**
          * Whoami
          * @description The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.
+         *
+         *     email/first_name/last_name come from the environment's JWT template — they're custom
+         *     claims, not defaults, so a missing email means the template got dropped in WorkOS.
          */
         get: operations["whoami"];
         put?: never;
@@ -188,6 +191,10 @@ export interface components {
         };
         /** WhoamiOut */
         WhoamiOut: {
+            /** Display Name */
+            display_name: string | null;
+            /** Email */
+            email: string | null;
             /** User Sub */
             user_sub: string;
         };

@@ -58,17 +58,30 @@ export async function login(config: AuthConfig): Promise<void> {
   window.location.assign(url.toString());
 }
 
+export type CallbackResult = "ok" | "restart" | "failed";
+
 /**
  * Complete the flow on /callback: swap the code for a token.
  *
- * Returns true if a token was stored. The verifier is cleared either way so a failed
- * attempt can't be replayed.
+ * "restart" means the PKCE verifier is missing — which happens legitimately when the
+ * login continued in a different tab (e.g. WorkOS's email-verification link opens a new
+ * one). The fix is simply to start the login again: AuthKit already has a session, so
+ * the retry round-trips instantly and this tab gets its own code + verifier pair.
  */
-export async function completeLogin(config: AuthConfig): Promise<boolean> {
-  const code = new URLSearchParams(window.location.search).get("code");
+export async function completeLogin(config: AuthConfig): Promise<CallbackResult> {
+  const params = new URLSearchParams(window.location.search);
+  const oauthError = params.get("error");
+  if (oauthError) {
+    console.error("AuthKit returned an error:", oauthError, params.get("error_description"));
+    window.history.replaceState({}, "", "/");
+    return "failed";
+  }
+
+  const code = params.get("code");
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
   sessionStorage.removeItem(VERIFIER_KEY);
-  if (!code || !verifier) return false;
+  if (!code) return "failed";
+  if (!verifier) return "restart";
 
   const res = await fetch(new URL("/oauth2/token", config.authkit_domain).toString(), {
     method: "POST",
@@ -81,13 +94,20 @@ export async function completeLogin(config: AuthConfig): Promise<boolean> {
       code,
     }),
   });
-  if (!res.ok) return false;
+  if (!res.ok) {
+    console.error("Token exchange failed:", res.status, await res.text().catch(() => ""));
+    window.history.replaceState({}, "", "/");
+    return "failed";
+  }
 
   const { access_token } = (await res.json()) as { access_token?: string };
-  if (!access_token) return false;
+  if (!access_token) {
+    console.error("Token exchange succeeded but returned no access_token");
+    return "failed";
+  }
 
   sessionStorage.setItem(TOKEN_KEY, access_token);
   // Drop ?code= from the URL so a refresh doesn't retry a spent authorization code.
   window.history.replaceState({}, "", "/");
-  return true;
+  return "ok";
 }

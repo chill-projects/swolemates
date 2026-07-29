@@ -2,7 +2,13 @@ import { useState } from "react";
 
 import { useAddTmpxItem, useDeleteTmpxItem, useTmpxItems } from "../api/tmpx";
 
-export function TmpxPage({ userSub }: { userSub: string }) {
+interface Me {
+  user_sub: string;
+  email: string | null;
+  display_name: string | null;
+}
+
+export function TmpxPage({ me }: { me: Me }) {
   const [name, setName] = useState("");
   const [value, setValue] = useState(0);
 
@@ -13,7 +19,7 @@ export function TmpxPage({ userSub }: { userSub: string }) {
   return (
     <section>
       <p className="muted">
-        Signed in as <code>{userSub}</code>
+        Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
 
       <form

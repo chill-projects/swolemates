@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.api import tmpx
-from app.deps import AppSettings, CurrentUser
+from app.deps import AppSettings, CurrentPrincipal
 
 api_router = APIRouter()
 api_router.include_router(tmpx.router)
@@ -10,6 +10,8 @@ api_router.include_router(tmpx.router)
 
 class WhoamiOut(BaseModel):
     user_sub: str
+    email: str | None
+    display_name: str | None
 
 
 class AuthConfigOut(BaseModel):
@@ -21,9 +23,19 @@ class AuthConfigOut(BaseModel):
 
 
 @api_router.get("/whoami", tags=["auth"], operation_id="whoami")
-async def whoami(user_sub: CurrentUser) -> WhoamiOut:
-    """The auth spike's REST half. If this returns your WorkOS sub, the browser flow works."""
-    return WhoamiOut(user_sub=user_sub)
+async def whoami(principal: CurrentPrincipal) -> WhoamiOut:
+    """The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.
+
+    email/first_name/last_name come from the environment's JWT template — they're custom
+    claims, not defaults, so a missing email means the template got dropped in WorkOS.
+    """
+    claims = principal.claims
+    name = " ".join(p for p in (claims.get("first_name"), claims.get("last_name")) if p)
+    return WhoamiOut(
+        user_sub=principal.sub,
+        email=claims.get("email"),
+        display_name=name or None,
+    )
 
 
 @api_router.get("/auth/config", tags=["auth"], operation_id="authConfig")

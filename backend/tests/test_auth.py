@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from starlette.datastructures import Headers
 from starlette.requests import Request
 
-from app.auth import require_user
+from app.auth import require_principal
 from app.config import Settings
 
 
@@ -21,7 +21,8 @@ def _request(headers: dict[str, str] | None = None) -> Request:
 
 async def test_dev_bypass_applies_in_local() -> None:
     settings = Settings(environment="local", dev_user_sub="dev_abc")
-    assert await require_user(_request(), settings) == "dev_abc"
+    principal = await require_principal(_request(), settings)
+    assert principal.sub == "dev_abc"
 
 
 @pytest.mark.parametrize("environment", ["test", "production"])
@@ -34,7 +35,7 @@ async def test_dev_bypass_is_inert_outside_local(environment: str) -> None:
         public_url="https://example.up.railway.app",
     )
     with pytest.raises(HTTPException) as exc:
-        await require_user(_request(), settings)
+        await require_principal(_request(), settings)
     assert exc.value.status_code == 401
 
 
@@ -65,5 +66,5 @@ async def test_production_config_rejects_the_localhost_public_url() -> None:
 async def test_malformed_authorization_header_is_rejected(header: str) -> None:
     settings = Settings(environment="local", dev_user_sub="dev_abc")
     with pytest.raises(HTTPException) as exc:
-        await require_user(_request({"Authorization": header}), settings)
+        await require_principal(_request({"Authorization": header}), settings)
     assert exc.value.status_code == 401

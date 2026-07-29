@@ -1,9 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
-import { completeLogin, fetchAuthConfig } from "./auth/authkit";
+import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
 import { TmpxPage } from "./pages/TmpxPage";
 
 /**
@@ -14,19 +14,37 @@ export function App() {
   const [returningFromLogin, setReturningFromLogin] = useState(
     () => window.location.pathname === "/callback",
   );
+  const [loginError, setLoginError] = useState<string | null>(null);
+  // The callback exchange must run exactly once — effect re-runs (query state changes
+  // re-render constantly) and a spent OAuth code would make retries fail anyway.
+  const exchangeStarted = useRef(false);
 
+  const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["authConfig"], queryFn: fetchAuthConfig, retry: false });
   const whoami = useWhoami();
 
-  // Finish the OAuth redirect before deciding what to render, otherwise the callback
-  // flashes the sign-in screen on its way through.
   useEffect(() => {
-    if (!returningFromLogin || !config.data) return;
-    completeLogin(config.data).finally(() => {
+    if (!returningFromLogin || !config.data || exchangeStarted.current) return;
+    exchangeStarted.current = true;
+    const authConfig = config.data;
+
+    completeLogin(authConfig).then((result) => {
+      if (result === "restart") {
+        // Verifier was minted in another tab (email-verification flow). AuthKit already
+        // has a session, so restarting completes without re-prompting for credentials.
+        login(authConfig).catch(() => {
+          setLoginError("Couldn’t restart the login flow.");
+          setReturningFromLogin(false);
+        });
+        return;
+      }
+      if (result === "failed") {
+        setLoginError("Sign-in didn’t complete. Details are in the browser console.");
+      }
       setReturningFromLogin(false);
-      whoami.refetch();
+      queryClient.invalidateQueries({ queryKey: ["whoami"] });
     });
-  }, [returningFromLogin, config.data, whoami]);
+  }, [returningFromLogin, config.data, queryClient]);
 
   const busy = config.isPending || whoami.isPending || returningFromLogin;
 
@@ -37,12 +55,13 @@ export function App() {
         <p className="muted">Template slice — delete once the first real feature lands.</p>
       </header>
 
-      {busy && <p className="muted">Loading…</p>}
+      {busy && <p className="muted">Signing in…</p>}
       {!busy && config.isError && (
         <p className="error">Couldn’t reach the server. Is the backend running?</p>
       )}
+      {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
       {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
-      {!busy && whoami.data && <TmpxPage userSub={whoami.data.user_sub} />}
+      {!busy && whoami.data && <TmpxPage me={whoami.data} />}
     </main>
   );
 }

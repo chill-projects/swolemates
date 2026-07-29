@@ -139,13 +139,37 @@
       },
       "WhoamiOut": {
         "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "user_sub": {
             "title": "User Sub",
             "type": "string"
           }
         },
         "required": [
-          "user_sub"
+          "user_sub",
+          "email",
+          "display_name"
         ],
         "title": "WhoamiOut",
         "type": "object"
@@ -282,7 +306,7 @@
     },
     "/api/whoami": {
       "get": {
-        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.",
+        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.\n\nemail/first_name/last_name come from the environment's JWT template \u2014 they're custom\nclaims, not defaults, so a missing email means the template got dropped in WorkOS.",
         "operationId": "whoami",
         "responses": {
           "200": {
