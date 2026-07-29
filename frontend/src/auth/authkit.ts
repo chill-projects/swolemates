@@ -90,11 +90,12 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
   const res = await fetch(new URL("/oauth2/token", config.authkit_domain).toString(), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
+    // `resource` is deliberately absent here: WorkOS binds the resource at the
+    // authorize leg and returns invalid_target if the token leg repeats it.
     body: new URLSearchParams({
       grant_type: "authorization_code",
       client_id: config.client_id,
       redirect_uri: config.redirect_uri,
-      resource: config.resource,
       code_verifier: verifier,
       code,
     }),
