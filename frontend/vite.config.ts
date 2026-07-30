@@ -16,6 +16,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8000",
       "/mcp": "http://localhost:8000",
+      "/mcp-apps": "http://localhost:8000",
       "/health": "http://localhost:8000",
     },
   },

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useCallback } from "react";
 
-import { useAddTmpxItem, useDeleteTmpxItem, useTmpxItems } from "../api/tmpx";
+import { api } from "../api/client";
+import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 
 interface Me {
   user_sub: string;
@@ -8,78 +9,58 @@ interface Me {
   display_name: string | null;
 }
 
-export function TmpxPage({ me }: { me: Me }) {
-  const [name, setName] = useState("");
-  const [value, setValue] = useState(0);
+/** Shape the REST rows into the same payload the MCP tools return, so the component
+ *  can't tell which host it's running in. */
+function toPayload(items: Array<{ id: string; name: string; value: number }>): ToolResultPayload {
+  const payload = {
+    items,
+    summary:
+      items.length === 0
+        ? "No items yet."
+        : `${items.length} item(s): ` + items.map((i) => `${i.name} (${i.value})`).join(", "),
+  };
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload,
+  };
+}
 
-  const items = useTmpxItems();
-  const addItem = useAddTmpxItem();
-  const deleteItem = useDeleteTmpxItem();
+export function TmpxPage({ me }: { me: Me }) {
+  const handleTool = useCallback(
+    async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
+      switch (name) {
+        case "tmpx_add": {
+          const { error } = await api.POST("/api/tmpx", {
+            body: { name: String(args.name ?? ""), value: Number(args.value ?? 0) },
+          });
+          if (error) throw new Error("add failed");
+          break;
+        }
+        case "tmpx_delete": {
+          const { error } = await api.DELETE("/api/tmpx/{item_id}", {
+            params: { path: { item_id: String(args.item_id ?? "") } },
+          });
+          if (error) throw new Error("delete failed");
+          break;
+        }
+        case "tmpx_list":
+          break;
+        default:
+          throw new Error(`unknown tool: ${name}`);
+      }
+      const { data, error } = await api.GET("/api/tmpx");
+      if (error || !data) throw new Error("list failed");
+      return toPayload(data);
+    },
+    [],
+  );
 
   return (
     <section>
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
-
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!name.trim()) return;
-          addItem.mutate(
-            { name, value },
-            {
-              onSuccess: () => {
-                setName("");
-                setValue(0);
-              },
-            },
-          );
-        }}
-      >
-        <input
-          aria-label="Item name"
-          placeholder="Item name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input
-          aria-label="Value"
-          type="number"
-          value={value}
-          onChange={(e) => setValue(Number(e.target.value))}
-        />
-        <button type="submit" disabled={addItem.isPending || !name.trim()}>
-          {addItem.isPending ? "Adding…" : "Add"}
-        </button>
-      </form>
-
-      {items.isPending && <p className="muted">Loading…</p>}
-      {items.isError && <p className="error">Couldn’t load items.</p>}
-
-      {items.data && items.data.length === 0 && (
-        <p className="muted">
-          Nothing yet. Add one above, or ask Claude to run <code>tmpx_add</code> — both
-          write to the same table.
-        </p>
-      )}
-
-      <ul>
-        {items.data?.map((item) => (
-          <li key={item.id}>
-            <span>
-              {item.name} <span className="muted">· {item.value}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => deleteItem.mutate(item.id)}
-              aria-label={`Delete ${item.name}`}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
+      <AppRenderer bundleUrl="/mcp-apps/tmpx.html" initialTool="tmpx_list" onCallTool={handleTool} />
     </section>
   );
 }

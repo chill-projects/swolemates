@@ -57,6 +57,9 @@ types: ## Regenerate the typed API client from the backend's OpenAPI schema
 	cd $(BACKEND) && uv run python -m scripts.dump_openapi > ../$(FRONTEND)/openapi.json
 	cd $(FRONTEND) && npm run generate:api
 
+apps: ## Build the MCP app bundles (ui:// components) into backend/static/mcp-apps
+	cd $(FRONTEND) && npm run build:apps
+
 test: test-backend test-frontend ## Run everything CI runs
 
 test-backend: ## ruff + pytest

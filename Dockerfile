@@ -9,8 +9,10 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
-# vite.config.ts writes to ../backend/static; inside the container we want it local.
-RUN npm run build -- --outDir dist --emptyOutDir
+# vite configs write to ../backend/static; inside the container we want it local.
+# SPA first (emptyOutDir), then the MCP app bundles into its mcp-apps/ subdir.
+RUN npm run build -- --outDir dist --emptyOutDir \
+    && npm run build:apps -- --outDir dist/mcp-apps
 
 # --- stage 2: the runtime -------------------------------------------------------------
 FROM python:3.13-slim AS runtime
