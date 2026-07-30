@@ -30,7 +30,10 @@ def _auth_provider():
 
     return AuthKitProvider(
         authkit_domain=settings.authkit_domain,
-        base_url=settings.public_url,
+        # base_url becomes the advertised OAuth resource, and clients (claude.ai) POST
+        # to whatever the metadata declares — with the bare origin here, Claude POSTed
+        # to / and hit the SPA. It must name the actual MCP mount.
+        base_url=f"{settings.public_url.rstrip('/')}/mcp",
     )
 
 
