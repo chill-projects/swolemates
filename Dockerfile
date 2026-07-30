@@ -11,8 +11,12 @@ RUN npm ci
 COPY frontend/ ./
 # vite configs write to ../backend/static; inside the container we want it local.
 # SPA first (emptyOutDir), then the MCP app bundles into its mcp-apps/ subdir.
+# The guard exists because this once shipped without the bundle: the SPA catch-all
+# then serves index.html in its place and both hosts break with confusing CORS noise.
 RUN npm run build -- --outDir dist --emptyOutDir \
-    && npm run build:apps -- --outDir dist/mcp-apps
+    && APPS_OUT_DIR=dist/mcp-apps npm run build:apps \
+    && test -s dist/mcp-apps/tmpx.html \
+    && ! grep -q "assets/index" dist/mcp-apps/tmpx.html
 
 # --- stage 2: the runtime -------------------------------------------------------------
 FROM python:3.13-slim AS runtime

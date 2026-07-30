@@ -16,7 +16,10 @@ export default defineConfig({
   root: resolve(__dirname, "src/mcp-apps/tmpx"),
   plugins: [viteSingleFile()],
   build: {
-    outDir: resolve(__dirname, "../backend/static/mcp-apps"),
+    // NOTE: `--outDir` on the CLI resolves against `root` (the component dir), which
+    // is how the bundle once silently missed the Docker image. Use APPS_OUT_DIR
+    // (resolved against frontend/) instead of CLI flags.
+    outDir: resolve(__dirname, process.env.APPS_OUT_DIR ?? "../backend/static/mcp-apps"),
     emptyOutDir: false,
     rollupOptions: {
       input: resolve(__dirname, "src/mcp-apps/tmpx/tmpx.html"),
