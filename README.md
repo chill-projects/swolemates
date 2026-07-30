@@ -21,10 +21,12 @@ Then open http://localhost:5173.
 ## The dev loop
 
 ```bash
-make dev            # backend (:8000) + Vite (:5173) together; both reload on save
+make dev            # backend (:8000) + Vite (:5173) + component-bundle watch; all reload on save
 make test           # everything CI runs: ruff, pytest, tsc, vitest
 make types          # regenerate the typed API client after changing a route
 make migrate m="…"  # autogenerate a migration after changing a model
+make apps           # one-shot build of the ui:// component bundles
+make apps-dev       # preview components in FastMCP's dev UI (:8080) without the full app
 make seed-reset     # wipe and re-seed local sample data
 make db-reset       # throw the local database away and rebuild it from migrations
 make inspector      # MCP Inspector, pointed at http://localhost:8000/mcp

@@ -6,7 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.0",
-    "fastmcp>=3.4.5",
+    "fastmcp[apps]>=3.4.5",
     "sqlalchemy[asyncio]>=2.0.51",
     "alembic>=1.18.5",
     # psycopg 3 drives both the async app and sync Alembic from one URL scheme, and

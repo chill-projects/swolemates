@@ -30,12 +30,14 @@ db-reset: ## Destroy the local database and rebuild it from migrations
 	rm -rf $(BACKEND)/.pgdata
 	@$(MAKE) -s db
 
-dev: ## Run backend + frontend together (http://localhost:5173)
+dev: ## Run backend + frontend + component-bundle watch together (http://localhost:5173)
 	@echo "backend  → http://localhost:8000"
 	@echo "frontend → http://localhost:5173  (proxies /api and /mcp to the backend)"
+	@echo "mcp-apps → rebuilt on change (vite build --watch)"
 	@trap 'kill 0' EXIT INT TERM; \
 		( cd $(BACKEND) && uv run uvicorn app.main:app --reload --port 8000 ) & \
 		( cd $(FRONTEND) && npm run dev -- --port 5173 ) & \
+		( cd $(FRONTEND) && npm run build:apps -- --watch --logLevel warn ) & \
 		wait
 
 dev-backend: ## Run only the backend, with reload
@@ -59,6 +61,10 @@ types: ## Regenerate the typed API client from the backend's OpenAPI schema
 
 apps: ## Build the MCP app bundles (ui:// components) into backend/static/mcp-apps
 	cd $(FRONTEND) && npm run build:apps
+
+apps-dev: ## Preview ui:// components in FastMCP's dev UI (picker + AppBridge host, :8080)
+	@cd $(FRONTEND) && npm run build:apps
+	cd $(BACKEND) && PYTHONPATH=. uv run fastmcp dev apps app/mcp/server.py:mcp --mcp-port 8001
 
 test: test-backend test-frontend ## Run everything CI runs
 
