@@ -77,6 +77,30 @@ app.include_router(api_router, prefix="/api")
 app.mount("/mcp", mcp_app)
 
 
+class NormalizeMcpPath:
+    """Rewrite the exact path /mcp to /mcp/ before routing.
+
+    Starlette's Mount only matches the prefix-with-slash form, so bare /mcp fell
+    through to the SPA catch-all (GET served index.html, POST got 405 — which claude.ai
+    reports as "no MCP server found"). A 307 redirect isn't safe here: MCP clients use
+    httpx, which doesn't follow redirects by default. Pure ASGI rewrite, so streaming
+    responses pass through untouched.
+    """
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/mcp":
+            scope = dict(scope)
+            scope["path"] = "/mcp/"
+            scope["raw_path"] = b"/mcp/"
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(NormalizeMcpPath)
+
+
 @app.get("/.well-known/{suffix:path}", include_in_schema=False)
 async def well_known(suffix: str, request: Request) -> Response:
     """Forward root /.well-known/* into the mounted MCP app.
