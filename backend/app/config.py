@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # WorkOS AuthKit. Empty in local dev, where dev_user_sub takes over instead.
     authkit_domain: str = ""
     workos_client_id: str = ""
+    # The environment's own client ID. AuthKit stamps it as `aud` on tokens minted for
+    # first-party apps (it ignores the SPA's RFC 8707 resource request), so it's an
+    # accepted audience alongside PUBLIC_URL. Distinct from workos_client_id, which is
+    # the Connect application the SPA authenticates as.
+    workos_environment_client_id: str = ""
 
     # Local-only auth bypass so the dev loop doesn't need an OAuth round trip per call.
     # Ignored unless environment == "local"; see require_user() in app/auth.py.

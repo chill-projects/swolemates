@@ -45,14 +45,19 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
         )
     signing_key = _jwk_client(settings.authkit_domain).get_signing_key_from_jwt(token)
     base = settings.public_url.rstrip("/")
+    # Acceptable audiences, all meaning "minted by our AuthKit environment, for us":
+    # our URL (± trailing slash) for resource-bound tokens, and the environment client
+    # ID — AuthKit's default aud, which it stamps on first-party app tokens even when
+    # the SPA requests an RFC 8707 resource (observed 2026-07-29; see docs/auth.md).
+    audiences = [base, f"{base}/"]
+    if settings.workos_environment_client_id:
+        audiences.append(settings.workos_environment_client_id)
     try:
         claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            # AuthKit echoes the requested `resource` as `aud`, and URL normalization
-            # can add a trailing slash along the way — accept both spellings of us.
-            audience=[base, f"{base}/"],
+            audience=audiences,
             issuer=settings.authkit_domain.rstrip("/"),
         )
     except jwt.PyJWTError as exc:
@@ -68,7 +73,7 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
                     "token aud=%r iss=%r, expected aud=%r iss=%r",
                     unverified.get("aud"),
                     unverified.get("iss"),
-                    [base, f"{base}/"],
+                    audiences,
                     settings.authkit_domain.rstrip("/"),
                 )
             except jwt.PyJWTError:
