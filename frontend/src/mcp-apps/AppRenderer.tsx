@@ -1,6 +1,8 @@
 import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { useEffect, useRef, useState } from "react";
 
+import { getToken } from "../auth/authkit";
+
 export type ToolResultPayload = {
   content: Array<{ type: "text"; text: string }>;
   structuredContent?: Record<string, unknown>;
@@ -24,6 +26,7 @@ export function AppRenderer({
   bundleUrl,
   initialTool,
   onCallTool,
+  eventsUrl,
   height = 320,
 }: {
   bundleUrl: string;
@@ -31,6 +34,9 @@ export function AppRenderer({
    *  originating tool's result into the iframe. */
   initialTool: string;
   onCallTool: ToolHandler;
+  /** Optional SSE endpoint. Each `changed` event re-runs initialTool and pushes the
+   *  fresh result into the app — live updates without the component ever polling. */
+  eventsUrl?: string;
   height?: number;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -78,28 +84,63 @@ export function AppRenderer({
         );
         return result;
       };
+      const pushCurrent = async () => {
+        if (!bridge || closed) return;
+        const result = await onCallTool(initialTool, {});
+        await bridge.sendToolResult(result);
+      };
+
       bridge.addEventListener("initialized", () => {
         void (async () => {
           if (!bridge) return;
           // Mirror a real host: declare the originating tool call, then push its result.
           await bridge.sendToolInput({ arguments: {} });
-          const result = await onCallTool(initialTool, {});
-          await bridge.sendToolResult(result);
+          await pushCurrent();
         })();
       });
 
       const transport = new PostMessageTransport(contentWindow, contentWindow);
       await bridge.connect(transport);
+
+      // Live updates: on every server-side change event, push a fresh result into the
+      // app. Raw fetch instead of EventSource because the stream needs a bearer token.
+      if (eventsUrl) {
+        const listen = async () => {
+          while (!closed) {
+            try {
+              const token = getToken();
+              const res = await fetch(eventsUrl, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                signal: abort.signal,
+              });
+              if (!res.ok || !res.body) throw new Error(`events: ${res.status}`);
+              const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value.includes("event: changed")) await pushCurrent();
+              }
+            } catch {
+              if (closed) return;
+            }
+            // Stream ended or failed — back off briefly, then resubscribe.
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+        };
+        void listen();
+      }
     };
 
+    const abort = new AbortController();
     iframe.addEventListener("load", start, { once: true });
     iframe.srcdoc = html;
 
     return () => {
       closed = true;
+      abort.abort();
       void bridge?.close();
     };
-  }, [html, initialTool, onCallTool]);
+  }, [html, initialTool, onCallTool, eventsUrl]);
 
   if (error) return <p className="error">{error}</p>;
   if (!html) return <p className="muted">Loading component…</p>;

@@ -111,6 +111,16 @@ for (const input of [nameInput, valueInput]) {
   };
 }
 
+const refresh = () => void callAndRender("tmpx_list", {});
+$<HTMLButtonElement>("refresh-btn").onclick = refresh;
+
+// Hosts with a push channel (the SPA) send fresh results proactively; hosts without
+// one (a chat widget) at least get freshness whenever the user returns to the tab.
+// No interval polling: in chat hosts every server call may prompt for approval.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refresh();
+});
+
 // The host pushes the originating tool's result (e.g. tmpx_list) once on render.
 app.ontoolresult = (result) => {
   const payload = extractPayload(result);

@@ -60,7 +60,12 @@ export function TmpxPage({ me }: { me: Me }) {
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
-      <AppRenderer bundleUrl="/mcp-apps/tmpx.html" initialTool="tmpx_list" onCallTool={handleTool} />
+      <AppRenderer
+        bundleUrl="/mcp-apps/tmpx.html"
+        initialTool="tmpx_list"
+        onCallTool={handleTool}
+        eventsUrl="/api/tmpx/events"
+      />
     </section>
   );
 }

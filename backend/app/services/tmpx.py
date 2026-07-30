@@ -11,6 +11,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import events
 from app.models.tmpx import TmpxItem
 
 
@@ -40,6 +41,7 @@ async def add_item(session: AsyncSession, user_sub: str, *, name: str, value: in
     item = TmpxItem(user_id=user_sub, name=name, value=value)
     session.add(item)
     await session.flush()
+    events.publish(user_sub, "tmpx")
     return item
 
 
@@ -56,3 +58,4 @@ async def get_item(session: AsyncSession, user_sub: str, item_id: uuid.UUID) -> 
 async def delete_item(session: AsyncSession, user_sub: str, item_id: uuid.UUID) -> None:
     item = await get_item(session, user_sub, item_id)
     await session.delete(item)
+    events.publish(user_sub, "tmpx")
