@@ -27,7 +27,8 @@ works with no accounts at all.
 | GitHub | ✅ `chill-projects/swolemates` (public), CI green on `main` (4 jobs incl. docker/amd64) |
 | Container image | ✅ builds + runs on arm64 (local) and amd64 (CI), non-root, ~190 MB |
 | Auth | ✅ wired — WorkOS "Swolemates" project, Production env `friendly-canyon-24.authkit.app`, password auth + CIMD + DCR on, redirects + resource indicators set, Railway running `ENVIRONMENT=production` |
-| SPA login flow | 🔶 deployed, **untested against the real tenant** — the phase 3 gate below |
+| SPA login | ✅ **verified in production 2026-07-30** — real sign-up, token exchange, whoami + items over an authenticated session |
+| Claude connector | 🔶 endpoint + discovery verified server-side; awaiting one clean add in claude.ai (delete + re-add after the /mcp slash fix) |
 
 ---
 
