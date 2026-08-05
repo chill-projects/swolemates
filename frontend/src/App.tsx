@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
+import { PrototypeManualEntry } from "./pages/PrototypeManualEntry";
+import { PrototypeMealTemplate } from "./pages/PrototypeMealTemplate";
 import { TmpxPage } from "./pages/TmpxPage";
 
 /**
@@ -11,6 +13,15 @@ import { TmpxPage } from "./pages/TmpxPage";
  * template slice behind auth, which is the thing the platform work has to prove.
  */
 export function App() {
+  // PROTOTYPE hooks (throwaway) — bypass auth entirely, deleted alongside their pages
+  // once ticket #4's open questions are settled.
+  if (!import.meta.env.PROD && window.location.pathname === "/prototype/meal-template") {
+    return <PrototypeMealTemplate />;
+  }
+  if (!import.meta.env.PROD && window.location.pathname === "/prototype/manual-entry") {
+    return <PrototypeManualEntry />;
+  }
+
   const [returningFromLogin, setReturningFromLogin] = useState(
     () => window.location.pathname === "/callback",
   );
