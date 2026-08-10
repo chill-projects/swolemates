@@ -60,6 +60,10 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
 
 **workout_exercises**
 - `id`, `workout_id fk cascade`, `exercise_id fk`, `order_index int`
+- `superset_group int?` — null for a solo exercise; exercises sharing a group (and
+  workout) are one superset, worked back-to-back before the shared rest. Added after
+  the in-workout prototype (§5) surfaced grouping as a real requirement, not a v2
+  nice-to-have.
 - `notes text?` — free-form
 - `next_time_note text?` — the "notes-for-next-time" field: written during/after this
   session, surfaced the next time this exercise comes up (in-workout mode and planned
@@ -79,11 +83,13 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
 
 **template_exercises**
 - `id`, `template_id fk cascade`, `exercise_id fk`, `order_index int`
+- `superset_group int?` — same convention as `workout_exercises.superset_group`;
+  `start_workout` copies it onto the session rows along with the targets.
 - `target_sets int`, `target_reps int?`, `target_seconds int?`, `target_weight numeric?`
   (nullable weight = "use last time's / coach's call"), `notes text?`
 - Deliberately simple: uniform sets per exercise (`4×8 @ 60kg`), not per-set
   prescriptions. Legacy had no templates at all, so there's nothing to port; per-set
-  template detail feels like v2. (Open question 2.)
+  template detail feels like v2. **Decided** — see resolved Open question 2.
 
 **planned_workouts** (the schedule)
 - `id`, `user_id str`, `template_id fk`, `scheduled_for date`, `status
@@ -127,15 +133,31 @@ The centerpiece. Flow:
    `workouts` row (`completed_at NULL`) with `workout_exercises` + `workout_sets`
    pre-created from the template's targets (`prescribed_*` filled, `actual_*`/
    `completed_at` null).
-2. **Per-exercise card** (one exercise on screen at a time, big touch targets):
-   - Header: name, thumbnail image, tap for description.
+2. **Scrollable accordion, grouped by superset** (decided against a one-exercise
+   wizard and a flattened rest-timer queue — see [Prototyping: layout](#prototyping-layout)
+   below). Whole workout visible at once; expand any group, log in any order, finish
+   whenever.
+   - The accordion unit is the **group**, not the exercise: a solo exercise is a group
+     of one; a superset (`superset_group`, §2) is a group of two+ that expand/collapse
+     together, badged "superset", with a "work back-to-back, then rest" hint. Exercises
+     within a group render stacked (not interleaved set-by-set) — simplest to build and
+     read; revisit only if stacking proves confusing in practice.
+   - Header: name, thumbnail image, tap for description; `n/m sets` progress on the
+     collapsed row.
    - **Progressive-overload framing:** "Last time: 60kg × 8, 8, 7" + the last
      `next_time_note` ("felt easy, go 62.5") right where you pick the weight.
    - Set rows: weight / reps steppers **prefilled from prescription, falling back to
-     last time's actuals** — logging a set that matches is one tap. Warmup toggle,
-     optional RPE. `log_set` writes actuals + `completed_at` per set.
-   - Add/remove sets, add an unplanned exercise (filterable picker, grouped by muscle
-     group — port of WorkoutBuilder's picker).
+     last time's actuals** — logging a set that matches is one tap. Weight steppers
+     increment by **5** (kg or lbs per user unit pref, OQ 1) — the standard plate jump,
+     not browser-default 1. Warmup toggle, optional RPE. `log_set` writes actuals +
+     `completed_at` per set.
+   - **Sets are open-ended, not capped at the prescription**: `+ Add set` appends a row
+     (seeded from the last set's weight/reps/rest as a starting guess); any not-yet-
+     logged set can be removed. This just works off the existing schema — sets are rows
+     keyed by `workout_exercise_id` + `set_number`, not a fixed-size array — so no schema
+     change was needed to support it, only UI.
+   - Add an unplanned exercise (filterable picker, grouped by muscle group — port of
+     WorkoutBuilder's picker).
    - **Notes-for-next-time** field per exercise, one thumb-typed line.
 3. **Finish** — `finish_workout` stamps `completed_at`, links the planned_workout,
    validates (workoutValidation port; empty un-logged prescribed sets are dropped, not
@@ -149,6 +171,17 @@ open Claude, "finish my workout".
 
 **Activity logging** stays the simple legacy form (type/duration/notes) — a small
 shared component or plain tool call; it doesn't need in-workout mode.
+
+### Prototyping: layout
+
+Layout was checked with a throwaway UI prototype (`/prototype` skill) before writing
+this section — see the branch link at the bottom of this doc. Four variants: A)
+one-exercise-at-a-time wizard, B) scrollable accordion (whole workout visible), C)
+flattened rest-timer-centric queue across all sets, D) B's accordion with superset
+grouping and open-ended (add/remove) sets instead of a fixed count. **D won**: A hides
+the rest of the workout, C loses the exercise-level structure supersets need, and both
+A and B's fixed set counts didn't match how sets actually get added mid-workout (extra
+set, changed my mind, etc.).
 
 ## 6. Streaks & PR celebrations
 
@@ -248,8 +281,14 @@ Adopt #15 as-is:
 1. **Units.** Legacy stored bare `numeric` weight. Store kg and render per-user
    preference, or store a unit column per set? (Affects PR math if you two use
    different units.)
-2. **Template granularity.** Uniform `sets × reps @ weight` per exercise (proposed) —
-   or per-set prescriptions (e.g. ramping 5/3/1-style sets) in v1?
+2. ~~**Template granularity.**~~ **Resolved:** uniform `sets × reps @ weight` per
+   exercise for v1, not per-set prescriptions. Templates and live workouts stay
+   separate table families (`workout_templates`/`template_exercises` vs.
+   `workouts`/`workout_exercises`/`workout_sets`) — `start_workout` copies
+   `target_*` into `prescribed_*` once at session start, so per-set variation
+   (ramping, drop sets) can still happen live without the template needing to
+   model it. Per-set template prescriptions stay a v2 idea if uniform targets turn
+   out to be too coarse in practice.
 3. **Planned workouts: recurrence?** I kept a flat date list and let Claude lay out
    weeks. Want real recurrence rules (every Mon/Thu) in v1 instead?
 4. **`personal_records` table vs computed.** I denormalized for cheap per-set checks;
@@ -283,3 +322,8 @@ Adopt #15 as-is:
 *Companion sketch: [`workouts_models_sketch.py`](./workouts_models_sketch.py) — a
 non-compiled SQLAlchemy sketch of §2. Not under `backend/app`; does not affect the
 app, migrations, or tests.*
+
+*Companion prototype: [`prototype/in-workout-layout`](https://github.com/chill-projects/swolemates/tree/prototype/in-workout-layout)
+— throwaway UI, `frontend/src/pages/PrototypeInWorkout.tsx`. Four in-workout layouts;
+D (scrollable accordion, superset grouping, open-ended sets) is the decision captured
+in §5.*

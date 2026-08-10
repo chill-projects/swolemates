@@ -96,6 +96,8 @@ class TemplateExercise(Base):
     )
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     order_index: Mapped[int] = mapped_column(nullable=False, default=0)
+    # null = solo exercise; rows sharing a group are a superset, worked back-to-back
+    superset_group: Mapped[int | None] = mapped_column()
     target_sets: Mapped[int] = mapped_column(nullable=False)
     target_reps: Mapped[int | None] = mapped_column()
     target_seconds: Mapped[int | None] = mapped_column()           # timed work
@@ -144,6 +146,8 @@ class WorkoutExercise(Base):
     )
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     order_index: Mapped[int] = mapped_column(nullable=False, default=0)
+    # copied from template_exercises.superset_group by start_workout
+    superset_group: Mapped[int | None] = mapped_column()
     notes: Mapped[str | None] = mapped_column(Text)
     # "notes-for-next-time": surfaced next time this exercise appears (planned view
     # and in-workout mode show the most recent one per exercise)
