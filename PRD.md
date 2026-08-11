@@ -1,8 +1,8 @@
 # Swolemates — Product Requirements Document
 
-**Status:** Draft — v1 scope is being resolved live on the [wayfinder map](https://github.com/chill-projects/swolemates/issues/1); this doc is a snapshot of that map, not a substitute for it.
+**Status:** V1 fully scoped — every ticket on the [wayfinder map](https://github.com/chill-projects/swolemates/issues/1) is resolved; execution order and hand-off are in §9. This doc is a snapshot of that map, not a substitute for it.
 **Owner:** Michelle Zhuang
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-11
 
 > This is a full rewrite of the original 2026-07-22 draft, which described a Next.js + Supabase app. That stack was scrapped for the platform in `docs/design.md` (FastAPI + FastMCP backend, Claude connector, Vite SPA) — see `AGENTS.md`. Everything below reflects the current architecture and the decisions made so far while porting the legacy app onto it. **The map (issue #1) is the live source of truth**; when a linked ticket resolves and this doc hasn't caught up, trust the ticket.
 
@@ -165,15 +165,28 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 - **Per-feature domain model + UX detail**: the linked ticket above, and its linked proposal doc/PR if one exists (`docs/proposals/*.md`)
 - **What's decided vs. still open, at a glance**: the [wayfinder map](https://github.com/chill-projects/swolemates/issues/1) — its "Decisions so far" and open child issues are more current than this doc will ever be in real time
 
-### Open tickets, as of this writing
-
-| Ticket | Question |
-|---|---|
-| [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
+**As of this writing, every child ticket on the map is closed** — the map's destination ("every decision needed to port the real app is resolved, nothing left to decide before the build starts") is reached.
 
 ---
 
-## 9. Future Considerations
+## 9. Execution order
+
+Resolved on [Execution order and hand-off](https://github.com/chill-projects/swolemates/issues/13), the ticket that ends the map. Build order, by actual dependency:
+
+1. **Onboarding/Profile** (§4.1) — small, but workouts' `weight_unit` and TDEE's inputs both reference its schema.
+2. **Nutrition** (§4.2) — copies TmpX, proves the four-ways-exposed pattern (REST + MCP tool + `ui://` component + SPA page) end-to-end. Picked over workouts specifically for being the smaller, lower-risk domain — validate the wiring before the harder slice. **TmpX dies here.**
+3. **TDEE** (§4.7) — needs onboarding's inputs and nutrition's goals mechanism already in place.
+4. **Workouts** (§4.3) — the biggest slice, now following the pattern nutrition already proved.
+5. **Partner + Partner-privacy** (§4.4, one deliverable not two phases) — needs both nutrition and workouts done, since it aggregates streaks/PRs from both.
+6. **PWA** (§4.6) and the **`coach` prompt** (part of §4.5) — flexible placement near the end; neither blocks nor is blocked by anything.
+
+**Definition of done, per slice** (the same checklist every time): Alembic migration (backward-compatible) → service-layer functions with `user_id` filtering → thin REST + MCP tool wrappers → `ui://` component(s) where the slice calls for one → SPA page(s) wired to the generated client → tests (pytest; the poisoned-data test specifically for partner-privacy) → seed data → CI green → actually exercised once via `make dev`.
+
+**What gets cut**: nothing, by default — everything scoped ships. A contingency ranking exists in case timeline pressure ever shows up (held in reserve, not acted on): **PWA** slips first (pure distribution nicety), **TDEE** second (nutrition's goal-setting is fully functional without it), **partner accountability** only as a last resort (a real, explicitly-requested feature, not a casual cut). Onboarding, nutrition, workouts, and the Claude tool surface itself aren't cut candidates — the last of those isn't a separate feature to begin with, it's how nutrition/workouts reach chat at all.
+
+---
+
+## 10. Future Considerations
 
 - The V2 autonomous coaching rule engine (§6).
 - Streak/consistency-calendar specifics — sharpens once workouts + partner designs land.
