@@ -41,7 +41,7 @@ One backend container, two front doors, converging on one service layer — see 
 | Budget | ~$5–10/mo (Railway + Postgres); WorkOS free under 1M MAU; no metered AI cost — see §6 |
 | Camera access | Via `<input type="file" accept="image/*" capture="environment">`, same rationale as before: reliable inside installed PWAs on iOS Safari and Android Chrome without a live-preview widget |
 
-**PWA scope** (installability, service worker, iOS install banner) is carried forward as an intent from the original draft but not yet locked for v1 — see [PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8) (open).
+**PWA scope**: all of it ships in v1 — installability, an app-shell-only service worker, and the iOS install banner. See §4.6.
 
 ---
 
@@ -94,9 +94,9 @@ Resolved on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18,
 - Nutrition gets a daily streak too, tied to a new `is_streak_target` flag on `goals`: whichever goal is marked drives the streak (calories for weight loss, protein for muscle building), not a generic logging-consistency metric.
 - `get_progress` excludes partner data entirely for v1 by design — the partner dashboard (§4.4) is SPA-only, not a chat capability.
 
-### 4.6 PWA
+### 4.6 PWA — decided
 
-Installability (manifest/icons), app-shell-only service worker, iOS "Add to Home Screen" banner — how much of this ships in v1 vs. later is open: [PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8).
+All of the original 2026-07-22 draft's PWA scope ships in v1 ([PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8), resolved) — manifest + icons (icons already exist in `frontend/public/`), an app-shell-only service worker via `vite-plugin-pwa` (network-only bypass for `/api`, `/mcp`, `/mcp-apps`, `/health`; never caches API responses, given this is a mutation-heavy, data-current app), and a ported iOS install banner (iOS never gets an automatic install prompt regardless of service worker — this is the only way iOS users discover installability at all). Initially leaned toward cutting the service worker (a manifest alone already gets real installability via the browser's manual install-from-menu path since Chrome 108/112 — a service worker only gates the *automatic* popup prompt), reversed once it became clear (a) push notifications, a stated later want, need a service worker to exist first regardless, and (b) `vite-plugin-pwa` makes the integration far cheaper than a naive "port `@serwist/next`" framing suggested. Push notifications themselves stay a separate, later decision.
 
 ---
 
@@ -143,7 +143,7 @@ This is a sharper split than the original draft's "coaching is all v2," because 
 - Both users can log food via barcode/database search, photo, and text description — all funneling into one shared, editable card, no metered backend AI call.
 - Claude, in chat, can answer trend/progress questions and coach conversationally off real logged data.
 - Each user can see the other's workout streak/frequency stats, and a direct attempt to query the other's food logs or weight entries returns nothing.
-- (Pending [#8](https://github.com/chill-projects/swolemates/issues/8)) The app installs to the homescreen and functions in standalone mode.
+- The app installs to the homescreen on both iOS and Android and functions in standalone mode.
 
 ---
 
@@ -159,7 +159,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 
 | Ticket | Question |
 |---|---|
-| [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
 | [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
 | [#19 TDEE + weight tracking](https://github.com/chill-projects/swolemates/issues/19) | Goal-calculation assist + weight as a trackable |
 
