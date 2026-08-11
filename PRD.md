@@ -83,9 +83,14 @@ Domain model and UX fully resolved on [Workouts v1](https://github.com/chill-pro
 - Invite-code linking mechanism over WorkOS identities: [Partner v1: linking and dashboard](https://github.com/chill-projects/swolemates/issues/5) (open).
 - Enforcement mechanism — service-layer only (current pattern) vs. adding a DB-level boundary (SQL function / RLS-style) — is a deferred decision from `docs/design.md` §4, now its own ticket: [Partner-privacy enforcement approach](https://github.com/chill-projects/swolemates/issues/12) (open).
 
-### 4.5 Claude tool surface
+### 4.5 Claude tool surface — decided
 
-Draft proposal up for reaction on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18, `docs/proposals/claude-tools-v1.md`): ~16 task-shaped tools, 4 shared `ui://` components, the celebrations mechanism, and a drafted `coach` MCP prompt. Contracts depend on workouts (§4.3) and nutrition (§4.2) finalizing — this ticket stays open until those do.
+Resolved on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18, `docs/proposals/claude-tools-v1.md`): 24 task-shaped tools (grew from an initial 16 once reconciled against the closed workouts ticket's own tool list — not trimmed back, since count itself wasn't the risk), 6 shared `ui://` components, the `celebrations` mechanism, and one fixed-tone `coach` MCP prompt with always-on nudges baked into relevant tool descriptions too (not gated behind explicitly invoking the prompt).
+
+- `log_set` is model-visible — texting a set mid-workout ("bench 185x8") works from chat, auto-starting a session if none is active and auto-continuing one within 90 minutes of the last logged set with no question asked; past that, Claude asks rather than guesses.
+- Chat-side corrections are `update_workout`/`update_nutrition_log` (edit a specific past record) plus a lightweight `amend_last_log` ("undo that," no id required) — not a general delete.
+- Nutrition gets a daily streak too, tied to a new `is_streak_target` flag on `goals`: whichever goal is marked drives the streak (calories for weight loss, protein for muscle building), not a generic logging-consistency metric.
+- `get_progress` excludes partner data entirely for v1 — nothing to build against until partner visibility (§4.4) resolves.
 
 ### 4.6 PWA
 
@@ -104,7 +109,7 @@ Installability (manifest/icons), app-shell-only service worker, iOS "Add to Home
 
 This is a sharper split than the original draft's "coaching is all v2," because chat-based coaching turns out to need **no dedicated feature** — Claude coaches simply by having the right tools:
 
-- **In v1**: Claude, in its own chat (never embedded in the website), coaches conversationally using tools that expose goals, history, and trends, plus a `coach` MCP prompt (shape TBD on [#6](https://github.com/chill-projects/swolemates/issues/6)). This is "push the user toward their goals and progressive overload" as an emergent property of Claude reasoning over real data — no rule engine to build.
+- **In v1**: Claude, in its own chat (never embedded in the website), coaches conversationally using tools that expose goals, history, and trends, plus a fixed-tone `coach` MCP prompt and always-on nudges in relevant tool descriptions ([#6](https://github.com/chill-projects/swolemates/issues/6)). This is "push the user toward their goals and progressive overload" as an emergent property of Claude reasoning over real data — no rule engine to build.
 - **Deferred to v2**: the original PRD's §8-style **autonomous, codified rule engine** — hard-coded thresholds ("+2.5–5 lbs after 2 consecutive sessions," deload every 4th week, momentum/recovery state machine driven by a daily self-report check-in). That design is preserved below as a reference for when it's picked back up; it needs real v1 usage data to validate its thresholds against.
 
 ### V2 — Autonomous Coaching Rule Engine (specified, deferred)
@@ -153,7 +158,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 | Ticket | Question |
 |---|---|
 | [#5 Partner v1](https://github.com/chill-projects/swolemates/issues/5) | Invite/link mechanism + dashboard over WorkOS identities |
-| [#6 Claude tool surface](https://github.com/chill-projects/swolemates/issues/6) | Final tool/component/prompt shapes for v1 |
 | [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
 | [#9 Onboarding](https://github.com/chill-projects/swolemates/issues/9) | What profile data v1 still collects, and when |
 | [#12 Partner-privacy enforcement](https://github.com/chill-projects/swolemates/issues/12) | Service-layer isolation vs. a DB-level boundary |
