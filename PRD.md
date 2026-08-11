@@ -49,10 +49,12 @@ One backend container, two front doors, converging on one service layer — see 
 
 Per Will's [product vision](https://github.com/chill-projects/swolemates/issues/1#issuecomment-5136252340) and the closed [Interaction model](https://github.com/chill-projects/swolemates/issues/14) ticket: **chat** owns logging, template creation/tweaks, goal setting, trends/history, food-fact search, and coaching; the **app** owns tweaking/editing records, visualizing recent activity, and partner results, mobile-first. Templates are created conversationally and edited identically on both surfaces via shared `ui://` components — "a wrong result is editable in place," not a chat-only artifact.
 
-### 4.1 Accounts & Onboarding
+### 4.1 Accounts & Onboarding — decided
 
 - WorkOS AuthKit signup/login (replaces the original Supabase email/password plan).
-- Profile data captured at first login (goals, routine) — exact fields and flow are open: [Onboarding and profile: what carries into v1](https://github.com/chill-projects/swolemates/issues/9).
+- No separate "collect data now, act on later" wizard ([#9](https://github.com/chill-projects/swolemates/issues/9), resolved) — goals and routine are real, immediately-usable structured data now (§4.2, §4.3), so the welcome step *is* the first real use of the app: a genuine chat conversation if you start there, or an equivalent plain form on the SPA (never embedded chat, per §4's interaction-model rule) calling the same underlying tools either way.
+- A new profile row per user (WorkOS `sub`-keyed) holds what doesn't fit anywhere else: `weight_unit` (lbs/kg, deferred from workouts), an optional free-text `coach_notes` field for qualitative context (injuries, equipment limits) the `coach` prompt reads, and an explicit `onboarding_completed_at` so the welcome step never re-shows.
+- Dropped from the legacy plan: primary/secondary goal as a fixed pair (goals are just a list now, any number of trackables) and a free-text routine description (superseded by the real `weekly_pattern`).
 
 ### 4.2 Nutrition — decided
 
@@ -159,7 +161,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 |---|---|
 | [#5 Partner v1](https://github.com/chill-projects/swolemates/issues/5) | Invite/link mechanism + dashboard over WorkOS identities |
 | [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
-| [#9 Onboarding](https://github.com/chill-projects/swolemates/issues/9) | What profile data v1 still collects, and when |
 | [#12 Partner-privacy enforcement](https://github.com/chill-projects/swolemates/issues/12) | Service-layer isolation vs. a DB-level boundary |
 | [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
 | [#19 TDEE + weight tracking](https://github.com/chill-projects/swolemates/issues/19) | Goal-calculation assist + weight as a trackable |
