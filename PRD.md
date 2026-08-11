@@ -79,10 +79,11 @@ Domain model and UX fully resolved on [Workouts v1](https://github.com/chill-pro
 - **PR celebrations**: heaviest weight + e1RM only (not reps-at-weight); `personal_records` is a mutable current-record cache, not an append-only log, so a correction to a past set (via the now-model-visible `update_workout`) can't leave a stale PR standing.
 - Exercise catalog seeds the **full 873-exercise** free-exercise-db dataset at launch, not just the 40 legacy exercises.
 
-### 4.4 Partner accountability — decided (linking/dashboard); enforcement mechanism still open
+### 4.4 Partner accountability — decided
 
 Resolved on [Partner v1](https://github.com/chill-projects/swolemates/issues/5): SPA-only (no partner data via chat/`get_progress`, per §4.5) — a partner sees workout streak (the new weekly-commitment shape, §4.3), workout frequency, the new nutrition streak (a number, not the underlying logs), and PRs; food logs and weight entries stay off-limits with no exceptions. Invite/link mechanics port the legacy design directly onto WorkOS-sub identities: one partner max hard-enforced, a public unauthenticated invite-preview page, display name only (no avatar — not currently a WorkOS claim this app configures).
-- Enforcement mechanism — service-layer only (current pattern) vs. adding a DB-level boundary (SQL function / RLS-style) — is a deferred decision from `docs/design.md` §4, now its own ticket: [Partner-privacy enforcement approach](https://github.com/chill-projects/swolemates/issues/12) (open).
+
+**Enforcement mechanism** ([Partner-privacy enforcement approach](https://github.com/chill-projects/swolemates/issues/12), resolved): not full Row-Level Security — this backend's shared connection pool has no per-request Postgres session identity for RLS to key off, and it would be an exception to workouts' "no RLS, service-layer is the only authz" decision. Instead, `get_partner_summary` returns a **structurally narrow Pydantic type** — only the aggregate fields exist on it at all, so food/weight data has no field to travel through even if a future query change got careless. Proven by a test that seeds a partner account with real food/weight data and asserts the response has no path to it. Everywhere else in the app, the existing baseline (every query filters by the *calling* user's own `user_id`) already covers this — this pattern is scoped to the one endpoint that deliberately looks at another user's data on purpose.
 
 ### 4.5 Claude tool surface — decided
 
@@ -159,7 +160,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 | Ticket | Question |
 |---|---|
 | [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
-| [#12 Partner-privacy enforcement](https://github.com/chill-projects/swolemates/issues/12) | Service-layer isolation vs. a DB-level boundary |
 | [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
 | [#19 TDEE + weight tracking](https://github.com/chill-projects/swolemates/issues/19) | Goal-calculation assist + weight as a trackable |
 
