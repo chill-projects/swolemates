@@ -63,8 +63,8 @@ Resolved live with Will; full detail on [Nutrition v1](https://github.com/chill-
 - **Generalized trackable model**: `logs` (header) + `log_values` (one row per metric) + `trackable_types` (seeded data — adding sodium is a seed row, never a migration) + `goals`. One photo estimate writes 5 `log_values` under one `logs` row; a water log writes 1.
 - **Meal templates**: save-from-log only (no from-scratch builder), multi-item bundles, editable on both surfaces. UX: swipeable totals-first stack (prototyped, 3 variants compared).
 - **Logging paths, no metered AI call anywhere**: photo → Claude reads the image already in its own chat context and infers structured values (no backend vision-API call — see [#7](https://github.com/chill-projects/swolemates/issues/7)); barcode/search → Open Food Facts v3 (see [#11](https://github.com/chill-projects/swolemates/issues/11)), barcode decoded optically by Claude in chat or client-side (`@zxing/browser`) in the app; no match → Claude infers from a text description in chat, or the full manual-entry form in the app.
-- **Goals**: 5 legacy fields only (`calories`, `protein_g`, `carbs_g`, `fat_g`, `fiber_g`) are goal-eligible in v1; everything else trackable but not targetable yet. Calorie ring + a bar per goal-eligible trackable, generalized from legacy `TodaySummary.tsx`.
-- **Split out**: TDEE-assisted goal calculation + weight-as-a-trackable graduated into its own ticket, [#19](https://github.com/chill-projects/swolemates/issues/19) (open).
+- **Goals**: `calories`, `protein_g`, `carbs_g`, `fat_g`, `fiber_g`, and now `weight_lbs` (§4.7) are goal-eligible in v1; everything else trackable but not targetable yet. Calorie ring + a bar per goal-eligible trackable, generalized from legacy `TodaySummary.tsx`.
+- **Split out**: TDEE-assisted goal calculation + weight-as-a-trackable graduated into its own ticket, [#19](https://github.com/chill-projects/swolemates/issues/19) — see §4.7.
 
 ### 4.3 Workout logging — decided
 
@@ -93,10 +93,20 @@ Resolved on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18,
 - Chat-side corrections are `update_workout`/`update_nutrition_log` (edit a specific past record) plus a lightweight `amend_last_log` ("undo that," no id required) — not a general delete.
 - Nutrition gets a daily streak too, tied to a new `is_streak_target` flag on `goals`: whichever goal is marked drives the streak (calories for weight loss, protein for muscle building), not a generic logging-consistency metric.
 - `get_progress` excludes partner data entirely for v1 by design — the partner dashboard (§4.4) is SPA-only, not a chat capability.
+- **Addendum (via #19)**: the `coach` prompt now also makes an explicit judgment call on weight plateaus — see §4.7.
 
 ### 4.6 PWA — decided
 
 All of the original 2026-07-22 draft's PWA scope ships in v1 ([PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8), resolved) — manifest + icons (icons already exist in `frontend/public/`), an app-shell-only service worker via `vite-plugin-pwa` (network-only bypass for `/api`, `/mcp`, `/mcp-apps`, `/health`; never caches API responses, given this is a mutation-heavy, data-current app), and a ported iOS install banner (iOS never gets an automatic install prompt regardless of service worker — this is the only way iOS users discover installability at all). Initially leaned toward cutting the service worker (a manifest alone already gets real installability via the browser's manual install-from-menu path since Chrome 108/112 — a service worker only gates the *automatic* popup prompt), reversed once it became clear (a) push notifications, a stated later want, need a service worker to exist first regardless, and (b) `vite-plugin-pwa` makes the integration far cheaper than a naive "port `@serwist/next`" framing suggested. Push notifications themselves stay a separate, later decision.
+
+### 4.7 TDEE-assisted goals & weight tracking — decided
+
+Resolved on [#19](https://github.com/chill-projects/swolemates/issues/19): legacy's Mifflin-St Jeor calculator (`tdee.ts`) ships in v1, ported as a plain service function (pure math, no external API).
+
+- **A one-time bootstrapping tool, not a background process.** Runs at onboarding (§4.1) — both surfaces, same pattern as everything else there — to give an evidence-based starting calorie/protein target, and is re-runnable anytime on request. It never silently recalculates: writes normal goal rows via the existing `set_goals` mechanism, so `get_goals`/`get_progress` surface the results to Claude with no new plumbing.
+- **Its inputs (sex, age, height, weight, activity level, goal type) live with onboarding/profile (§4.1), not nutrition** — first-login profile fields, not nutrition-specific state.
+- **Weight is goal-eligible but excluded from the nutrition streak's `is_streak_target`** — settable as a directional target (progress-bar/graph framing), never a daily pass/fail the way calories are, since weight conflates fat and muscle and genuine recomposition can mean flat or rising weigh-ins during real progress.
+- **Ongoing plateau coaching lives entirely in the `coach` prompt** (§4.5 addendum), not new schema or a background job: a plateau signal (weight steady within ~±3 lb for 14–21+ days) computes fresh on every `get_progress` call, and Claude makes an actual judgment call — tighten the deficit, or suggest a structured refeed/diet break, with reasoning — mirroring the existing progressive-overload coaching pattern rather than just flagging that a plateau exists.
 
 ---
 
@@ -160,7 +170,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 | Ticket | Question |
 |---|---|
 | [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
-| [#19 TDEE + weight tracking](https://github.com/chill-projects/swolemates/issues/19) | Goal-calculation assist + weight as a trackable |
 
 ---
 
