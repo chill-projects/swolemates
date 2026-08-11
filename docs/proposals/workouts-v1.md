@@ -1,8 +1,9 @@
 # Workouts v1 — prototype spec (ticket #3)
 
-> **Status: PROTOTYPE / reaction artifact.** Nothing here is decided. This is a rough
-> outline for Will to attack; every judgment call I wasn't sure about is in
-> [Open questions](#open-questions-for-will) instead of being silently decided.
+> **Status: DECIDED.** Every open question below is resolved — see
+> [Resolved decisions](#resolved-decisions) — from a live grilling session with
+> Michelle, 2026-08-11 (issue #3's resolution comment has the same summary). This
+> doc reflects the final shape, not the original draft.
 >
 > Inputs: legacy schema 0003/0004/0010 + WorkoutBuilder/ActivityForm/workouts pages,
 > [product vision](https://github.com/chill-projects/swolemates/issues/1#issuecomment-5136252340),
@@ -38,6 +39,14 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
   NOT NULL to the set-level CHECK + service validation (port of
   `workoutValidation.ts`: reps sets need reps > 0 and weight ≥ 0; timed sets need
   work_seconds > 0).
+- **Units: canonical lbs, per-user display preference.** Every weight column
+  (`prescribed_weight`, `actual_weight`, `template_exercises.target_weight`) stores
+  a plain numeric in **pounds**, regardless of who logged it or what unit they
+  prefer to see. Conversion to kg (if a user prefers it) happens only at render —
+  the preference field itself lives on the user's profile, owned by
+  [Onboarding (#9)](https://github.com/chill-projects/swolemates/issues/9), not this
+  slice. PR math, e1RM, and "last time" comparisons all operate on canonical values
+  and never need to reconcile mixed units.
 
 ### Tables
 
@@ -53,7 +62,13 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
 
 **workouts** (one session, strength or activity)
 - `id uuid pk`, `user_id str`, `workout_type enum(strength|activity)`
-- `activity_type enum(yoga|pilates|cardio|other)?`, `duration_minutes int?` (activity only, CHECK)
+- `activity_type text?` — free text, not an enum (e.g. "yoga", "hot yoga", "pool").
+  Autocomplete suggestions come from the user's own past values (primed with a small
+  starter list: yoga, pilates, cardio, swimming, hiking), not a controlled
+  vocabulary. Matching for suggestions trims/lowercases so casing alone doesn't
+  fragment the list, but distinct labels (`"yoga"` vs `"hot yoga"`) stay distinct —
+  that granularity is the point.
+- `duration_minutes int?` (activity only, CHECK)
 - `title text?`, `notes text?`, `started_at`, `completed_at?` — **`completed_at IS NULL`
   = in-progress workout**; this row *is* the in-workout-mode state (see §5/§7)
 - `template_id uuid? → workout_templates` — provenance: which plan this session ran
@@ -71,7 +86,7 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
 
 **workout_sets**
 - `id`, `workout_exercise_id fk cascade`, `set_number int`
-- `set_type enum(reps|time)`, `is_warmup bool`, `rpe numeric?`
+- `set_type enum(reps|time)`, `is_warmup bool`
 - `prescribed_weight numeric?`, `prescribed_reps int?` — filled from the template /
   progression suggestion when a session starts; actuals vs prescribed is the
   progressive-overload signal
@@ -87,22 +102,41 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
   `start_workout` copies it onto the session rows along with the targets.
 - `target_sets int`, `target_reps int?`, `target_seconds int?`, `target_weight numeric?`
   (nullable weight = "use last time's / coach's call"), `notes text?`
-- Deliberately simple: uniform sets per exercise (`4×8 @ 60kg`), not per-set
+- Deliberately simple: uniform sets per exercise (`4×8 @ 135lbs`), not per-set
   prescriptions. Legacy had no templates at all, so there's nothing to port; per-set
   template detail feels like v2. **Decided** — see resolved Open question 2.
+
+**weekly_pattern** (the standing split — new)
+- `id`, `user_id str`, `day_of_week int (0–6)`, `template_id fk? → workout_templates`
+  (null = rest/no plan that day)
+- Up to 7 rows per user: "Monday is legs, Tuesday is pool." This is what generates a
+  new week's `planned_workouts` rows — editing the pattern only affects weeks
+  generated after the edit; a week already materialized is independent rows and
+  doesn't retroactively change.
 
 **planned_workouts** (the schedule)
 - `id`, `user_id str`, `template_id fk`, `scheduled_for date`, `status
   enum(planned|done|skipped)`, `workout_id uuid?` (set when done), `note text?`
-- Minimal calendar: "Leg Day on Thursday". Recurrence (every Mon/Thu) is deliberately
-  out — Claude can lay out a week of rows conversationally. (Open question 3.)
+- Generated for the upcoming week from `weekly_pattern`; the user (on a Sunday
+  review, say) prunes/adjusts before committing. Once generated, rows are never
+  deleted — only `status` changes (e.g. to `skipped`) — which is what makes them
+  double as the streak target for that week (§6): the row count *is* the
+  commitment, and it doesn't shrink just because a session gets skipped later.
+  Flat list, no recurrence-rule engine — the pattern above is the recurring part;
+  each week's rows are concrete and freely editable.
 
-**personal_records** (denormalized celebration cache)
-- `id`, `user_id str`, `exercise_id fk`, `kind enum(weight|e1rm|reps_at_weight)`,
-  `value numeric`, `reps int?`, `weight numeric?`, `workout_set_id fk`, `achieved_at`
-- Written inside the same transaction as set logging; makes "is this a PR?" a cheap
-  lookup instead of a scan. Could instead be computed on the fly for two users —
-  kept as a table because the celebration check runs on every logged set. (OQ 4.)
+**personal_records** (current-record cache, mutable)
+- `id`, `user_id str`, `exercise_id fk`, `kind enum(weight|e1rm)`, `value numeric`,
+  `workout_set_id fk`, `achieved_at`
+- **One row per `(user_id, exercise_id, kind)`, updated in place — not an append-only
+  log.** `log_set` upserts this row when a new record beats the cached value. If the
+  *referencing* set is later edited or deleted (via `update_workout`, model-visible —
+  §8), the service recomputes the true max from the remaining sets for that
+  exercise/kind and updates (or deletes, if none remain) the cached row — a targeted
+  recheck, not a live computation on every read. This was chosen over computing PRs
+  on the fly (cheap at 2-user scale, but loses "notice the moment a record breaks,"
+  not needed here) and over a true append-only history log (would go stale forever
+  after a correction, since editing history is in scope for v1).
 
 ## 3. Templates & plans model
 
@@ -118,6 +152,11 @@ discriminator on `workout_sets`. Proposed adaptations, then new tables.
 
 ## 4. Planned-workouts view
 
+- **Generation**: a new week's `planned_workouts` rows come from `weekly_pattern`
+  (§2) — "Monday is legs" materializes into a dated row for the upcoming Monday.
+  This is where you review and prune before committing (skip a day that doesn't fit
+  that week, add an extra session) — once generated, that week's rows are the fixed
+  commitment the streak target reads from (§6).
 - "What's next": upcoming `planned_workouts` joined with template detail, plus per
   exercise: description, images (2-frame JPEGs, same-origin per #15), last session's
   actuals for that exercise, and the latest `next_time_note`.
@@ -144,13 +183,14 @@ The centerpiece. Flow:
      read; revisit only if stacking proves confusing in practice.
    - Header: name, thumbnail image, tap for description; `n/m sets` progress on the
      collapsed row.
-   - **Progressive-overload framing:** "Last time: 60kg × 8, 8, 7" + the last
-     `next_time_note` ("felt easy, go 62.5") right where you pick the weight.
+   - **Progressive-overload framing:** "Last time: 135lbs × 8, 8, 7" + the last
+     `next_time_note` ("felt easy, add 5") right where you pick the weight.
    - Set rows: weight / reps steppers **prefilled from prescription, falling back to
      last time's actuals** — logging a set that matches is one tap. Weight steppers
-     increment by **5** (kg or lbs per user unit pref, OQ 1) — the standard plate jump,
-     not browser-default 1. Warmup toggle, optional RPE. `log_set` writes actuals +
-     `completed_at` per set.
+     increment by **5** (canonical lbs; a kg-preferring user sees converted values,
+     stepping by an equivalent round increment — display concern only, §2) — the
+     standard plate jump, not browser-default 1. Warmup toggle. `log_set` writes
+     actuals + `completed_at` per set.
    - **Sets are open-ended, not capped at the prescription**: `+ Add set` appends a row
      (seeded from the last set's weight/reps/rest as a starting guess); any not-yet-
      logged set can be removed. This just works off the existing schema — sets are rows
@@ -163,7 +203,9 @@ The centerpiece. Flow:
    validates (workoutValidation port; empty un-logged prescribed sets are dropped, not
    errors), computes PRs/streak, and returns the summary + celebration payload.
 4. Abandoning: an in-progress workout older than ~24h is offered for discard/finish on
-   next surface load. No timer/rest-clock in v1. (OQ 6.)
+   next surface load. **No rest timer and no duration display in v1** — cut entirely,
+   not even as a local-only ticker; keeping the component simple won out over the
+   real (if modest) value a rest timer has for actual gym use.
 
 Because all state is server-side rows (a #10 hard rule — no persistence in the iframe),
 the same in-progress workout is resumable from either surface mid-session: phone dies →
@@ -188,17 +230,30 @@ set, changed my mind, etc.).
 Per #14: streaks + progressive-overload wins only; no XP/levels/badges.
 
 - **PR check** on `log_set`/`finish_workout`: heaviest weight ever for the exercise,
-  best estimated 1RM (Epley: `w × (1 + reps/30)`), and most reps at a given weight.
-  Warmups excluded. New records insert into `personal_records` and ride the tool
-  result: `celebrations: [{type: "pr", exercise, kind, value, previous}]`.
-- **Streak** = consistency, computed from completed workouts: current run of weeks with
-  ≥ N workouts (N = weekly target; default 3, per-user setting later). Returned as
-  `streak: {weeks, this_week, target}` in workout payloads. The legacy
-  **ConsistencyCalendar** ports as the visual (SPA dashboard; also usable in a
-  progress component).
+  and best estimated 1RM (Epley: `w × (1 + reps/30)`) — **not** reps-at-weight,
+  trimmed for v1. Warmups excluded. A new record upserts the cached row in
+  `personal_records` (§2 — mutable, recomputed if the achieving set is later edited)
+  and rides the tool result: `celebrations: [{type: "pr", exercise, kind, value,
+  previous}]`.
+- **Streak**, redefined around your actual weekly commitment rather than a flat
+  number:
+  - **Target** = however many `planned_workouts` rows exist for that week (generated
+    from `weekly_pattern`, then pruned to what you actually commit to — §2). Locked
+    once the week's rows exist; skipping one later doesn't lower the target, since
+    rows are never deleted, only status-flipped.
+  - **Success** = a pure count of `workouts` completed that week (`completed_at`
+    falls in the week) reaching that target. No requirement that a completed workout
+    trace back to a specific planned row — any day, any order, and an unplanned
+    bonus session counts too. It's "did you train this many times," not "did you
+    follow the exact schedule."
+  - **Fallback**: a flat default target of **3** for a week with zero
+    `planned_workouts` (no pattern set, or a week nobody planned).
+  - Returned as `streak: {weeks, this_week, target}` in workout payloads. The legacy
+    **ConsistencyCalendar** ports as the visual, **SPA-only** (§7) — Claude narrates
+    the streak in chat text, no chat-rendered calendar in v1.
 - **Both surfaces celebrate from the same payload**: the in-workout component shows the
   moment inline (confetti-ish, legacy-styled); the `summary` text names it ("New PR:
-  Deadlift 140kg — up from 135") so Claude narrates it in chat and can coach off it.
+  Deadlift 140lbs — up from 135") so Claude narrates it in chat and can coach off it.
   No push/proactive messaging in v1 (#14 keeps the rule engine in v2).
 
 ## 7. Surfaces: shared ui:// components vs SPA pages
@@ -217,17 +272,23 @@ width + autoResize, buttons-not-forms, no polling, text fallback on every tool).
 | `ui://swolemates/workout-summary.html` | one completed workout, editable actuals | `log_workout`, `get_workout` |
 
 Exercise images work inside the sandbox only if same-origin fetches resolve — they're
-served from our origin, and #10 says *every* origin must be declared; the bundle can
-either inline nothing and declare our own origin in `resourceDomains`, or (safer,
-per-#10 "no CSP domains") the tool result carries small base64 thumbnails. (OQ 7.)
+served from our origin, and #10 says *every* origin must be declared. **Decided:**
+the bundle declares our own origin in `resourceDomains` and fetches images
+same-origin, rather than embedding base64 thumbnails in every tool result. It's a
+narrow, self-referential exception to #10's "no CSP domains" default (our own
+origin, already trusted everywhere else in the app), and it avoids re-embedding
+image bytes on every workout/template/planned-workout payload that touches an
+exercise.
 
 **SPA pages** (thin shells around generated-client hooks + embedded shared components):
 - `/workouts` — history list (legacy workouts_page design), embeds planned component
 - `/workouts/:id` — detail; embeds workout-summary component for in-place edit
 - `/workouts/live` — full-screen wrapper around workout-live (the phone-in-the-gym view)
 - `/templates`, `/templates/:id` — list + template component
-- Dashboard gets the ConsistencyCalendar (SPA-only; pure display, no tool round-trips
-  needed — cheaper as a plain React port). (OQ 8.)
+- Dashboard gets the ConsistencyCalendar. **Decided: SPA-only** — pure display, plain
+  React port, no tool round-trips. Not a `ui://` component; chat answers streak
+  questions from the structured `streak` object plus narration, not a rendered
+  calendar. Revisit only if text narration proves too thin once this is in daily use.
 
 **Chat-only:** trends/progress questions ("how's my squat going?") are tool + text in
 v1; a progress-chart component is a fast follow.
@@ -237,7 +298,7 @@ v1; a progress-chart component is a fast follow.
 Model-visible entry points (all also return `summary` text for non-UI hosts):
 
 - `log_workout(exercises, title?, date?)` — the chat path: whole completed session in
-  one call ("I did 5×5 squats at 100kg"). Returns summary + celebrations.
+  one call ("I did 5×5 squats at 225lbs"). Returns summary + celebrations.
 - `log_activity(activity_type, duration_minutes, title?, notes?, date?)`
 - `start_workout(template_id? | planned_id? | exercises?)` → in-workout component
 - `finish_workout(workout_id, notes?)`
@@ -248,24 +309,41 @@ Model-visible entry points (all also return `summary` text for non-UI hosts):
 - `get_exercise_progress(exercise)` — per-exercise actuals over time, PRs, e1RM trend —
   the coach's data source (#14)
 - `search_exercises(query?, muscle_group?)` / `add_custom_exercise(name, muscle_group, equipment?)`
+- `update_workout(workout_id, exercise_updates?, notes?)` — **decided model-visible**,
+  not app-only: edit a past session's actuals conversationally ("actually that was 8
+  reps not 6"). Matches the vision's "log/tweak records in chat" capability directly,
+  same service call as the app-only edit path, and is the only way to correct a
+  wrong `personal_records`-triggering set from chat (§2).
 
 App-only (`visibility=["app"]`, iframe-driven): `log_set`, `update_workout_entry`
 (add/remove/reorder exercise or set mid-workout, edit next-time note),
-`update_workout_template`, `get_active_workout`, `update_workout` (edit a past
-session's actuals from the summary component). Mutations return the full payload
+`update_workout_template`, `get_active_workout`. Mutations return the full payload
 (tmpx `_items_payload` pattern) so components re-render from any result. Exact
 final surface to be reconciled with ticket #6.
 
 ## 9. Exercise catalog seeding
 
-Adopt #15 as-is:
-- Vendor free-exercise-db (public domain). Starter catalog = the 40 legacy exercises
-  from 0003, via the checked-in name → free-exercise-db id mapping (verified 40/40).
-- Seed script joins the mapping against `dist/exercises.json` → `name, muscle_group,
-  equipment, description, image_paths, source_id`. Copies the ~80 JPEGs into
-  `backend/app/static/exercise-images/` (~4–5 MB, in the container image).
+Extends #15's recommendation (adopted, then broadened — see resolved decision below):
+- Vendor free-exercise-db (public domain), **all 873 exercises seeded at launch**,
+  not just the 40 legacy starters. The dataset's already fully vendorable and
+  public-domain, so this is purely "how much of what we already have do we load,"
+  not a new licensing or architecture question.
+- The 40 legacy exercises still get their checked-in name → free-exercise-db id
+  mapping (verified 40/40) so continuity of naming survives the port; the other 833
+  seed under free-exercise-db's own names.
+- Seed script joins `dist/exercises.json` → `name, muscle_group, equipment,
+  description, image_paths, source_id` for every record. Copies all `exercises/<id>/
+  {0,1}.jpg` files into `backend/app/static/exercise-images/` — **~90–110 MB** in the
+  container image at full scale (vs. ~4–5 MB for just the 40 starters). One-time
+  build-size cost, not per-request bandwidth (same-origin, browser-cached), so it
+  doesn't change the "no CDN needed for two users" reasoning from #15.
 - Runs as an idempotent seed step (upsert on `source_id`) alongside migrations.
-  Remaining ~830 exercises are a later import, no new decision.
+- With the full catalog seeded, "custom exercise" (§2, `is_custom = true`) now means
+  genuinely not in free-exercise-db at all — a much smaller set than "not in the 40
+  starters." **Decided:** those get no auto-generated description — left blank
+  rather than having Claude improvise instructions for an exercise it's never
+  actually seen performed. The `notes` field on `workout_exercises` covers anything
+  user-specific a blank description would've tried to guess at.
 
 ## 10. Slice seed data (dev/demo)
 
@@ -276,11 +354,13 @@ Adopt #15 as-is:
   a couple of `next_time_note`s and one activity (yoga).
 - Next week of `planned_workouts`, one in-progress workout for testing resume.
 
-## Open questions for Will
+## Resolved decisions
 
-1. **Units.** Legacy stored bare `numeric` weight. Store kg and render per-user
-   preference, or store a unit column per set? (Affects PR math if you two use
-   different units.)
+All twelve, resolved live with Michelle, 2026-08-11 (detail on each is inline in the
+relevant section above; this is the index):
+
+1. ~~**Units.**~~ **Resolved:** canonical storage in lbs, per-user display preference
+   for conversion (§2).
 2. ~~**Template granularity.**~~ **Resolved:** uniform `sets × reps @ weight` per
    exercise for v1, not per-set prescriptions. Templates and live workouts stay
    separate table families (`workout_templates`/`template_exercises` vs.
@@ -289,33 +369,32 @@ Adopt #15 as-is:
    (ramping, drop sets) can still happen live without the template needing to
    model it. Per-set template prescriptions stay a v2 idea if uniform targets turn
    out to be too coarse in practice.
-3. **Planned workouts: recurrence?** I kept a flat date list and let Claude lay out
-   weeks. Want real recurrence rules (every Mon/Thu) in v1 instead?
-4. **`personal_records` table vs computed.** I denormalized for cheap per-set checks;
-   for two users a query-time scan is also fine and one less table. Preference?
-5. **PR definitions.** Heaviest weight + Epley e1RM + reps-at-weight, warmups excluded.
-   Too many? Just "heaviest weight" for v1? And what's the weekly streak target —
-   fixed 3, or configurable from day one?
-6. **In-workout niceties.** Rest timer and workout duration display are cut from v1
-   (they invite polling/ticking in an iframe). Agree, or is a rest timer essential to
-   the gym experience? (A local-only ticker with no server round-trips is feasible.)
-7. **Images in components.** Same-origin images require declaring our origin in the
-   resource CSP (`resourceDomains`) — mild deviation from tmpx's "no CSP domains"
-   purity, but keeps payloads small. Alternative: base64 thumbnails inside tool
-   results (bigger payloads, zero CSP). Which way?
-8. **ConsistencyCalendar surface.** I made it SPA-only (pure display). Should it also
-   be a ui:// component so Claude can show your streak calendar in chat?
-9. **Editing history in chat.** `update_workout` is app-only in my sketch (edits happen
-   in the summary component). Should Claude also be able to edit past sessions
-   conversationally ("actually that was 8 reps not 6") — i.e. model-visible too?
-10. **Custom exercises** get no description/images (not in free-exercise-db). Fine, or
-    should Claude write a description at creation time?
-11. **Per-set RPE** is in the schema (legacy had it) but I left it out of the default
-    in-workout UI to keep logging one-tap. Surface it, or schema-only until asked for?
-12. **Activity types.** Keep the legacy enum (`yoga|pilates|cardio|other`) or free-text
-    with suggestions, given #4's "general model with discriminators" direction for
-    nutrition? (If nutrition lands on a generic trackables model, activities could
-    eventually fold in — I kept them in `workouts` for v1.)
+3. ~~**Planned workouts: recurrence?**~~ **Resolved:** a `weekly_pattern` table
+   (day-of-week → template) generates each week's flat `planned_workouts` rows; no
+   RRULE-style engine (§2).
+4. ~~**`personal_records` table vs computed.**~~ **Resolved:** kept as a table, but as
+   a mutable current-record cache (upserted, recomputed on edit/delete of the
+   achieving set) rather than a computed-on-read value or an append-only log (§2).
+5. ~~**PR definitions & streak target.**~~ **Resolved:** heaviest weight + e1RM only
+   (reps-at-weight dropped); streak target derives from that week's committed
+   `planned_workouts` count, not a flat number, falling back to 3 with no plan set
+   (§6).
+6. ~~**In-workout niceties.**~~ **Resolved:** cut entirely for v1 — no rest timer, no
+   duration display, not even a local-only ticker (§5).
+7. ~~**Images in components.**~~ **Resolved:** same-origin fetch via `resourceDomains`
+   (§7).
+8. ~~**ConsistencyCalendar surface.**~~ **Resolved:** SPA-only; Claude narrates streaks
+   in chat text (§7).
+9. ~~**Editing history in chat.**~~ **Resolved:** `update_workout` is model-visible,
+   not app-only (§8).
+10. ~~**Custom exercises.**~~ **Resolved:** seed the full 873-exercise catalog at
+    launch (not just the 40 legacy starters), which shrinks "custom" down to
+    genuinely-novel exercises; those still get no auto-generated description (§9).
+11. ~~**Per-set RPE.**~~ **Resolved:** cut from the schema entirely — never used even
+    in the legacy app, and nothing in v1 or the deferred v2 rule engine consumes it
+    (§2).
+12. ~~**Activity types.**~~ **Resolved:** free text with autocomplete suggestions from
+    the user's own history, not a fixed enum (§2).
 
 ---
 

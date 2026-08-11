@@ -32,11 +32,9 @@ class WorkoutType(enum.StrEnum):
     activity = "activity"
 
 
-class ActivityType(enum.StrEnum):
-    yoga = "yoga"
-    pilates = "pilates"
-    cardio = "cardio"
-    other = "other"
+# activity_type is free text (workouts-v1.md #12, resolved), not an enum — e.g.
+# "yoga", "hot yoga", "pool". Autocomplete suggestions come from the user's own
+# history, not a controlled vocabulary.
 
 
 class SetType(enum.StrEnum):
@@ -53,7 +51,7 @@ class PlanStatus(enum.StrEnum):
 class PRKind(enum.StrEnum):
     weight = "weight"          # heaviest weight ever for the exercise
     e1rm = "e1rm"              # best Epley estimated 1RM
-    reps_at_weight = "reps_at_weight"
+    # reps_at_weight dropped (#5, resolved) — two kinds, not three
 
 
 class Exercise(Base, TimestampMixin):
@@ -86,7 +84,7 @@ class WorkoutTemplate(Base, TimestampMixin):
 
 
 class TemplateExercise(Base):
-    """Uniform prescription per exercise (4x8 @ 60) — per-set detail is OQ 2."""
+    """Uniform prescription per exercise (4x8 @ 135) — per-set detail stays v2 (#2, resolved)."""
 
     __tablename__ = "template_exercises"
 
@@ -115,7 +113,7 @@ class Workout(Base, TimestampMixin):
     workout_type: Mapped[WorkoutType] = mapped_column(
         Enum(WorkoutType), nullable=False, default=WorkoutType.strength
     )
-    activity_type: Mapped[ActivityType | None] = mapped_column(Enum(ActivityType))
+    activity_type: Mapped[str | None] = mapped_column(String(100))  # free text, not an enum
     duration_minutes: Mapped[int | None] = mapped_column()
     title: Mapped[str | None] = mapped_column(String(200))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -171,13 +169,12 @@ class WorkoutSet(Base):
     set_number: Mapped[int] = mapped_column(nullable=False)
     set_type: Mapped[SetType] = mapped_column(Enum(SetType), nullable=False, default=SetType.reps)
     is_warmup: Mapped[bool] = mapped_column(nullable=False, default=False)
-    prescribed_weight: Mapped[object | None] = mapped_column(Numeric)
+    prescribed_weight: Mapped[object | None] = mapped_column(Numeric)  # canonical lbs (#1, resolved)
     prescribed_reps: Mapped[int | None] = mapped_column()
-    actual_weight: Mapped[object | None] = mapped_column(Numeric)
+    actual_weight: Mapped[object | None] = mapped_column(Numeric)      # canonical lbs
     actual_reps: Mapped[int | None] = mapped_column()
     work_seconds: Mapped[int | None] = mapped_column()
     rest_seconds: Mapped[int | None] = mapped_column()
-    rpe: Mapped[object | None] = mapped_column(Numeric)
     completed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
@@ -191,8 +188,36 @@ class WorkoutSet(Base):
     )
 
 
+class WeeklyPattern(Base, TimestampMixin):
+    """The standing split: 'Monday is legs, Tuesday is pool' (#3, resolved).
+
+    Up to 7 rows per user. Generates a new week's PlannedWorkout rows; editing this
+    table only affects weeks generated after the edit — a week already materialized
+    is independent rows, per PlannedWorkout below.
+    """
+
+    __tablename__ = "weekly_pattern"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    day_of_week: Mapped[int] = mapped_column(nullable=False)  # 0-6
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="SET NULL")
+    )  # null = rest day
+
+    __table_args__ = (
+        Index("ix_weekly_pattern_user_id_day_of_week", "user_id", "day_of_week", unique=True),
+    )
+
+
 class PlannedWorkout(Base, TimestampMixin):
-    """Flat schedule: 'Leg Day on Thursday'. Recurrence deliberately out (OQ 3)."""
+    """Flat schedule, generated from WeeklyPattern (#3, resolved): 'Leg Day, Thu Aug 13'.
+
+    Rows are never deleted once generated — only `status` changes (e.g. to
+    `skipped`). That's deliberate: the row count for a given week *is* that week's
+    streak target (#5, resolved), and it shouldn't shrink just because a session
+    gets skipped after the week was committed to.
+    """
 
     __tablename__ = "planned_workouts"
 
@@ -214,7 +239,15 @@ class PlannedWorkout(Base, TimestampMixin):
 
 
 class PersonalRecord(Base, TimestampMixin):
-    """Denormalized celebration cache — existence is OQ 4."""
+    """Current-record cache, mutable — not an append-only log (#4, resolved).
+
+    One row per (user_id, exercise_id, kind). log_set upserts this row when a new
+    record beats the cached value. If the *referencing* workout_set is later edited
+    or deleted (update_workout is model-visible, #9 resolved), the service recomputes
+    the true max from the remaining sets for that exercise/kind and updates — or
+    deletes, if none remain — this row. That targeted recheck only runs on the rarer
+    edit/delete-history path, not on every read.
+    """
 
     __tablename__ = "personal_records"
 
@@ -222,12 +255,18 @@ class PersonalRecord(Base, TimestampMixin):
     user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     kind: Mapped[PRKind] = mapped_column(Enum(PRKind), nullable=False)
-    value: Mapped[object] = mapped_column(Numeric, nullable=False)  # weight, e1rm, or reps
-    weight: Mapped[object | None] = mapped_column(Numeric)          # for reps_at_weight
-    reps: Mapped[int | None] = mapped_column()
+    value: Mapped[object] = mapped_column(Numeric, nullable=False)  # weight (lbs) or e1rm
     workout_set_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workout_sets.id", ondelete="CASCADE"), nullable=False
     )
     achieved_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (Index("ix_personal_records_user_id_exercise_id", "user_id", "exercise_id"),)
+    __table_args__ = (
+        Index(
+            "ix_personal_records_user_id_exercise_id_kind",
+            "user_id",
+            "exercise_id",
+            "kind",
+            unique=True,
+        ),
+    )

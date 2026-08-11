@@ -1,186 +1,173 @@
 # Swolemates — Product Requirements Document
 
-**Status:** Draft — v1 scoped, v2 (AI coach) specified but deferred
+**Status:** Draft — v1 scope is being resolved live on the [wayfinder map](https://github.com/chill-projects/swolemates/issues/1); this doc is a snapshot of that map, not a substitute for it.
 **Owner:** Michelle Zhuang
-**Last updated:** 2026-07-22
+**Last updated:** 2026-08-10
+
+> This is a full rewrite of the original 2026-07-22 draft, which described a Next.js + Supabase app. That stack was scrapped for the platform in `docs/design.md` (FastAPI + FastMCP backend, Claude connector, Vite SPA) — see `AGENTS.md`. Everything below reflects the current architecture and the decisions made so far while porting the legacy app onto it. **The map (issue #1) is the live source of truth**; when a linked ticket resolves and this doc hasn't caught up, trust the ticket.
 
 ---
 
 ## 1. Overview
 
-Swolemates is a mobile-first Progressive Web App that combines calorie/macro tracking, workout logging, and (in v2) an AI fitness coaching layer. It's built for personal use by the author and their partner, and doubles as a coding-practice project.
+Swolemates is a mobile-first app that combines calorie/macro tracking, workout logging, and AI fitness coaching, reachable two ways: a **web app** (installable PWA) and **Claude itself**, via a remote MCP connector. Both front doors share one backend, one database, and — for anything that needs a rich UI — literally the same interactive component. It's built for personal use by the author and their partner, and doubles as a coding-practice project.
 
 **Why build this instead of using MyFitnessPal / Cronometer / Fitbod / Strong:**
 - Existing apps are bloated/ad-heavy for what's actually needed day to day.
 - No existing app combines nutrition tracking and workout coaching into one coherent experience.
+- Claude-as-coach is a fundamentally different interaction model than any of the above — coaching happens by chatting, not by reading a screen the app generated.
 - It's partly a deliberate coding-practice exercise.
 
 ---
 
 ## 2. Users
 
-Two users: the author and their partner. Each has a fully separate account with their own goals, food logs, and workout history. Accounts can be linked to each other for accountability purposes (see §5.4). This is not designed for more than two linked users in v1, though the invite-code mechanism doesn't hard-code that limit.
+Two users: the author and their partner. Each has a fully separate account (WorkOS-authenticated) with their own goals, food logs, and workout history. Accounts can be linked to each other for accountability purposes (§5.4) — the invite-code mechanism itself is being redesigned for WorkOS identities in [Partner v1](https://github.com/chill-projects/swolemates/issues/5) (open). Not designed for more than two linked users in v1.
 
 ---
 
-## 3. Platform & Constraints
+## 3. Platform & Architecture
 
-| Constraint | Decision |
+One backend container, two front doors, converging on one service layer — see `docs/design.md` for the full design; summary:
+
+| Piece | Decision |
 |---|---|
-| Platform | Progressive Web App (PWA) — installable to homescreen on iOS and Android, no native app store distribution |
-| Why PWA over React Native | No wearable/HealthKit integration is planned, which removes the main reason to go native. PWA avoids the $99/yr Apple Developer fee and app-store review, and iterates faster for a two-person coding-practice project. |
-| Budget | Free/near-free only. Backend and third-party APIs should default to free tiers; the only meaningfully metered cost is Claude API usage for photo-based food estimation, which is pennies at 2-user scale. |
-| Camera access | Via `<input type="file" accept="image/*" capture="environment">` — works reliably inside installed PWAs on both iOS Safari and Android Chrome without the flakiness of a live camera preview. |
+| Backend | FastAPI, mounting `/api` (REST), `/mcp` (FastMCP 3.x connector), and the built SPA as static files |
+| Frontend | Vite + React + TypeScript SPA — **not** Next.js/SSR; built in CI into the backend image, no separate host |
+| Shared UI | MCP Apps (`ui://` components, `_meta.ui.*`) — one bundle renders identically inside a Claude conversation and inside the SPA |
+| Database | Postgres (Railway), one schema, SQLAlchemy 2.x + Alembic |
+| Auth | WorkOS AuthKit (OAuth 2.1) for both surfaces — `sub` stamped on every row is the permission model; see `docs/auth.md` |
+| Deploy | Railway, blue-green via `/health`, GitHub Actions CI (ruff/pytest/tsc/generated-client-drift check) |
+| Budget | ~$5–10/mo (Railway + Postgres); WorkOS free under 1M MAU; no metered AI cost — see §6 |
+| Camera access | Via `<input type="file" accept="image/*" capture="environment">`, same rationale as before: reliable inside installed PWAs on iOS Safari and Android Chrome without a live-preview widget |
+
+**PWA scope** (installability, service worker, iOS install banner) is carried forward as an intent from the original draft but not yet locked for v1 — see [PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8) (open).
 
 ---
 
-## 4. Tech Stack
+## 4. V1 Scope
 
-- **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS
-- **Backend:** Supabase (Postgres + Auth + Storage), free tier
-- **PWA tooling:** `@serwist/next` for the service worker (actively maintained; the classic `next-pwa` is not)
-- **Nutrition database:** Open Food Facts (free, no API key, barcode + text search)
-- **AI:** Claude API (`claude-sonnet-5`) for photo-based food estimation — chosen over Opus given the stated budget constraint; still fully capable for this task and supports vision + structured JSON output in the same request.
+Per Will's [product vision](https://github.com/chill-projects/swolemates/issues/1#issuecomment-5136252340) and the closed [Interaction model](https://github.com/chill-projects/swolemates/issues/14) ticket: **chat** owns logging, template creation/tweaks, goal setting, trends/history, food-fact search, and coaching; the **app** owns tweaking/editing records, visualizing recent activity, and partner results, mobile-first. Templates are created conversationally and edited identically on both surfaces via shared `ui://` components — "a wrong result is editable in place," not a chat-only artifact.
 
----
+### 4.1 Accounts & Onboarding
 
-## 5. V1 Scope — Requirements
+- WorkOS AuthKit signup/login (replaces the original Supabase email/password plan).
+- Profile data captured at first login (goals, routine) — exact fields and flow are open: [Onboarding and profile: what carries into v1](https://github.com/chill-projects/swolemates/issues/9).
 
-V1 is deliberately limited to **logging + partner accountability**. The AI coaching layer (§8) is specified but explicitly deferred to v2, because its rules need real logged data to design and test against.
+### 4.2 Nutrition — decided
 
-### 5.1 Accounts & Onboarding
+Resolved live with Will; full detail on [Nutrition v1](https://github.com/chill-projects/swolemates/issues/4).
 
-- Standard email/password (or magic link) signup via Supabase Auth.
-- On first login, capture: primary goal, secondary goal (optional), current routine description. This data is captured in v1 but not acted upon until v2's coaching layer exists.
-- A user cannot be re-shown onboarding once completed.
+- **Generalized trackable model**: `logs` (header) + `log_values` (one row per metric) + `trackable_types` (seeded data — adding sodium is a seed row, never a migration) + `goals`. One photo estimate writes 5 `log_values` under one `logs` row; a water log writes 1.
+- **Meal templates**: save-from-log only (no from-scratch builder), multi-item bundles, editable on both surfaces. UX: swipeable totals-first stack (prototyped, 3 variants compared).
+- **Logging paths, no metered AI call anywhere**: photo → Claude reads the image already in its own chat context and infers structured values (no backend vision-API call — see [#7](https://github.com/chill-projects/swolemates/issues/7)); barcode/search → Open Food Facts v3 (see [#11](https://github.com/chill-projects/swolemates/issues/11)), barcode decoded optically by Claude in chat or client-side (`@zxing/browser`) in the app; no match → Claude infers from a text description in chat, or the full manual-entry form in the app.
+- **Goals**: 5 legacy fields only (`calories`, `protein_g`, `carbs_g`, `fat_g`, `fiber_g`) are goal-eligible in v1; everything else trackable but not targetable yet. Calorie ring + a bar per goal-eligible trackable, generalized from legacy `TodaySummary.tsx`.
+- **Split out**: TDEE-assisted goal calculation + weight-as-a-trackable graduated into its own ticket, [#19](https://github.com/chill-projects/swolemates/issues/19) (open).
 
-### 5.2 Workout Logging
+### 4.3 Workout logging — decided
 
-- Users log workouts made up of one or more exercises, each with one or more **sets**.
-- Each set records **actual weight × actual reps** — not just "workout completed." This granularity is a hard requirement: any future auto-progression logic (v2) needs to know whether a prescribed set was actually hit, and a simple completion checkbox can't answer that.
-- An exercise catalog (name + muscle group + equipment) is seeded with ~40 common exercises; users can add custom exercises.
-- Workout history is viewable per-user.
+Domain model and UX fully resolved on [Workouts v1](https://github.com/chill-projects/swolemates/issues/3); doc + models sketch on PR #17 (`proto/workouts-v1`).
 
-### 5.3 Food Logging
+- **Templates and live workouts are separate table families** — `workout_templates`/`template_exercises` (uniform `sets × reps @ weight` per exercise) vs. `workouts`/`workout_exercises`/`workout_sets` (per-set actuals, `completed_at IS NULL` = in-progress). `start_workout` copies template targets into `prescribed_*` once per session, so a template edit never rewrites history.
+- **Supersets**: `superset_group` on both exercise tables — surfaced as a real requirement during UI prototyping, not originally scoped.
+- **In-workout mode** (mobile-first, the centerpiece): scrollable accordion, grouped by superset; sets are open-ended (add/remove freely, no fixed count); progressive-overload framing ("last time: 135lbs × 8,8,7" + notes-for-next-time) right where you pick the weight. No rest timer or duration display in v1. Decided after comparing 4 layouts in a throwaway prototype.
+- **Units**: canonical storage in lbs, per-user display preference for conversion (the preference field itself belongs to onboarding, [#9](https://github.com/chill-projects/swolemates/issues/9)).
+- **A standing weekly split** (`weekly_pattern`: day-of-week → template) generates each week's `planned_workouts`; no RRULE-style recurrence engine. Editing a given week doesn't touch the pattern.
+- **Streaks are commitment-based**, not a flat number: the target is however many workouts you commit to for the week (from `planned_workouts`, locked once generated); success is a pure count of completions reaching that target, regardless of which day or whether it traces back to a specific planned session.
+- **PR celebrations**: heaviest weight + e1RM only (not reps-at-weight); `personal_records` is a mutable current-record cache, not an append-only log, so a correction to a past set (via the now-model-visible `update_workout`) can't leave a stale PR standing.
+- Exercise catalog seeds the **full 873-exercise** free-exercise-db dataset at launch, not just the 40 legacy exercises.
 
-Two logging paths, in priority order:
+### 4.4 Partner accountability
 
-1. **Barcode / database search (primary)** — via Open Food Facts, for packaged/branded food. Free, no API key, but coverage is spotty for homemade or restaurant food — hence path 2.
-2. **Photo-based AI estimation (fallback)** — for anything not in the database. The user photographs their food; Claude (vision + structured JSON output) returns a per-item estimate of calories/protein/carbs/fat, **each field individually tagged with a confidence level (low/medium/high)**.
-   - The estimate is shown as an **editable draft**, not auto-logged. Low-confidence fields are visually flagged so the user knows exactly what to double-check before saving — this is intentionally more granular than a blanket "confirm everything" step, since photo-based portion/ingredient estimation is inherently imprecise (routinely off by 20–40% on portion size alone).
-   - Photos are resized client-side (~1024px long edge) before upload to control token cost.
+- Concept unchanged from the original draft: each partner sees the other's workout streaks/frequency/trends only, **never** food logs or weight — enforced below the UI.
+- Invite-code linking mechanism over WorkOS identities: [Partner v1: linking and dashboard](https://github.com/chill-projects/swolemates/issues/5) (open).
+- Enforcement mechanism — service-layer only (current pattern) vs. adding a DB-level boundary (SQL function / RLS-style) — is a deferred decision from `docs/design.md` §4, now its own ticket: [Partner-privacy enforcement approach](https://github.com/chill-projects/swolemates/issues/12) (open).
 
-All food logs (regardless of source) are **strictly private to the logging user** — see §5.4.
+### 4.5 Claude tool surface
 
-### 5.4 Partner Accountability
+Draft proposal up for reaction on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18, `docs/proposals/claude-tools-v1.md`): ~16 task-shaped tools, 4 shared `ui://` components, the celebrations mechanism, and a drafted `coach` MCP prompt. Contracts depend on workouts (§4.3) and nutrition (§4.2) finalizing — this ticket stays open until those do.
 
-- Two accounts link via a **one-time invite code/link** (not phone/email lookup, not hardcoded) — one user generates a code, the other redeems it after signing up.
-- Once linked, each partner can see the **other's**: workout streaks, workout completion frequency, and high-level trend data.
-- Each partner **cannot** see the other's detailed food logs or weight entries under any circumstance — this is enforced at the database (RLS) layer via a restricted aggregate function, not just hidden in the UI. A direct API/DB query for the partner's food logs must return zero rows.
+### 4.6 PWA
 
-### 5.5 PWA Requirements
-
-- Installable to homescreen on iOS 16.4+ and Android Chrome, with manifest + Apple-specific meta tags (iOS partially ignores manifest icons).
-- Service worker caches only the static app shell — **never** Supabase or Open Food Facts responses, since this is a mutation-heavy, data-current app where stale cached food/workout data would actively mislead the user.
-- No programmatic install prompt exists on iOS — the app must show its own "tap Share → Add to Home Screen" instructional banner.
-- Push notifications (e.g. streak reminders) are a stretch goal, not a v1 requirement, given the limited reliability of iOS PWA push.
+Installability (manifest/icons), app-shell-only service worker, iOS "Add to Home Screen" banner — how much of this ships in v1 vs. later is open: [PWA scope for v1](https://github.com/chill-projects/swolemates/issues/8).
 
 ---
 
-## 6. Data Model Summary
+## 5. Exercise & food data sources
 
-(Full schema lives in `supabase/migrations/`, not duplicated here — this is the shape.)
+- **Exercises**: [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain), vendored as a static dataset at seed time — no runtime API, no external network from inside a component's sandbox. All 40 legacy starter exercises resolve against it. ([research ticket](https://github.com/chill-projects/swolemates/issues/15))
+- **Food**: Open Food Facts API v3 + Search-a-licious, no auth required, proper User-Agent, 15/10 req/min limits. ([research ticket](https://github.com/chill-projects/swolemates/issues/11))
 
-| Table | Purpose | Partner visibility |
-|---|---|---|
-| `profiles` | goal, secondary goal, routine, onboarding state | Name/avatar only, via a public view |
-| `partner_invites` / `partner_links` | invite code lifecycle + the bidirectional link | N/A (own invites only) |
-| `exercises` | shared catalog + user custom entries | Shared catalog |
-| `workouts` / `workout_exercises` / `workout_sets` | per-set actual weight × reps | Aggregate stats only, via a `SECURITY DEFINER` RPC — never raw rows |
-| `food_logs` | calories/macros, source, per-field confidence for photo-based entries | **None — zero partner access, no exceptions** |
-| `weight_entries` | body weight over time | **None — zero partner access, no exceptions** |
+---
 
-The partner-visible workout summary (streak, weekly/monthly completion counts, last workout date) is exposed only through a database function that verifies the caller is actually linked to the target user before returning anything — this is a security boundary enforced in Postgres, not something the frontend can accidentally bypass.
+## 6. Coaching: what's in v1 vs. deferred
+
+This is a sharper split than the original draft's "coaching is all v2," because chat-based coaching turns out to need **no dedicated feature** — Claude coaches simply by having the right tools:
+
+- **In v1**: Claude, in its own chat (never embedded in the website), coaches conversationally using tools that expose goals, history, and trends, plus a `coach` MCP prompt (shape TBD on [#6](https://github.com/chill-projects/swolemates/issues/6)). This is "push the user toward their goals and progressive overload" as an emergent property of Claude reasoning over real data — no rule engine to build.
+- **Deferred to v2**: the original PRD's §8-style **autonomous, codified rule engine** — hard-coded thresholds ("+2.5–5 lbs after 2 consecutive sessions," deload every 4th week, momentum/recovery state machine driven by a daily self-report check-in). That design is preserved below as a reference for when it's picked back up; it needs real v1 usage data to validate its thresholds against.
+
+### V2 — Autonomous Coaching Rule Engine (specified, deferred)
+
+<details>
+<summary>Full spec, collapsed — not built in v1</summary>
+
+**Onboarding (learn the user once):** primary + optional secondary fitness goal, current routine/equipment/availability, confirmed back as a summary.
+
+**Daily decision engine**, self-reported streak/recovery data (no wearables):
+- 3+ workouts in a row → push slightly harder; 5+ consecutive days → watch for overtraining via self-report, not biometrics
+- Missed 1 day → no comment; 2–3 days → gentle acknowledgment; 4–7 days → reset to ~20–30 min at 60%; 2+ weeks → full reset to Week 1, framed as a fresh start
+- Soreness/fatigue self-report drives active-recovery routing
+
+**Progressive overload by goal type**: strength (weight bump after 2 clean sessions, deload every 4th week), weight loss (cardio/step/frequency ramps, weekly-average bodyweight trend), running (10% rule, easy/tempo/long rotation, recovery weeks), general fitness (frequency + duration ramps, modality mixing).
+
+**Recovery signal**: daily self-report check-in (energy 1–5, soreness by muscle group, sleep quality 1–5) substitutes for wearable/HealthKit data, which is out of scope — a real integration is a possible future upgrade that wouldn't change the engine's shape.
+
+**Build-order rationale**: this layers on top of real v1 logging data so its thresholds can be validated against actual usage rather than designed blind.
+
+</details>
 
 ---
 
 ## 7. V1 Success Criteria
 
-- Both users can independently sign up, complete onboarding, and link their accounts via invite code.
-- Both users can log a full workout with per-set weight/reps and see it in history.
-- Both users can log food via barcode search and via photo (with confidence-flagged, editable AI estimates).
+- Both users can independently sign up via WorkOS, complete onboarding, and link their accounts.
+- Both users can log a full workout with per-set weight/reps (including supersets and open-ended sets) and see it in history, from either surface.
+- Both users can log food via barcode/database search, photo, and text description — all funneling into one shared, editable card, no metered backend AI call.
+- Claude, in chat, can answer trend/progress questions and coach conversationally off real logged data.
 - Each user can see the other's workout streak/frequency stats, and a direct attempt to query the other's food logs or weight entries returns nothing.
-- The app installs to the homescreen on both an iOS and an Android device and functions with the browser chrome hidden (standalone mode).
+- (Pending [#8](https://github.com/chill-projects/swolemates/issues/8)) The app installs to the homescreen and functions in standalone mode.
 
 ---
 
-## 8. V2 — AI Coach (Specified, Deferred)
+## 8. Where the detail lives
 
-This section captures the full coaching-engine design as specified by the user. **Not built in v1** — it requires real logged workout/food data from v1 to design the rule thresholds against, and requires the recovery-signal approach below (self-report) to be layered onto the daily logging flow.
+This doc stays intentionally high-level — an index, not the store. For anything below the summary line:
 
-### 8.1 First-time onboarding (learn the user)
+- **Platform/architecture detail**: `docs/design.md`, `docs/auth.md`
+- **Per-feature domain model + UX detail**: the linked ticket above, and its linked proposal doc/PR if one exists (`docs/proposals/*.md`)
+- **What's decided vs. still open, at a glance**: the [wayfinder map](https://github.com/chill-projects/swolemates/issues/1) — its "Decisions so far" and open child issues are more current than this doc will ever be in real time
 
-Ask once, save permanently, never re-ask unless the user says something changed:
-1. Primary fitness goal (e.g. lose weight, build muscle, run a 5K, get more active, reduce stress, improve mobility, train for an event, body recomposition)
-2. Secondary goal (optional)
-3. Current workout routine, including reps/sets where applicable
+### Open tickets, as of this writing
 
-Confirm back a summary: *"Got it. You want to [goal], you have [equipment], you can do [X] days a week for [X] minutes, and you're at the [level] level. I'll avoid [limitations]. Let's go."*
-
-### 8.2 Daily decision engine
-
-**Momentum check (self-reported streak data, no wearables):**
-- 3+ workouts in a row → push slightly harder (add a set, bump a weight suggestion, add a finisher, extend by 5 min)
-- 5+ consecutive days → watch for overtraining via self-reported energy/soreness/sleep (see §8.4) rather than biometric HR data
-- Missed 1 day → no comment, pick up where they left off
-- Missed 2–3 days → acknowledge without guilt, prescribe something manageable
-- Missed 4–7 days → gentle reset, ~20–30 min at 60% intensity
-- Missed 2+ weeks → full reset to Week 1 difficulty, framed as a fresh start
-
-**Soreness & recovery check (self-report driven):**
-- Reported soreness in a specific muscle group → don't train that group; active recovery or a different focus
-- Reported general fatigue / "feeling off" → drop to a light workout (walk, mobility, easy yoga)
-- Hard workout yesterday + self-reported poor sleep → automatic active recovery day
-
-### 8.3 Progressive overload system, by goal type
-
-**Strength:**
-- Track suggested weights per major lift (squat, deadlift, bench, overhead press, rows)
-- +2.5–5 lbs after 2 consecutive sessions hitting all prescribed sets/reps
-- Fail a set → hold weight next session; fail twice in a row → drop 10%, rebuild
-- Every 4th week is a deload: −40% volume, −20% intensity, framed as intentional recovery
-
-**Weight loss:**
-- +5 min cardio/week or +1 interval per session
-- Step target +500/week toward 10k
-- +1 strength session every 3–4 weeks
-- Track weekly-average bodyweight trend (not daily fluctuation)
-
-**Running/endurance:**
-- 10% rule — never increase weekly mileage more than 10%
-- Rotate easy / tempo / long-run days
-- Every 4th week: −30% mileage for recovery
-- Track pace/distance trend
-
-**General fitness / get more active:**
-- Start 3x/week, 20–30 min
-- +5 min every 2 weeks
-- Add a 4th day after 3+ consistent weeks
-- Mix modalities: strength / cardio / flexibility-or-fun
-
-### 8.4 Recovery data source (resolved during interview)
-
-The original spec referenced resting HR trend and sleep-tracker data. Since wearable/HealthKit integration was explicitly ruled out for this app, v2 will substitute a **daily self-report check-in** (energy level 1–5, soreness by muscle group, sleep quality 1–5) as the input to the momentum/recovery logic above, rather than biometric data. This keeps a single logging mechanism (the app itself) instead of requiring an external integration, and leaves a real wearable integration as a possible future upgrade without changing the shape of the decision engine.
-
-### 8.5 Build-order rationale
-
-v1 ships plain logging (workouts, food) plus the partner dashboard, with no coaching intelligence. v2 layers the decision engine above on top of that real, per-set/per-log data — this lets the progressive-overload thresholds and momentum rules be validated against actual usage rather than designed blind.
+| Ticket | Question |
+|---|---|
+| [#5 Partner v1](https://github.com/chill-projects/swolemates/issues/5) | Invite/link mechanism + dashboard over WorkOS identities |
+| [#6 Claude tool surface](https://github.com/chill-projects/swolemates/issues/6) | Final tool/component/prompt shapes for v1 |
+| [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
+| [#9 Onboarding](https://github.com/chill-projects/swolemates/issues/9) | What profile data v1 still collects, and when |
+| [#12 Partner-privacy enforcement](https://github.com/chill-projects/swolemates/issues/12) | Service-layer isolation vs. a DB-level boundary |
+| [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
+| [#19 TDEE + weight tracking](https://github.com/chill-projects/swolemates/issues/19) | Goal-calculation assist + weight as a trackable |
 
 ---
 
-## 9. Open Questions / Future Considerations
+## 9. Future Considerations
 
-- Exact daily check-in UI/UX for §8.4 self-report data — not yet designed.
-- Whether push notifications become worth building once the app has real daily-active usage data.
-- Whether a real wearable integration (Apple Health, Whoop, Oura) gets added later as an upgrade to the recovery signal, per §8.4.
-- Cost monitoring for Claude API usage if photo-based food logging volume grows beyond "a couple of meals a day for two people."
+- The V2 autonomous coaching rule engine (§6).
+- Streak/consistency-calendar specifics — sharpens once workouts + partner designs land.
+- Live-update patterns beyond a user's own data (e.g. partner dashboard updating when the partner logs).
+- Push notifications — stretch goal, revisit once PWA scope resolves.
+- A real wearable integration (Apple Health, Whoop, Oura) as an upgrade to the V2 recovery signal.
+- Whether any legacy Supabase data needs migrating, or v1 starts empty.
+- Cost monitoring if usage patterns ever approach a metered AI call again (currently none exist in the design).
