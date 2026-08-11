@@ -79,10 +79,9 @@ Domain model and UX fully resolved on [Workouts v1](https://github.com/chill-pro
 - **PR celebrations**: heaviest weight + e1RM only (not reps-at-weight); `personal_records` is a mutable current-record cache, not an append-only log, so a correction to a past set (via the now-model-visible `update_workout`) can't leave a stale PR standing.
 - Exercise catalog seeds the **full 873-exercise** free-exercise-db dataset at launch, not just the 40 legacy exercises.
 
-### 4.4 Partner accountability
+### 4.4 Partner accountability — decided (linking/dashboard); enforcement mechanism still open
 
-- Concept unchanged from the original draft: each partner sees the other's workout streaks/frequency/trends only, **never** food logs or weight — enforced below the UI.
-- Invite-code linking mechanism over WorkOS identities: [Partner v1: linking and dashboard](https://github.com/chill-projects/swolemates/issues/5) (open).
+Resolved on [Partner v1](https://github.com/chill-projects/swolemates/issues/5): SPA-only (no partner data via chat/`get_progress`, per §4.5) — a partner sees workout streak (the new weekly-commitment shape, §4.3), workout frequency, the new nutrition streak (a number, not the underlying logs), and PRs; food logs and weight entries stay off-limits with no exceptions. Invite/link mechanics port the legacy design directly onto WorkOS-sub identities: one partner max hard-enforced, a public unauthenticated invite-preview page, display name only (no avatar — not currently a WorkOS claim this app configures).
 - Enforcement mechanism — service-layer only (current pattern) vs. adding a DB-level boundary (SQL function / RLS-style) — is a deferred decision from `docs/design.md` §4, now its own ticket: [Partner-privacy enforcement approach](https://github.com/chill-projects/swolemates/issues/12) (open).
 
 ### 4.5 Claude tool surface — decided
@@ -92,7 +91,7 @@ Resolved on [#6](https://github.com/chill-projects/swolemates/issues/6) (PR #18,
 - `log_set` is model-visible — texting a set mid-workout ("bench 185x8") works from chat, auto-starting a session if none is active and auto-continuing one within 90 minutes of the last logged set with no question asked; past that, Claude asks rather than guesses.
 - Chat-side corrections are `update_workout`/`update_nutrition_log` (edit a specific past record) plus a lightweight `amend_last_log` ("undo that," no id required) — not a general delete.
 - Nutrition gets a daily streak too, tied to a new `is_streak_target` flag on `goals`: whichever goal is marked drives the streak (calories for weight loss, protein for muscle building), not a generic logging-consistency metric.
-- `get_progress` excludes partner data entirely for v1 — nothing to build against until partner visibility (§4.4) resolves.
+- `get_progress` excludes partner data entirely for v1 by design — the partner dashboard (§4.4) is SPA-only, not a chat capability.
 
 ### 4.6 PWA
 
@@ -159,7 +158,6 @@ This doc stays intentionally high-level — an index, not the store. For anythin
 
 | Ticket | Question |
 |---|---|
-| [#5 Partner v1](https://github.com/chill-projects/swolemates/issues/5) | Invite/link mechanism + dashboard over WorkOS identities |
 | [#8 PWA scope](https://github.com/chill-projects/swolemates/issues/8) | How much of §3's PWA intent ships in v1 |
 | [#12 Partner-privacy enforcement](https://github.com/chill-projects/swolemates/issues/12) | Service-layer isolation vs. a DB-level boundary |
 | [#13 Execution order](https://github.com/chill-projects/swolemates/issues/13) | Build order, what's cut if anything, definition of done per slice |
