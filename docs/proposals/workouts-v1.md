@@ -314,8 +314,15 @@ Model-visible entry points (all also return `summary` text for non-UI hosts):
   reps not 6"). Matches the vision's "log/tweak records in chat" capability directly,
   same service call as the app-only edit path, and is the only way to correct a
   wrong `personal_records`-triggering set from chat (§2).
+- `log_set(exercise, weight?, reps, sets?, note?)` — **corrected to model-visible**
+  during ticket #6 (addendum, 2026-08-11): originally listed app-only below, but #6's
+  in-workout-via-chat premise ("bench 185x8" texted mid-workout) needs it callable
+  from chat. `visibility=["model","app"]` — the component's own "+ set" button still
+  calls it directly too. Auto-starts a session if none is active; auto-continues an
+  open one within 90 minutes of the last logged set with no question, past that
+  Claude asks rather than guesses — separate from the 24h abandonment rule (§5).
 
-App-only (`visibility=["app"]`, iframe-driven): `log_set`, `update_workout_entry`
+App-only (`visibility=["app"]`, iframe-driven): `update_workout_entry`
 (add/remove/reorder exercise or set mid-workout, edit next-time note),
 `update_workout_template`, `get_active_workout`. Mutations return the full payload
 (tmpx `_items_payload` pattern) so components re-render from any result. Exact
