@@ -44,5 +44,6 @@ from app.mcp import (  # noqa: E402,F401
     food_facts_tools,
     nutrition_tools,
     profile_tools,
+    tdee_tools,
     tmpx_tools,
 )

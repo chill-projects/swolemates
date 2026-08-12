@@ -5,12 +5,13 @@ defaults haven't been written yet, not that the caller asked for something inval
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
-from app.models.profile import UserProfile, WeightUnit
+from app.models.profile import ActivityLevel, BiologicalSex, GoalType, UserProfile, WeightUnit
 
 
 async def get_or_create_profile(session: AsyncSession, user_sub: str) -> UserProfile:
@@ -29,12 +30,27 @@ async def update_profile(
     *,
     weight_unit: WeightUnit | None = None,
     coach_notes: str | None = None,
+    sex: BiologicalSex | None = None,
+    age: int | None = None,
+    height_in: Decimal | None = None,
+    activity_level: ActivityLevel | None = None,
+    goal_type: GoalType | None = None,
 ) -> UserProfile:
     profile = await get_or_create_profile(session, user_sub)
     if weight_unit is not None:
         profile.weight_unit = weight_unit
     if coach_notes is not None:
         profile.coach_notes = coach_notes.strip() or None
+    if sex is not None:
+        profile.sex = sex
+    if age is not None:
+        profile.age = age
+    if height_in is not None:
+        profile.height_in = height_in
+    if activity_level is not None:
+        profile.activity_level = activity_level
+    if goal_type is not None:
+        profile.goal_type = goal_type
     await session.flush()
     events.publish(user_sub, "profile")
     return profile

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "./client";
-import { useCompleteOnboarding, useProfile, useUpdateProfile } from "./profile";
+import { useCalculateTargets, useCompleteOnboarding, useProfile, useUpdateProfile } from "./profile";
 
 vi.mock("./client", () => ({
   api: { GET: vi.fn(), PATCH: vi.fn(), POST: vi.fn() },
@@ -50,6 +50,37 @@ describe("useUpdateProfile", () => {
     expect(api.PATCH).toHaveBeenCalledWith("/api/profile", {
       body: { weight_unit: "kg", coach_notes: "bad knee" },
     });
+  });
+});
+
+describe("useCalculateTargets", () => {
+  it("POSTs to the calculate-targets endpoint", async () => {
+    vi.mocked(api.POST).mockResolvedValue({
+      data: { tdee: 1997, calories: 1697, protein_g: 117, carbs_g: 193, fat_g: 51, fiber_g: 24 },
+      error: undefined,
+    } as Awaited<ReturnType<typeof api.POST>>);
+
+    const { result } = renderHook(() => useCalculateTargets(), { wrapper });
+    result.current.mutate();
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.POST).toHaveBeenCalledWith("/api/tdee/calculate-targets");
+    expect(result.current.data?.calories).toBe(1697);
+  });
+
+  it("surfaces the backend's detail message on failure", async () => {
+    vi.mocked(api.POST).mockResolvedValue({
+      data: undefined,
+      error: { detail: "Need a bit more info before I can calculate targets: sex." },
+    } as Awaited<ReturnType<typeof api.POST>>);
+
+    const { result } = renderHook(() => useCalculateTargets(), { wrapper });
+    result.current.mutate();
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.message).toBe(
+      "Need a bit more info before I can calculate targets: sex.",
+    );
   });
 });
 

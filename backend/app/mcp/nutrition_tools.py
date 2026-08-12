@@ -345,7 +345,10 @@ async def set_goals(goals: list[dict]) -> str:
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        updated = await service.set_goals(session, user_sub, goals=goals)
+        try:
+            updated = await service.set_goals(session, user_sub, goals=goals)
+        except ValueError as exc:
+            return str(exc)
         return ", ".join(f"{g.trackable_key}: {g.target_value}" for g in updated)
 
 

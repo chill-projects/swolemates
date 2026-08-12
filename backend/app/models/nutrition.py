@@ -21,6 +21,11 @@ class TrackableType(Base):
     `ALTER TABLE` — the 5 starter rows (calories/protein_g/carbs_g/fat_g/fiber_g) are
     seeded inside the migration that creates this table, since this app has no other
     pre-deploy seeding step yet (`docs/design.md` §5: only `alembic upgrade head`).
+
+    `streak_eligible` (#19, resolved) is separate from `goal_eligible`: `weight_lbs`
+    is goal-eligible (you can set a target weight) but not streak-eligible — weight
+    reflects fat *and* muscle, so it isn't a daily pass/fail metric the way
+    calories/protein are. `set_goals` enforces this when `is_streak_target` is set.
     """
 
     __tablename__ = "trackable_types"
@@ -30,6 +35,7 @@ class TrackableType(Base):
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     goal_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    streak_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class Log(Base, TimestampMixin):

@@ -115,6 +115,22 @@ async def test_updating_an_existing_goal_alongside_a_streak_target_over_rest(
     assert by_key["calories"]["is_streak_target"] is True
 
 
+async def test_set_goals_400s_over_rest_for_a_non_streak_eligible_trackable(
+    client: AsyncClient,
+) -> None:
+    """Regression: set_goals' streak-eligibility ValueError (#19) wasn't caught by
+    this route, so it 500'd instead of 400ing — caught live while smoke-testing."""
+    resp = await client.put(
+        "/api/nutrition/goals",
+        json={
+            "goals": [
+                {"trackable_key": "weight_lbs", "target_value": "125", "is_streak_target": True}
+            ]
+        },
+    )
+    assert resp.status_code == 400
+
+
 async def test_set_then_get_goals_over_rest(client: AsyncClient) -> None:
     resp = await client.put(
         "/api/nutrition/goals",
@@ -127,14 +143,25 @@ async def test_set_then_get_goals_over_rest(client: AsyncClient) -> None:
     assert listed.json()[0]["target_value"] == "2200"
 
 
-async def test_five_starter_trackable_types_are_seeded(session: AsyncSession) -> None:
+async def test_starter_trackable_types_are_seeded(session: AsyncSession) -> None:
     types = await service.list_trackable_types(session)
     by_key = {t.key: t for t in types}
 
-    assert set(by_key) == {"calories", "protein_g", "carbs_g", "fat_g", "fiber_g"}
+    assert set(by_key) == {
+        "calories",
+        "protein_g",
+        "carbs_g",
+        "fat_g",
+        "fiber_g",
+        "weight_lbs",
+    }
     assert all(t.goal_eligible for t in types)
     assert by_key["calories"].unit == "kcal"
     assert by_key["protein_g"].unit == "g"
+    # weight_lbs (#19, resolved) is goal-eligible but not streak-eligible; every
+    # nutrition macro stays streak-eligible.
+    assert by_key["weight_lbs"].streak_eligible is False
+    assert all(t.streak_eligible for k, t in by_key.items() if k != "weight_lbs")
 
 
 async def test_log_nutrition_writes_one_header_and_all_values(session: AsyncSession) -> None:
@@ -319,6 +346,20 @@ async def test_setting_a_new_streak_target_clears_the_old_one(session: AsyncSess
     assert goals["protein_g"].is_streak_target is True
 
 
+async def test_set_goals_rejects_streak_target_on_a_non_streak_eligible_trackable(
+    session: AsyncSession,
+) -> None:
+    """weight_lbs is goal-eligible but not streak-eligible (#19, resolved) — a flat
+    or rising weigh-in during genuine recomposition isn't a "miss" the way a
+    calorie overshoot is."""
+    with pytest.raises(ValueError, match="weight_lbs"):
+        await service.set_goals(
+            session,
+            TEST_USER,
+            goals=[{"trackable_key": "weight_lbs", "target_value": 140, "is_streak_target": True}],
+        )
+
+
 async def test_nutrition_day_sums_todays_logs_against_goals(session: AsyncSession) -> None:
     await service.set_goals(
         session,
@@ -388,6 +429,25 @@ async def test_nutrition_day_bars_show_goal_eligible_trackables_without_a_target
     assert float(bars["fat_g"].consumed) == 20
     assert bars["fat_g"].target is None
     assert day.streak_key is None
+
+
+async def test_nutrition_day_bars_exclude_weight_even_with_a_goal_and_logs(
+    session: AsyncSession,
+) -> None:
+    """weight_lbs is goal-eligible (#19, resolved) but deliberately excluded from
+    the day's macro bars — its progress belongs in its own progress-bar/graph
+    framing, not mixed in with Protein/Carbs/Fat/Fiber."""
+    await service.set_goals(
+        session, TEST_USER, goals=[{"trackable_key": "weight_lbs", "target_value": 140}]
+    )
+    await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 150}]
+    )
+    await session.flush()
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+
+    assert "weight_lbs" not in {b.trackable_key for b in day.bars}
 
 
 async def test_nutrition_day_excludes_other_users_logs_and_older_days(

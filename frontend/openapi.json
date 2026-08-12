@@ -1,6 +1,17 @@
 {
   "components": {
     "schemas": {
+      "ActivityLevel": {
+        "enum": [
+          "sedentary",
+          "light",
+          "moderate",
+          "active",
+          "very_active"
+        ],
+        "title": "ActivityLevel",
+        "type": "string"
+      },
       "AmendLastLogOut": {
         "properties": {
           "deleted": {
@@ -60,6 +71,52 @@
           "environment"
         ],
         "title": "AuthConfigOut",
+        "type": "object"
+      },
+      "BiologicalSex": {
+        "enum": [
+          "male",
+          "female"
+        ],
+        "title": "BiologicalSex",
+        "type": "string"
+      },
+      "CalculateTargetsResponse": {
+        "properties": {
+          "calories": {
+            "title": "Calories",
+            "type": "integer"
+          },
+          "carbs_g": {
+            "title": "Carbs G",
+            "type": "integer"
+          },
+          "fat_g": {
+            "title": "Fat G",
+            "type": "integer"
+          },
+          "fiber_g": {
+            "title": "Fiber G",
+            "type": "integer"
+          },
+          "protein_g": {
+            "title": "Protein G",
+            "type": "integer"
+          },
+          "tdee": {
+            "title": "Tdee",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tdee",
+          "calories",
+          "protein_g",
+          "carbs_g",
+          "fat_g",
+          "fiber_g"
+        ],
+        "title": "CalculateTargetsResponse",
         "type": "object"
       },
       "DayLogItemOut": {
@@ -313,6 +370,16 @@
         ],
         "title": "GoalOut",
         "type": "object"
+      },
+      "GoalType": {
+        "enum": [
+          "lose_weight",
+          "maintain",
+          "gain_muscle",
+          "recomp"
+        ],
+        "title": "GoalType",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -692,6 +759,27 @@
       },
       "ProfileOut": {
         "properties": {
+          "activity_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age"
+          },
           "coach_notes": {
             "anyOf": [
               {
@@ -702,6 +790,28 @@
               }
             ],
             "title": "Coach Notes"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "height_in": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height In"
           },
           "onboarding_completed_at": {
             "anyOf": [
@@ -715,6 +825,16 @@
             ],
             "title": "Onboarding Completed At"
           },
+          "sex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BiologicalSex"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "weight_unit": {
             "$ref": "#/components/schemas/WeightUnit"
           }
@@ -722,13 +842,41 @@
         "required": [
           "weight_unit",
           "coach_notes",
-          "onboarding_completed_at"
+          "onboarding_completed_at",
+          "sex",
+          "age",
+          "height_in",
+          "activity_level",
+          "goal_type"
         ],
         "title": "ProfileOut",
         "type": "object"
       },
       "ProfileUpdate": {
         "properties": {
+          "activity_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "age": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 120.0,
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age"
+          },
           "coach_notes": {
             "anyOf": [
               {
@@ -740,6 +888,41 @@
               }
             ],
             "title": "Coach Notes"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "height_in": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height In"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BiologicalSex"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "weight_unit": {
             "anyOf": [
@@ -1792,6 +1975,27 @@
         "summary": "Complete Onboarding",
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/api/tdee/calculate-targets": {
+      "post": {
+        "operationId": "calculateTargets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculateTargetsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Calculate Targets",
+        "tags": [
+          "tdee"
         ]
       }
     },

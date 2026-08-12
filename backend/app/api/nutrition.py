@@ -235,5 +235,10 @@ async def get_goals(user_sub: CurrentUser, session: DbSession) -> list[GoalOut]:
 async def set_goals(
     body: SetGoalsRequest, user_sub: CurrentUser, session: DbSession
 ) -> list[GoalOut]:
-    goals = await service.set_goals(session, user_sub, goals=[g.model_dump() for g in body.goals])
+    try:
+        goals = await service.set_goals(
+            session, user_sub, goals=[g.model_dump() for g in body.goals]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return [GoalOut.model_validate(g) for g in goals]

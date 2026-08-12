@@ -18,7 +18,15 @@ async def update_profile(
     body: ProfileUpdate, user_sub: CurrentUser, session: DbSession
 ) -> ProfileOut:
     profile = await service.update_profile(
-        session, user_sub, weight_unit=body.weight_unit, coach_notes=body.coach_notes
+        session,
+        user_sub,
+        weight_unit=body.weight_unit,
+        coach_notes=body.coach_notes,
+        sex=body.sex,
+        age=body.age,
+        height_in=body.height_in,
+        activity_level=body.activity_level,
+        goal_type=body.goal_type,
     )
     return ProfileOut.model_validate(profile)
 

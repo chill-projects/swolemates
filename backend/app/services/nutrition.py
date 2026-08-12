@@ -72,6 +72,23 @@ async def get_log_values(session: AsyncSession, user_sub: str, log_id: uuid.UUID
     return list(result.scalars())
 
 
+async def get_latest_trackable_value(
+    session: AsyncSession, user_sub: str, trackable_key: str
+) -> Decimal | None:
+    """Most recently logged value for one trackable key — e.g. the caller's current
+    weight, for the TDEE calculator (#19). Ordered by `logged_at`, not insertion
+    order: a weigh-in is meaningfully "current" by when it happened, not when it
+    was typed in."""
+    result = await session.execute(
+        select(LogValue.value)
+        .join(Log, Log.id == LogValue.log_id)
+        .where(Log.user_id == user_sub, LogValue.trackable_key == trackable_key)
+        .order_by(Log.logged_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def update_nutrition_log(
     session: AsyncSession,
     user_sub: str,
@@ -154,8 +171,20 @@ async def get_goals(session: AsyncSession, user_sub: str) -> list[Goal]:
 async def set_goals(session: AsyncSession, user_sub: str, *, goals: list[dict]) -> list[Goal]:
     """Upserts each entry by (user_sub, trackable_key). At most one goal can carry
     is_streak_target — setting one clears it from every other goal of this user's
-    first, service-side (not a DB constraint — #6, resolved)."""
-    if any(g.get("is_streak_target") for g in goals):
+    first, service-side (not a DB constraint — #6, resolved). Not every goal-eligible
+    trackable can carry it, though: weight_lbs is goal-eligible but not
+    streak-eligible (#19, resolved) — a flat or rising weigh-in during genuine
+    recomposition isn't a "miss" the way a calorie overshoot is."""
+    streak_keys = [g["trackable_key"] for g in goals if g.get("is_streak_target")]
+    if streak_keys:
+        result = await session.execute(
+            select(TrackableType).where(TrackableType.key.in_(streak_keys))
+        )
+        types = {t.key: t for t in result.scalars()}
+        ineligible = [k for k in streak_keys if types.get(k) and not types[k].streak_eligible]
+        if ineligible:
+            raise ValueError(f"{', '.join(ineligible)} can't be a streak target.")
+
         await session.execute(
             update(Goal).where(Goal.user_id == user_sub).values(is_streak_target=False)
         )
@@ -560,7 +589,10 @@ async def get_nutrition_day(
             target=goals_by_key[key].target_value if key in goals_by_key else None,
         )
         for key, t in types_by_key.items()
-        if key != "calories" and t.goal_eligible
+        # category == "nutrition" excludes weight_lbs (#19, resolved): it's
+        # goal-eligible so a target can be set, but its progress belongs in its own
+        # progress-bar/graph framing, not mixed into the day's macro bars.
+        if key != "calories" and t.goal_eligible and t.category == "nutrition"
     ]
 
     return NutritionDay(

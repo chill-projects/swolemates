@@ -2,16 +2,18 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useCompleteOnboarding, useUpdateProfile } from "../api/profile";
+import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
 import { ProfileForm } from "./ProfileForm";
 
 vi.mock("../api/profile", () => ({
   useUpdateProfile: vi.fn(),
   useCompleteOnboarding: vi.fn(),
+  useCalculateTargets: vi.fn(),
 }));
 
 const mutateUpdate = vi.fn();
 const mutateComplete = vi.fn();
+const mutateCalculate = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -23,6 +25,12 @@ beforeEach(() => {
     mutate: mutateComplete,
     isPending: false,
   } as unknown as ReturnType<typeof useCompleteOnboarding>);
+  vi.mocked(useCalculateTargets).mockReturnValue({
+    mutate: mutateCalculate,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  } as unknown as ReturnType<typeof useCalculateTargets>);
 });
 
 describe("ProfileForm", () => {
@@ -65,5 +73,67 @@ describe("ProfileForm", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     expect(mutateComplete).not.toHaveBeenCalled();
+  });
+
+  it("submits TDEE stats alongside weight unit and coach notes", async () => {
+    const user = userEvent.setup();
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+
+    await user.selectOptions(screen.getByLabelText(/^sex$/i), "female");
+    await user.type(screen.getByLabelText(/^age$/i), "25");
+    await user.type(screen.getByLabelText(/height \(ft\)/i), "5");
+    await user.type(screen.getByLabelText(/height \(in\)/i), "2");
+    await user.selectOptions(screen.getByLabelText(/activity level/i), "moderate");
+    await user.selectOptions(screen.getByLabelText(/^goal$/i), "recomp");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(mutateUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sex: "female",
+        age: 25,
+        height_in: 62,
+        activity_level: "moderate",
+        goal_type: "recomp",
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("calculates targets when the button is clicked", async () => {
+    const user = userEvent.setup();
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+
+    await user.click(screen.getByRole("button", { name: /calculate targets/i }));
+
+    expect(mutateCalculate).toHaveBeenCalled();
+  });
+
+  it("shows the calculated targets on success", () => {
+    vi.mocked(useCalculateTargets).mockReturnValue({
+      mutate: mutateCalculate,
+      isPending: false,
+      isSuccess: true,
+      isError: false,
+      data: { tdee: 1997, calories: 1697, protein_g: 117, carbs_g: 193, fat_g: 51, fiber_g: 24 },
+    } as unknown as ReturnType<typeof useCalculateTargets>);
+
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+
+    expect(screen.getByText(/1,997 cal\/day/i)).toBeInTheDocument();
+    expect(screen.getByText(/117g protein/i)).toBeInTheDocument();
+  });
+
+  it("shows an error message when calculation fails", () => {
+    vi.mocked(useCalculateTargets).mockReturnValue({
+      mutate: mutateCalculate,
+      isPending: false,
+      isSuccess: false,
+      isError: true,
+      error: new Error("Need a bit more info before I can calculate targets: sex."),
+    } as unknown as ReturnType<typeof useCalculateTargets>);
+
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+
+    expect(screen.getByText(/need a bit more info/i)).toBeInTheDocument();
   });
 });
