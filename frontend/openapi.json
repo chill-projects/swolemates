@@ -39,6 +39,96 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "FoodFactOut": {
+        "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "calories": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories"
+          },
+          "carbs_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbs G"
+          },
+          "fat_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G"
+          },
+          "fiber_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "protein_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G"
+          },
+          "serving_description": {
+            "title": "Serving Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "brand",
+          "serving_description",
+          "calories",
+          "protein_g",
+          "carbs_g",
+          "fat_g",
+          "fiber_g"
+        ],
+        "title": "FoodFactOut",
+        "type": "object"
+      },
       "GoalIn": {
         "properties": {
           "is_streak_target": {
@@ -521,6 +611,75 @@
         "summary": "Auth Config",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/food-facts/search": {
+      "get": {
+        "operationId": "searchFoodFacts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "barcode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barcode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FoodFactOut"
+                  },
+                  "title": "Response Searchfoodfacts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Food Facts",
+        "tags": [
+          "food-facts"
         ]
       }
     },

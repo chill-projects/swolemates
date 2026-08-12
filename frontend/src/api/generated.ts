@@ -28,6 +28,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/food-facts/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Food Facts */
+        get: operations["searchFoodFacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nutrition/goals": {
         parameters: {
             query?: never;
@@ -233,6 +250,25 @@ export interface components {
             /** Resource */
             resource: string;
         };
+        /** FoodFactOut */
+        FoodFactOut: {
+            /** Brand */
+            brand: string | null;
+            /** Calories */
+            calories: number | null;
+            /** Carbs G */
+            carbs_g: number | null;
+            /** Fat G */
+            fat_g: number | null;
+            /** Fiber G */
+            fiber_g: number | null;
+            /** Name */
+            name: string;
+            /** Protein G */
+            protein_g: number | null;
+            /** Serving Description */
+            serving_description: string;
+        };
         /** GoalIn */
         GoalIn: {
             /** Is Streak Target */
@@ -409,6 +445,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthConfigOut"];
+                };
+            };
+        };
+    };
+    searchFoodFacts: {
+        parameters: {
+            query?: {
+                query?: string | null;
+                barcode?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoodFactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
