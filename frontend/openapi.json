@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AmendLastLogOut": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NutritionLogOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "AmendLastLogOut",
+        "type": "object"
+      },
       "AuthConfigOut": {
         "properties": {
           "authkit_domain": {
@@ -39,12 +62,54 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "DayLogItemOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "values": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "values"
+        ],
+        "title": "DayLogItemOut",
+        "type": "object"
+      },
       "DayLogOut": {
         "properties": {
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DayLogItemOut"
+            },
+            "title": "Items",
+            "type": "array"
           },
           "logged_at": {
             "format": "date-time",
@@ -87,7 +152,8 @@
           "name",
           "logged_at",
           "meal_type",
-          "values"
+          "values",
+          "items"
         ],
         "title": "DayLogOut",
         "type": "object"
@@ -261,6 +327,48 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LogMealTemplateRequest": {
+        "properties": {
+          "logged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged At"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "multiplier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1",
+            "title": "Multiplier"
+          }
+        },
+        "title": "LogMealTemplateRequest",
+        "type": "object"
+      },
       "LogNutritionRequest": {
         "properties": {
           "entries": {
@@ -361,6 +469,94 @@
         "title": "LogOut",
         "type": "object"
       },
+      "MealTemplateItemOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "serving_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serving Description"
+          },
+          "values": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "serving_description",
+          "values"
+        ],
+        "title": "MealTemplateItemOut",
+        "type": "object"
+      },
+      "MealTemplateSummaryOut": {
+        "properties": {
+          "default_meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Meal Type"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MealTemplateItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "totals": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Totals",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "default_meal_type",
+          "items",
+          "totals"
+        ],
+        "title": "MealTemplateSummaryOut",
+        "type": "object"
+      },
       "NutritionDayOut": {
         "properties": {
           "bars": {
@@ -395,6 +591,13 @@
               }
             ],
             "title": "Streak Key"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/MealTemplateSummaryOut"
+            },
+            "title": "Templates",
+            "type": "array"
           }
         },
         "required": [
@@ -402,7 +605,8 @@
           "hero",
           "bars",
           "streak_key",
-          "logs"
+          "logs",
+          "templates"
         ],
         "title": "NutritionDayOut",
         "type": "object"
@@ -431,6 +635,59 @@
           "value"
         ],
         "title": "NutritionEntryIn",
+        "type": "object"
+      },
+      "NutritionLogOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "logged_at": {
+            "format": "date-time",
+            "title": "Logged At",
+            "type": "string"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "values": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "logged_at",
+          "meal_type",
+          "values"
+        ],
+        "title": "NutritionLogOut",
         "type": "object"
       },
       "ProfileOut": {
@@ -496,6 +753,52 @@
           }
         },
         "title": "ProfileUpdate",
+        "type": "object"
+      },
+      "SaveMealTemplateRequest": {
+        "properties": {
+          "default_meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Meal Type"
+          },
+          "log_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Log Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "name",
+          "log_ids"
+        ],
+        "title": "SaveMealTemplateRequest",
         "type": "object"
       },
       "SetGoalsRequest": {
@@ -638,6 +941,95 @@
           "goal_eligible"
         ],
         "title": "TrackableTypeOut",
+        "type": "object"
+      },
+      "UpdateMealTemplateItemRequest": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "serving_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serving Description"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "UpdateMealTemplateItemRequest",
+        "type": "object"
+      },
+      "UpdateNutritionLogRequest": {
+        "properties": {
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "title": "UpdateNutritionLogRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -978,6 +1370,320 @@
           }
         },
         "summary": "Log Nutrition",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/logs/amend-last": {
+      "post": {
+        "operationId": "amendLastLog",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNutritionLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmendLastLogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Amend Last Log",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/logs/{log_id}": {
+      "patch": {
+        "operationId": "updateNutritionLog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "log_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Log Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNutritionLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NutritionLogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Nutrition Log",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/templates": {
+      "get": {
+        "operationId": "listMealTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MealTemplateSummaryOut"
+                  },
+                  "title": "Response Listmealtemplates",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Meal Templates",
+        "tags": [
+          "nutrition"
+        ]
+      },
+      "post": {
+        "operationId": "saveMealTemplate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMealTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealTemplateSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Meal Template",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/templates/{template_id}": {
+      "delete": {
+        "operationId": "deleteMealTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Meal Template",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/templates/{template_id}/items/{item_id}": {
+      "patch": {
+        "operationId": "updateMealTemplateItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMealTemplateItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealTemplateSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Meal Template Item",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/templates/{template_id}/log": {
+      "post": {
+        "operationId": "logMealTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogMealTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LogOut"
+                  },
+                  "title": "Response Logmealtemplate",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Log Meal Template",
         "tags": [
           "nutrition"
         ]

@@ -50,6 +50,66 @@
       .log-name { font-weight: 600; }
       .log-meta { opacity: 0.6; font-size: 0.75rem; }
       .log-values { opacity: 0.7; font-size: 0.8rem; margin-top: 0.15rem; }
+      .log-top { display: flex; align-items: center; gap: 0.5rem; }
+
+      .remaining-card { background: var(--ring-fill); color: #fff; border: none; }
+      .remaining-card h2 { color: #fff; opacity: 0.85; }
+      .remaining-grid { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+      .remaining-item .n { font-family: ui-serif, Georgia, serif; font-size: 1.35rem; font-weight: 600; }
+      .remaining-item .l { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; margin-top: 0.1rem; }
+      .remaining-tip {
+        background: rgba(255, 255, 255, 0.15); border-radius: 0.6rem; padding: 0.55rem 0.7rem;
+        font-size: 0.78rem; line-height: 1.5; border-left: 3px solid #ff6f59;
+      }
+      .remaining-tip b { font-weight: 600; }
+
+      #templates { display: flex; gap: 0.6rem; overflow-x: auto; padding-bottom: 0.2rem; }
+      .template-card {
+        flex: 0 0 auto; min-width: 9.5rem; border: 1px solid var(--border);
+        border-radius: 0.6rem; padding: 0.6rem;
+      }
+      .template-total { font-size: 1.15rem; font-weight: 600; margin: 0.15rem 0; }
+      .template-macros { font-size: 0.7rem; }
+      .template-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+      .template-items { margin-top: 0.5rem; font-size: 0.75rem; }
+      .template-items li { padding: 0.3rem 0; border: none; }
+      .template-item-view {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        opacity: 0.75;
+      }
+      .template-item-view button { padding: 0.15rem 0.4rem; font-size: 0.7rem; }
+      .template-item-edit { margin-top: 0.3rem; display: flex; flex-direction: column; gap: 0.4rem; }
+      .template-item-edit input[type="text"] {
+        padding: 0.3rem 0.4rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.75rem;
+      }
+      .template-item-values { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .template-item-values label { display: flex; flex-direction: column; font-size: 0.65rem; opacity: 0.75; gap: 0.15rem; }
+      .template-item-values input {
+        width: 4.5rem; padding: 0.25rem 0.35rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.75rem;
+      }
+      .template-item-edit-actions { display: flex; gap: 0.4rem; }
+      .template-item-edit-actions button { padding: 0.25rem 0.55rem; font-size: 0.7rem; }
+
+      .group-toggle {
+        display: block; width: 100%; text-align: left;
+        border: none; background: none; color: inherit; padding: 0; cursor: pointer;
+        font: inherit; font-weight: 600;
+      }
+      .grouped-log-items { margin-top: 0.35rem; padding-left: 1.1rem; font-size: 0.75rem; opacity: 0.8; }
+      .grouped-log-items li { padding: 0.15rem 0; border: none; }
+
+      #save-template-bar { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+      #save-template-bar input {
+        flex: 1; padding: 0.4rem 0.5rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit;
+      }
+      button {
+        padding: 0.35rem 0.65rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit; cursor: pointer;
+        font-size: 0.8rem;
+      }
     </style>
   </head>
   <body>
@@ -74,9 +134,26 @@
 
     <p id="status" class="muted">Connecting…</p>
 
+    <section class="remaining-card">
+      <h2>You have left today</h2>
+      <div id="remaining-grid" class="remaining-grid"></div>
+      <div id="remaining-tip" class="remaining-tip"></div>
+    </section>
+
+    <section>
+      <h2>Meal templates</h2>
+      <div id="templates"></div>
+    </section>
+
     <section>
       <h2>Today's log</h2>
       <ul id="logs"></ul>
+      <!-- Deliberately not window.prompt(): the iframe is sandboxed without
+           allow-modals, where prompt()/alert()/confirm() are silently unusable. -->
+      <div id="save-template-bar" hidden>
+        <input id="template-name" type="text" placeholder="Template name" aria-label="Template name" />
+        <button type="button" id="save-template-btn">Save as template</button>
+      </div>
     </section>
 
     <script type="module" src="./main.ts"></script>

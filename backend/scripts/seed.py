@@ -35,12 +35,20 @@ NUTRITION_LOGS = [
         "entries": [
             {"trackable_key": "calories", "value": 450},
             {"trackable_key": "protein_g", "value": 32},
+            {"trackable_key": "carbs_g", "value": 48},
+            {"trackable_key": "fat_g", "value": 12},
+            {"trackable_key": "fiber_g", "value": 3},
         ],
         "name": "chicken and rice",
         "meal_type": "lunch",
     },
     {
-        "entries": [{"trackable_key": "calories", "value": 180}],
+        "entries": [
+            {"trackable_key": "calories", "value": 180},
+            {"trackable_key": "protein_g", "value": 25},
+            {"trackable_key": "carbs_g", "value": 9},
+            {"trackable_key": "fat_g", "value": 3},
+        ],
         "name": "protein shake",
         "meal_type": "snack",
     },

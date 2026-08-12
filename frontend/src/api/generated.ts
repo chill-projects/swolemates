@@ -97,6 +97,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nutrition/logs/amend-last": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Amend Last Log */
+        post: operations["amendLastLog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrition/logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Nutrition Log */
+        patch: operations["updateNutritionLog"];
+        trace?: never;
+    };
+    "/api/nutrition/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meal Templates */
+        get: operations["listMealTemplates"];
+        put?: never;
+        /** Save Meal Template */
+        post: operations["saveMealTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrition/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Meal Template */
+        delete: operations["deleteMealTemplate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrition/templates/{template_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Meal Template Item */
+        patch: operations["updateMealTemplateItem"];
+        trace?: never;
+    };
+    "/api/nutrition/templates/{template_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Meal Template */
+        post: operations["logMealTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nutrition/trackable-types": {
         parameters: {
             query?: never;
@@ -252,6 +355,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AmendLastLogOut */
+        AmendLastLogOut: {
+            /** Deleted */
+            deleted: boolean;
+            log?: components["schemas"]["NutritionLogOut"] | null;
+        };
         /** AuthConfigOut */
         AuthConfigOut: {
             /** Authkit Domain */
@@ -267,6 +376,20 @@ export interface components {
             /** Resource */
             resource: string;
         };
+        /** DayLogItemOut */
+        DayLogItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
         /** DayLogOut */
         DayLogOut: {
             /**
@@ -274,6 +397,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Items */
+            items: components["schemas"]["DayLogItemOut"][];
             /**
              * Logged At
              * Format: date-time
@@ -332,6 +457,18 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** LogMealTemplateRequest */
+        LogMealTemplateRequest: {
+            /** Logged At */
+            logged_at?: string | null;
+            /** Meal Type */
+            meal_type?: string | null;
+            /**
+             * Multiplier
+             * @default 1
+             */
+            multiplier: number | string;
+        };
         /** LogNutritionRequest */
         LogNutritionRequest: {
             /** Entries */
@@ -365,6 +502,40 @@ export interface components {
             /** Name */
             name: string | null;
         };
+        /** MealTemplateItemOut */
+        MealTemplateItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Serving Description */
+            serving_description: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
+        /** MealTemplateSummaryOut */
+        MealTemplateSummaryOut: {
+            /** Default Meal Type */
+            default_meal_type: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Items */
+            items: components["schemas"]["MealTemplateItemOut"][];
+            /** Name */
+            name: string;
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+        };
         /** NutritionDayOut */
         NutritionDayOut: {
             /** Bars */
@@ -379,6 +550,8 @@ export interface components {
             logs: components["schemas"]["DayLogOut"][];
             /** Streak Key */
             streak_key: string | null;
+            /** Templates */
+            templates: components["schemas"]["MealTemplateSummaryOut"][];
         };
         /** NutritionEntryIn */
         NutritionEntryIn: {
@@ -386,6 +559,27 @@ export interface components {
             trackable_key: string;
             /** Value */
             value: number | string;
+        };
+        /** NutritionLogOut */
+        NutritionLogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Logged At
+             * Format: date-time
+             */
+            logged_at: string;
+            /** Meal Type */
+            meal_type: string | null;
+            /** Name */
+            name: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
         };
         /** ProfileOut */
         ProfileOut: {
@@ -400,6 +594,17 @@ export interface components {
             /** Coach Notes */
             coach_notes?: string | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
+        };
+        /** SaveMealTemplateRequest */
+        SaveMealTemplateRequest: {
+            /** Default Meal Type */
+            default_meal_type?: string | null;
+            /** Log Ids */
+            log_ids: string[];
+            /** Name */
+            name: string;
+            /** Template Id */
+            template_id?: string | null;
         };
         /** SetGoalsRequest */
         SetGoalsRequest: {
@@ -458,6 +663,28 @@ export interface components {
             label: string;
             /** Unit */
             unit: string;
+        };
+        /** UpdateMealTemplateItemRequest */
+        UpdateMealTemplateItemRequest: {
+            /** Name */
+            name: string;
+            /** Serving Description */
+            serving_description?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: number | string;
+            };
+        };
+        /** UpdateNutritionLogRequest */
+        UpdateNutritionLogRequest: {
+            /** Meal Type */
+            meal_type?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: number | string;
+            } | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -651,6 +878,227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    amendLastLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNutritionLogRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmendLastLogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateNutritionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNutritionLogRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutritionLogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listMealTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealTemplateSummaryOut"][];
+                };
+            };
+        };
+    };
+    saveMealTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMealTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealTemplateSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteMealTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateMealTemplateItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMealTemplateItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealTemplateSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logMealTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogMealTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"][];
                 };
             };
             /** @description Validation Error */

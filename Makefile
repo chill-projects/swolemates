@@ -31,17 +31,18 @@ db-reset: ## Destroy the local database and rebuild it from migrations
 	@$(MAKE) -s db
 
 dev: ## Run backend + frontend + component-bundle watch together (http://localhost:5173)
-	@echo "backend  → http://localhost:8000"
+	@echo "backend  → http://localhost:8000  (SSE streams cap reload's graceful shutdown at 2s,"
+	@echo "            so an open browser tab's /events connection can't hang a file-watch reload)"
 	@echo "frontend → http://localhost:5173  (proxies /api and /mcp to the backend)"
 	@echo "mcp-apps → rebuilt on change (vite build --watch)"
 	@trap 'kill 0' EXIT INT TERM; \
-		( cd $(BACKEND) && uv run uvicorn app.main:app --reload --port 8000 ) & \
+		( cd $(BACKEND) && uv run uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 2 ) & \
 		( cd $(FRONTEND) && npm run dev -- --port 5173 ) & \
 		( cd $(FRONTEND) && npm run build:apps -- --watch --logLevel warn ) & \
 		wait
 
 dev-backend: ## Run only the backend, with reload
-	cd $(BACKEND) && uv run uvicorn app.main:app --reload --port 8000
+	cd $(BACKEND) && uv run uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 2
 
 dev-frontend: ## Run only the Vite dev server
 	cd $(FRONTEND) && npm run dev

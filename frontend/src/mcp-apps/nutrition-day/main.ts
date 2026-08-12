@@ -3,9 +3,15 @@
  *  - Claude, via the `ui://swolemates/nutrition-day.html` MCP resource
  *  - the SPA, via AppRenderer (an iframe + AppBridge backed by the REST API)
  *
- * Any tool call that changes today's totals (`log_nutrition`, `get_nutrition_day`)
- * returns this same payload shape, so the component re-renders fully from whichever
- * result the host pushes — no separate fetch, same pattern as tmpx.
+ * Any tool call that changes today's totals (`log_nutrition`, `get_nutrition_day`,
+ * `save_meal_template`, `log_meal_template`) returns this same payload shape, so the
+ * component re-renders fully from whichever result the host pushes — no separate
+ * fetch, same pattern as tmpx.
+ *
+ * No delete-template button here: `delete_meal_template` is a REST-only action (the
+ * resolved tool spec deliberately keeps chat delete-free), and this bundle runs
+ * unchanged inside Claude — a button calling an unregistered tool would work in the
+ * SPA and silently fail in Claude, so it's left out rather than shipped asymmetric.
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
@@ -18,12 +24,42 @@ interface TrackableProgress {
   target: number | null;
 }
 
+interface DayLogItem {
+  id: string;
+  name: string | null;
+  values: Record<string, number>;
+}
+
 interface DayLogEntry {
   id: string;
   name: string | null;
   logged_at: string;
   meal_type: string | null;
   values: Record<string, number>;
+  items: DayLogItem[];
+}
+
+interface MealTemplateItem {
+  id: string;
+  name: string;
+  serving_description: string | null;
+  values: Record<string, number>;
+}
+
+const TRACKABLE_LABELS: Record<string, string> = {
+  calories: "Calories",
+  protein_g: "Protein (g)",
+  carbs_g: "Carbs (g)",
+  fat_g: "Fat (g)",
+  fiber_g: "Fiber (g)",
+};
+
+interface MealTemplateSummary {
+  id: string;
+  name: string;
+  default_meal_type: string | null;
+  items: MealTemplateItem[];
+  totals: Record<string, number>;
 }
 
 interface NutritionDayPayload {
@@ -32,6 +68,7 @@ interface NutritionDayPayload {
   bars: TrackableProgress[];
   streak_key: string | null;
   logs: DayLogEntry[];
+  templates: MealTemplateSummary[];
   summary: string;
 }
 
@@ -49,7 +86,17 @@ const ringFillEl = $<SVGCircleElement>("ring-fill");
 const ringValueEl = $<HTMLSpanElement>("ring-value");
 const ringTargetEl = $<HTMLSpanElement>("ring-target");
 const barsEl = $<HTMLDivElement>("bars");
+const remainingGridEl = $<HTMLDivElement>("remaining-grid");
+const remainingTipEl = $<HTMLDivElement>("remaining-tip");
+const templatesEl = $<HTMLDivElement>("templates");
 const logsEl = $<HTMLUListElement>("logs");
+const saveBarEl = $<HTMLDivElement>("save-template-bar");
+const templateNameInput = $<HTMLInputElement>("template-name");
+const saveTemplateBtn = $<HTMLButtonElement>("save-template-btn");
+
+// Selection state for "save these as a template" — lives outside render() so it
+// survives the re-renders every tool call triggers.
+const selectedLogIds = new Set<string>();
 
 const app = new App({ name: "Swolemates Nutrition", version: "1.0.0" });
 
@@ -96,10 +143,250 @@ function renderBar(progress: TrackableProgress): HTMLDivElement {
   return row;
 }
 
+function macroLine(totals: Record<string, number>): string {
+  const parts: string[] = [];
+  if (totals.protein_g !== undefined) parts.push(`P ${Math.round(totals.protein_g)}g`);
+  if (totals.carbs_g !== undefined) parts.push(`C ${Math.round(totals.carbs_g)}g`);
+  if (totals.fat_g !== undefined) parts.push(`F ${Math.round(totals.fat_g)}g`);
+  return parts.join(" · ");
+}
+
+// Generalizes legacy TodaySummary.tsx's "you have left today" card + protein-focused
+// tip — but every macro's target is optional here (unlike the legacy version, which
+// assumed a full targets object), so the tip falls back gracefully when protein or
+// calories has no goal set yet.
+function renderRemaining(payload: NutritionDayPayload): void {
+  const items = [...payload.bars, payload.hero];
+  remainingGridEl.replaceChildren(
+    ...items.map((p) => {
+      const div = document.createElement("div");
+      div.className = "remaining-item";
+      const n = document.createElement("div");
+      n.className = "n";
+      const remaining = p.target !== null ? Math.max(p.target - p.consumed, 0) : null;
+      n.textContent =
+        remaining === null
+          ? "—"
+          : p.trackable_key === "calories"
+            ? Math.round(remaining).toLocaleString()
+            : `${Math.round(remaining)}${p.unit}`;
+      const l = document.createElement("div");
+      l.className = "l";
+      l.textContent = p.label;
+      div.append(n, l);
+      return div;
+    }),
+  );
+
+  const protein = payload.bars.find((b) => b.trackable_key === "protein_g");
+  let tip: string;
+  if (payload.logs.length === 0) {
+    tip = "<b>Nothing logged yet.</b> Log a meal to see today's picture.";
+  } else if (protein?.target != null) {
+    const remainingProtein = protein.target - protein.consumed;
+    if (remainingProtein <= 0) {
+      tip = "<b>Protein target hit.</b> Nice work today.";
+    } else if (remainingProtein <= 25) {
+      tip = `<b>Almost there on protein</b> — ${Math.round(remainingProtein)}g left.`;
+    } else {
+      tip = `<b>Protein still has room</b> — ${Math.round(remainingProtein)}g left.`;
+    }
+  } else if (payload.hero.target != null) {
+    const remainingCal = payload.hero.target - payload.hero.consumed;
+    tip =
+      remainingCal <= 0
+        ? "<b>Calorie target hit.</b> Nice work today."
+        : `<b>Plenty of room left</b> — ${Math.round(remainingCal).toLocaleString()} ${payload.hero.unit} left today.`;
+  } else {
+    tip = "Set a calorie or protein goal to get suggestions here.";
+  }
+  remainingTipEl.innerHTML = tip;
+}
+
+function renderTemplateItem(templateId: string, item: MealTemplateItem): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "template-item";
+
+  const view = document.createElement("div");
+  view.className = "template-item-view";
+  const text = document.createElement("span");
+  text.textContent = `${item.name} (${Math.round(item.values.calories ?? 0)} cal)`;
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.textContent = "Edit";
+  view.append(text, editBtn);
+
+  const form = document.createElement("div");
+  form.className = "template-item-edit";
+  form.hidden = true;
+
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = item.name;
+  nameInput.setAttribute("aria-label", `${item.name} name`);
+
+  const valuesRow = document.createElement("div");
+  valuesRow.className = "template-item-values";
+  const valueInputs: Record<string, HTMLInputElement> = {};
+  for (const [key, value] of Object.entries(item.values)) {
+    const label = document.createElement("label");
+    label.textContent = TRACKABLE_LABELS[key] ?? key;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.value = String(value);
+    valueInputs[key] = input;
+    label.appendChild(input);
+    valuesRow.appendChild(label);
+  }
+
+  const editActions = document.createElement("div");
+  editActions.className = "template-item-edit-actions";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.textContent = "Save";
+  saveBtn.onclick = () => {
+    const values: Record<string, number> = {};
+    for (const [key, input] of Object.entries(valueInputs)) values[key] = Number(input.value);
+    void callAndRender("update_meal_template_item", {
+      template_id: templateId,
+      item_id: item.id,
+      name: nameInput.value.trim() || item.name,
+      values,
+    });
+  };
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.onclick = () => {
+    form.hidden = true;
+    view.hidden = false;
+  };
+  editActions.append(saveBtn, cancelBtn);
+  form.append(nameInput, valuesRow, editActions);
+
+  editBtn.onclick = () => {
+    view.hidden = true;
+    form.hidden = false;
+  };
+
+  li.append(view, form);
+  return li;
+}
+
+function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
+  const card = document.createElement("div");
+  card.className = "template-card";
+
+  const name = document.createElement("strong");
+  name.textContent = template.name;
+
+  const total = document.createElement("div");
+  total.className = "template-total";
+  total.textContent = `${Math.round(template.totals.calories ?? 0)} cal`;
+
+  const macros = document.createElement("div");
+  macros.className = "muted template-macros";
+  macros.textContent = macroLine(template.totals);
+
+  const itemsList = document.createElement("ul");
+  itemsList.className = "template-items";
+  itemsList.hidden = true;
+  itemsList.replaceChildren(
+    ...template.items.map((item) => renderTemplateItem(template.id, item)),
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "template-actions";
+  const logBtn = document.createElement("button");
+  logBtn.type = "button";
+  logBtn.textContent = "Log";
+  logBtn.onclick = () => void callAndRender("log_meal_template", { template_id: template.id });
+  const itemsBtn = document.createElement("button");
+  itemsBtn.type = "button";
+  itemsBtn.textContent = "Items";
+  itemsBtn.onclick = () => {
+    itemsList.hidden = !itemsList.hidden;
+  };
+  actions.append(logBtn, itemsBtn);
+
+  card.append(name, total, macros, actions, itemsList);
+  return card;
+}
+
+function updateSaveBar(): void {
+  saveBarEl.hidden = selectedLogIds.size === 0;
+  saveTemplateBtn.textContent = `Save ${selectedLogIds.size} as template`;
+}
+
+function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = "grouped-log";
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "group-toggle";
+  const arrow = document.createElement("span");
+  arrow.textContent = "▸ ";
+  const label = document.createElement("span");
+  label.textContent = log.name ?? "Meal";
+  toggle.append(arrow, label);
+  if (log.meal_type) {
+    const meta = document.createElement("span");
+    meta.className = "log-meta";
+    meta.textContent = ` · ${log.meal_type}`;
+    toggle.appendChild(meta);
+  }
+  const header = document.createElement("div");
+  header.className = "log-name";
+  header.appendChild(toggle);
+
+  const values = document.createElement("div");
+  values.className = "log-values";
+  values.textContent = Object.entries(log.values)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(", ");
+
+  const items = document.createElement("ul");
+  items.className = "grouped-log-items";
+  items.hidden = true;
+  items.replaceChildren(
+    ...log.items.map((item) => {
+      const itemLi = document.createElement("li");
+      itemLi.textContent =
+        `${item.name ?? "Item"}: ` +
+        Object.entries(item.values)
+          .map(([key, value]) => `${key}=${value}`)
+          .join(", ");
+      return itemLi;
+    }),
+  );
+  toggle.onclick = () => {
+    items.hidden = !items.hidden;
+    arrow.textContent = items.hidden ? "▸ " : "▾ ";
+  };
+
+  li.append(header, values, items);
+  return li;
+}
+
 function renderLog(log: DayLogEntry): HTMLLIElement {
+  if (log.items.length > 0) return renderGroupedLog(log);
+
   const li = document.createElement("li");
 
-  const name = document.createElement("div");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "log-select";
+  checkbox.checked = selectedLogIds.has(log.id);
+  checkbox.setAttribute("aria-label", `Select ${log.name ?? "entry"} for a template`);
+  checkbox.onchange = () => {
+    if (checkbox.checked) selectedLogIds.add(log.id);
+    else selectedLogIds.delete(log.id);
+    updateSaveBar();
+  };
+
+  const name = document.createElement("span");
   name.className = "log-name";
   name.textContent = log.name ?? "Entry";
   if (log.meal_type) {
@@ -115,7 +402,11 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
     .map(([key, value]) => `${key}: ${value}`)
     .join(", ");
 
-  li.append(name, values);
+  const top = document.createElement("div");
+  top.className = "log-top";
+  top.append(checkbox, name);
+
+  li.append(top, values);
   return li;
 }
 
@@ -126,13 +417,23 @@ function render(payload: NutritionDayPayload): void {
   ringTargetEl.textContent = payload.hero.target
     ? `/ ${Math.round(payload.hero.target).toLocaleString()}`
     : "";
-  const pct = payload.hero.target
-    ? Math.min(payload.hero.consumed / payload.hero.target, 1)
-    : 0;
+  const pct = payload.hero.target ? Math.min(payload.hero.consumed / payload.hero.target, 1) : 0;
   ringFillEl.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
   ringFillEl.style.strokeDashoffset = `${RING_CIRCUMFERENCE * (1 - pct)}`;
 
   barsEl.replaceChildren(...payload.bars.map(renderBar));
+  renderRemaining(payload);
+
+  templatesEl.replaceChildren(
+    ...(payload.templates.length
+      ? payload.templates.map(renderTemplate)
+      : [Object.assign(document.createElement("p"), { className: "muted", textContent: "No saved meals yet." })]),
+  );
+
+  // Drop selections for entries that no longer exist (e.g. after a refresh).
+  const liveIds = new Set(payload.logs.map((l) => l.id));
+  for (const id of selectedLogIds) if (!liveIds.has(id)) selectedLogIds.delete(id);
+  updateSaveBar();
 
   logsEl.replaceChildren(
     ...(payload.logs.length
@@ -152,6 +453,21 @@ async function callAndRender(name: string, args: Record<string, unknown>): Promi
     console.error(err);
   }
 }
+
+saveTemplateBtn.onclick = () => {
+  const name = templateNameInput.value.trim();
+  if (!name || selectedLogIds.size === 0) return;
+  void callAndRender("save_meal_template", {
+    name,
+    log_ids: Array.from(selectedLogIds),
+  }).then(() => {
+    selectedLogIds.clear();
+    templateNameInput.value = "";
+  });
+};
+templateNameInput.onkeydown = (event) => {
+  if (event.key === "Enter") saveTemplateBtn.click();
+};
 
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
 // one (a chat widget) at least get freshness whenever the user returns to the tab.

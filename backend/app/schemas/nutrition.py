@@ -27,6 +27,25 @@ class LogOut(BaseModel):
     meal_type: str | None
 
 
+class UpdateNutritionLogRequest(BaseModel):
+    name: str | None = None
+    meal_type: str | None = None
+    values: dict[str, Decimal] | None = None
+
+
+class NutritionLogOut(BaseModel):
+    id: UUID
+    name: str | None
+    logged_at: datetime
+    meal_type: str | None
+    values: dict[str, Decimal]
+
+
+class AmendLastLogOut(BaseModel):
+    deleted: bool
+    log: NutritionLogOut | None = None
+
+
 class GoalIn(BaseModel):
     trackable_key: str
     target_value: Decimal
@@ -66,6 +85,14 @@ class TrackableProgressOut(BaseModel):
     target: Decimal | None
 
 
+class DayLogItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str | None
+    values: dict[str, Decimal]
+
+
 class DayLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,6 +101,26 @@ class DayLogOut(BaseModel):
     logged_at: datetime
     meal_type: str | None
     values: dict[str, Decimal]
+    items: list[DayLogItemOut]
+
+
+class MealTemplateItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    serving_description: str | None
+    values: dict[str, Decimal]
+
+
+class MealTemplateSummaryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    default_meal_type: str | None
+    items: list[MealTemplateItemOut]
+    totals: dict[str, Decimal]
 
 
 class NutritionDayOut(BaseModel):
@@ -84,3 +131,23 @@ class NutritionDayOut(BaseModel):
     bars: list[TrackableProgressOut]
     streak_key: str | None
     logs: list[DayLogOut]
+    templates: list[MealTemplateSummaryOut]
+
+
+class SaveMealTemplateRequest(BaseModel):
+    name: str
+    log_ids: list[UUID] = Field(min_length=1)
+    default_meal_type: str | None = None
+    template_id: UUID | None = None
+
+
+class LogMealTemplateRequest(BaseModel):
+    multiplier: Decimal = Decimal(1)
+    meal_type: str | None = None
+    logged_at: datetime | None = None
+
+
+class UpdateMealTemplateItemRequest(BaseModel):
+    name: str
+    serving_description: str | None = None
+    values: dict[str, Decimal] = Field(default_factory=dict)

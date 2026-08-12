@@ -42,6 +42,10 @@ export function AppRenderer({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Starts at the fallback height and grows to fit content once the bundle reports
+  // its real size — bundles opt into this via useAutoResize/autoResize (on by
+  // default), which watches document.body with a ResizeObserver.
+  const [contentHeight, setContentHeight] = useState(height);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +73,7 @@ export function AppRenderer({
     const start = async () => {
       const contentWindow = iframe.contentWindow;
       if (!contentWindow || closed) return;
+      setContentHeight(height);
 
       bridge = new AppBridge(
         null, // no MCP client — onCallTool supplies the backend
@@ -77,6 +82,9 @@ export function AppRenderer({
         // the capability declaration is what authorizes tool proxying.
         { serverTools: {} },
       );
+      bridge.addEventListener("sizechange", ({ height: newHeight }) => {
+        if (newHeight) setContentHeight(newHeight);
+      });
       bridge.oncalltool = async (params) => {
         const result = await onCallTool(
           params.name,
@@ -149,7 +157,7 @@ export function AppRenderer({
       ref={iframeRef}
       title="TmpX component"
       sandbox="allow-scripts"
-      style={{ width: "100%", height, border: "none" }}
+      style={{ width: "100%", height: contentHeight, border: "none" }}
     />
   );
 }

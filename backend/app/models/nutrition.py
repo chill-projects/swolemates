@@ -1,6 +1,15 @@
 import uuid
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,6 +53,12 @@ class Log(Base, TimestampMixin):
     confidence: Mapped[dict | None] = mapped_column(JSONB)
     raw_ai_response: Mapped[dict | None] = mapped_column(JSONB)
     edited_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Set together, only by log_meal_template: every item logged from one template
+    # shares a group_id (so the day view can collapse them into one card) and a
+    # group_name snapshotting the template's name at log time (#4, resolved — meal
+    # templates). NULL/NULL for every other source; nothing else about Log changes.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    group_name: Mapped[str | None] = mapped_column(String(200))
 
     __table_args__ = (Index("ix_logs_user_id_logged_at", "user_id", "logged_at"),)
 
@@ -79,3 +94,53 @@ class Goal(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("user_id", "trackable_key", name="uq_goals_user_id_trackable_key"),
     )
+
+
+class MealTemplate(Base, TimestampMixin):
+    """A saved, reusable meal — save-from-log only, no from-scratch builder (#4,
+    resolved). One template, many item snapshots (`MealTemplateItem`), mirroring the
+    `logs`/`log_values` header+values split one level deeper: a template is a group of
+    named food items, each with its own trackable breakdown.
+    """
+
+    __tablename__ = "meal_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    default_meal_type: Mapped[str | None] = mapped_column(String(20))
+    updated_at: Mapped[object] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_meal_templates_user_id", "user_id"),)
+
+
+class MealTemplateItem(Base):
+    """One food item within a template — a snapshot of a logged item's name/serving at
+    save time. `item_order` keeps the swipeable-stack's per-item list stable."""
+
+    __tablename__ = "meal_template_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("meal_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    serving_description: Mapped[str | None] = mapped_column(String(200))
+    item_order: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (Index("ix_meal_template_items_template_id", "template_id"),)
+
+
+class MealTemplateItemValue(Base):
+    __tablename__ = "meal_template_item_values"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("meal_template_items.id", ondelete="CASCADE"), nullable=False
+    )
+    trackable_key: Mapped[str] = mapped_column(ForeignKey("trackable_types.key"), nullable=False)
+    value: Mapped[object] = mapped_column(Numeric, nullable=False)
+
+    __table_args__ = (Index("ix_meal_template_item_values_template_item_id", "template_item_id"),)
