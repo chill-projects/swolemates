@@ -25,6 +25,11 @@ def get_engine() -> AsyncEngine:
             max_overflow=5,
             pool_pre_ping=True,
             echo=False,
+            # Otherwise Postgres returns timestamptz values in the connection's local
+            # timezone, not UTC — two reads of the same instant compare unequal once
+            # serialized (caught by a profile test comparing onboarding_completed_at
+            # across two API calls).
+            connect_args={"options": "-c timezone=utc"},
         )
     return _engine
 
