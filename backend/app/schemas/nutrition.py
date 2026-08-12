@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -54,3 +54,33 @@ class TrackableTypeOut(BaseModel):
     unit: str
     category: str
     goal_eligible: bool
+
+
+class TrackableProgressOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    trackable_key: str
+    label: str
+    unit: str
+    consumed: Decimal
+    target: Decimal | None
+
+
+class DayLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str | None
+    logged_at: datetime
+    meal_type: str | None
+    values: dict[str, Decimal]
+
+
+class NutritionDayOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    date: date
+    hero: TrackableProgressOut
+    bars: list[TrackableProgressOut]
+    streak_key: str | None
+    logs: list[DayLogOut]

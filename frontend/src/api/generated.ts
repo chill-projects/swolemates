@@ -45,6 +45,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nutrition/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Nutrition Day */
+        get: operations["getNutritionDay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nutrition/goals": {
         parameters: {
             query?: never;
@@ -250,6 +267,27 @@ export interface components {
             /** Resource */
             resource: string;
         };
+        /** DayLogOut */
+        DayLogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Logged At
+             * Format: date-time
+             */
+            logged_at: string;
+            /** Meal Type */
+            meal_type: string | null;
+            /** Name */
+            name: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
         /** FoodFactOut */
         FoodFactOut: {
             /** Brand */
@@ -327,6 +365,21 @@ export interface components {
             /** Name */
             name: string | null;
         };
+        /** NutritionDayOut */
+        NutritionDayOut: {
+            /** Bars */
+            bars: components["schemas"]["TrackableProgressOut"][];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            hero: components["schemas"]["TrackableProgressOut"];
+            /** Logs */
+            logs: components["schemas"]["DayLogOut"][];
+            /** Streak Key */
+            streak_key: string | null;
+        };
         /** NutritionEntryIn */
         NutritionEntryIn: {
             /** Trackable Key */
@@ -379,6 +432,19 @@ export interface components {
             name: string;
             /** Value */
             value: number;
+        };
+        /** TrackableProgressOut */
+        TrackableProgressOut: {
+            /** Consumed */
+            consumed: string;
+            /** Label */
+            label: string;
+            /** Target */
+            target: string | null;
+            /** Trackable Key */
+            trackable_key: string;
+            /** Unit */
+            unit: string;
         };
         /** TrackableTypeOut */
         TrackableTypeOut: {
@@ -468,6 +534,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FoodFactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getNutritionDay: {
+        parameters: {
+            query?: {
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutritionDayOut"];
                 };
             };
             /** @description Validation Error */

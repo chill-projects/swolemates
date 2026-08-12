@@ -5,12 +5,12 @@ import { useProfile } from "./api/profile";
 import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
+import { NutritionPage } from "./pages/NutritionPage";
 import { ProfileForm } from "./pages/ProfileForm";
-import { TmpxPage } from "./pages/TmpxPage";
 
 /**
- * Phase 6 replaces this with a real router and the ported screens. For now it gates the
- * template slice behind auth, which is the thing the platform work has to prove.
+ * A real router lands once more than one feature needs a route. For now it gates the
+ * single authenticated screen behind auth + onboarding.
  */
 export function App() {
   const [returningFromLogin, setReturningFromLogin] = useState(
@@ -60,7 +60,6 @@ export function App() {
     <main>
       <header>
         <h1>Swolemates</h1>
-        <p className="muted">Template slice — delete once the first real feature lands.</p>
       </header>
 
       {busy && <p className="muted">Signing in…</p>}
@@ -111,5 +110,5 @@ function AuthenticatedApp({
     );
   }
 
-  return <TmpxPage me={me} />;
+  return <NutritionPage me={me} />;
 }

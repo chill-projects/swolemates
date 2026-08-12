@@ -39,6 +39,59 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "DayLogOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "logged_at": {
+            "format": "date-time",
+            "title": "Logged At",
+            "type": "string"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "values": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "logged_at",
+          "meal_type",
+          "values"
+        ],
+        "title": "DayLogOut",
+        "type": "object"
+      },
       "FoodFactOut": {
         "properties": {
           "brand": {
@@ -308,6 +361,52 @@
         "title": "LogOut",
         "type": "object"
       },
+      "NutritionDayOut": {
+        "properties": {
+          "bars": {
+            "items": {
+              "$ref": "#/components/schemas/TrackableProgressOut"
+            },
+            "title": "Bars",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "hero": {
+            "$ref": "#/components/schemas/TrackableProgressOut"
+          },
+          "logs": {
+            "items": {
+              "$ref": "#/components/schemas/DayLogOut"
+            },
+            "title": "Logs",
+            "type": "array"
+          },
+          "streak_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak Key"
+          }
+        },
+        "required": [
+          "date",
+          "hero",
+          "bars",
+          "streak_key",
+          "logs"
+        ],
+        "title": "NutritionDayOut",
+        "type": "object"
+      },
       "NutritionEntryIn": {
         "properties": {
           "trackable_key": {
@@ -464,6 +563,48 @@
           "created_at"
         ],
         "title": "TmpxItemOut",
+        "type": "object"
+      },
+      "TrackableProgressOut": {
+        "properties": {
+          "consumed": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Consumed",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "trackable_key": {
+            "title": "Trackable Key",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackable_key",
+          "label",
+          "unit",
+          "consumed",
+          "target"
+        ],
+        "title": "TrackableProgressOut",
         "type": "object"
       },
       "TrackableTypeOut": {
@@ -680,6 +821,56 @@
         "summary": "Search Food Facts",
         "tags": [
           "food-facts"
+        ]
+      }
+    },
+    "/api/nutrition/day": {
+      "get": {
+        "operationId": "getNutritionDay",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NutritionDayOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Nutrition Day",
+        "tags": [
+          "nutrition"
         ]
       }
     },

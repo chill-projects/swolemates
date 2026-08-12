@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:apps": "vite build -c vite.mcp-apps.config.ts",
+    "build:apps": "for d in src/mcp-apps/*/; do (APP_NAME=$(basename \"$d\") vite build -c vite.mcp-apps.config.ts \"$@\") & done; wait",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

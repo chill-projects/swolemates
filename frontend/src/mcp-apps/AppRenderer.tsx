@@ -45,7 +45,7 @@ export function AppRenderer({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(bundleUrl)
+    fetch(bundleUrl, { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error(`${res.status} fetching ${bundleUrl}`);
         const text = await res.text();

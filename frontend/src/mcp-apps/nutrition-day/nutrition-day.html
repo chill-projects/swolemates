@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nutrition today</title>
+    <style>
+      /* Self-contained by design: apps get no external network unless the resource
+         declares CSP domains. Everything inlines at build time. */
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        --ring-track: color-mix(in srgb, currentColor 12%, transparent);
+        --ring-fill: #2f9e8f;
+        --bar-track: color-mix(in srgb, currentColor 10%, transparent);
+        --border: color-mix(in srgb, currentColor 14%, transparent);
+      }
+      body { margin: 0; padding: 0.85rem; }
+      .hero { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1rem; }
+      .ring-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+      .ring-wrap svg { transform: rotate(-90deg); }
+      .ring-center {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; text-align: center;
+      }
+      .ring-value { font-size: 1.4rem; font-weight: 600; line-height: 1; }
+      .ring-target { font-size: 0.7rem; opacity: 0.65; margin-top: 0.15rem; }
+      .ring-label {
+        font-size: 0.6rem; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--ring-fill); margin-top: 0.2rem; font-weight: 600;
+      }
+      .bars { flex: 1; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+      .bar-row .top { display: flex; justify-content: space-between; align-items: baseline; }
+      .bar-row .top .amount { opacity: 0.65; font-variant-numeric: tabular-nums; }
+      .bar-track { height: 6px; border-radius: 999px; background: var(--bar-track); margin-top: 0.25rem; }
+      .bar-fill { height: 100%; border-radius: 999px; background: var(--ring-fill); }
+      .muted { opacity: 0.65; }
+      .error { color: #d33; }
+      section { border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem; }
+      section + section { margin-top: 0.75rem; }
+      h2 {
+        font-size: 0.65rem; letter-spacing: 0.05em; text-transform: uppercase;
+        opacity: 0.6; margin: 0 0 0.5rem;
+      }
+      ul { list-style: none; padding: 0; margin: 0; }
+      li { padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
+      li:last-child { border-bottom: none; }
+      .log-name { font-weight: 600; }
+      .log-meta { opacity: 0.6; font-size: 0.75rem; }
+      .log-values { opacity: 0.7; font-size: 0.8rem; margin-top: 0.15rem; }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <div class="ring-wrap">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="var(--ring-track)" stroke-width="12" />
+          <circle
+            id="ring-fill"
+            cx="60" cy="60" r="52" fill="none" stroke="var(--ring-fill)" stroke-width="12"
+            stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+          />
+        </svg>
+        <div class="ring-center">
+          <span id="ring-value" class="ring-value">0</span>
+          <span id="ring-target" class="ring-target"></span>
+          <span class="ring-label">Calories</span>
+        </div>
+      </div>
+      <div id="bars" class="bars"></div>
+    </div>
+
+    <p id="status" class="muted">Connecting…</p>
+
+    <section>
+      <h2>Today's log</h2>
+      <ul id="logs"></ul>
+    </section>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,10 +1,16 @@
-from fastapi import APIRouter
+import asyncio
+from datetime import date
 
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
+
+from app import events
 from app.deps import CurrentUser, DbSession
 from app.schemas.nutrition import (
     GoalOut,
     LogNutritionRequest,
     LogOut,
+    NutritionDayOut,
     SetGoalsRequest,
     TrackableTypeOut,
 )
@@ -35,6 +41,39 @@ async def log_nutrition(
         source=body.source,
     )
     return LogOut.model_validate(log)
+
+
+@router.get("/day", response_model=NutritionDayOut, operation_id="getNutritionDay")
+async def get_nutrition_day(
+    user_sub: CurrentUser, session: DbSession, day: date | None = None
+) -> NutritionDayOut:
+    return NutritionDayOut.model_validate(
+        await service.get_nutrition_day(session, user_sub, day=day)
+    )
+
+
+@router.get("/events", operation_id="nutritionEvents", include_in_schema=False)
+async def nutrition_events(user_sub: CurrentUser) -> StreamingResponse:
+    """Server-sent events: one `changed` event per mutation to this user's nutrition
+    data. Events carry no data — clients refetch through the normal authz'd path.
+    Excluded from the OpenAPI schema because the generated client can't type a
+    stream; the SPA consumes it with a raw fetch (tmpx's pattern)."""
+
+    async def stream():
+        yield "retry: 3000\n\n"
+        async with events.subscribe(user_sub) as queue:
+            while True:
+                try:
+                    topic = await asyncio.wait_for(queue.get(), timeout=25)
+                    yield f"event: changed\ndata: {topic}\n\n"
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/goals", response_model=list[GoalOut], operation_id="getGoals")

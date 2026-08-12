@@ -131,5 +131,11 @@ if STATIC_DIR.is_dir():
     async def spa(full_path: str) -> FileResponse:
         candidate = STATIC_DIR / full_path
         if full_path and candidate.is_file():
-            return FileResponse(candidate)
+            headers = None
+            if full_path.startswith("mcp-apps/"):
+                # These bundles have no content hash in their filename and change
+                # underneath a stable URL as slices land — a browser (or intermediate
+                # proxy) caching the old bytes silently shows a stale component.
+                headers = {"Cache-Control": "no-store"}
+            return FileResponse(candidate, headers=headers)
         return FileResponse(STATIC_DIR / "index.html")
