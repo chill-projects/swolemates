@@ -1,8 +1,12 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+  },
   build: {
     // The Dockerfile copies this straight into the Python image; there is no separate
     // frontend host. Keep it in sync with STATIC_DIR in backend/app/main.py.

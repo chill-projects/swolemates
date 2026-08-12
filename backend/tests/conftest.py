@@ -79,7 +79,9 @@ def migrated_database() -> str:
 @pytest.fixture
 async def session(migrated_database: str) -> AsyncIterator[AsyncSession]:
     """A session rolled back after each test, so tests never see each other's rows."""
-    engine = create_async_engine(migrated_database, poolclass=None)
+    engine = create_async_engine(
+        migrated_database, poolclass=None, connect_args={"options": "-c timezone=utc"}
+    )
     maker = async_sessionmaker(engine, expire_on_commit=False)
     async with maker() as s:
         yield s

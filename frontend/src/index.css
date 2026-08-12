@@ -46,6 +46,38 @@ input[type="number"] {
   width: 6rem;
 }
 
+select,
+textarea {
+  padding: 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+textarea {
+  min-height: 4rem;
+  resize: vertical;
+}
+
+/* Scoped rather than a bare `form` rule, since that one's already claimed by
+   TmpX's single-row add-item form (display: flex, as a row). */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+  max-width: 24rem;
+}
+
+.profile-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
 button {
   padding: 0.5rem 0.9rem;
   border: 1px solid currentColor;
