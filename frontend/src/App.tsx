@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
+import { useProfile } from "./api/profile";
 import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
+import { ProfileForm } from "./pages/ProfileForm";
 import { TmpxPage } from "./pages/TmpxPage";
 
 /**
@@ -67,7 +69,47 @@ export function App() {
       )}
       {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
       {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
-      {!busy && whoami.data && <TmpxPage me={whoami.data} />}
+      {!busy && whoami.data && <AuthenticatedApp me={whoami.data} />}
     </main>
   );
+}
+
+/**
+ * Gates the rest of the app behind onboarding (#9): a fresh account sees the welcome
+ * form until it completes once, ever. `/profile` reaches the same form afterward as
+ * plain settings — no router yet, same bare-pathname pattern used for `/callback`.
+ */
+function AuthenticatedApp({
+  me,
+}: {
+  me: { user_sub: string; email: string | null; display_name: string | null };
+}) {
+  const profile = useProfile();
+  const onSettingsRoute = window.location.pathname === "/profile";
+
+  if (profile.isPending) return <p className="muted">Loading your profile…</p>;
+  if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
+
+  if (!profile.data.onboarding_completed_at) {
+    return (
+      <>
+        <h2>Welcome to Swolemates</h2>
+        <p className="muted">
+          A couple of quick preferences, then you're in — nothing else to set up.
+        </p>
+        <ProfileForm profile={profile.data} completeOnboardingOnSave />
+      </>
+    );
+  }
+
+  if (onSettingsRoute) {
+    return (
+      <>
+        <h2>Profile settings</h2>
+        <ProfileForm profile={profile.data} />
+      </>
+    );
+  }
+
+  return <TmpxPage me={me} />;
 }

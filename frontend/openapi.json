@@ -52,6 +52,71 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ProfileOut": {
+        "properties": {
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "onboarding_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onboarding Completed At"
+          },
+          "weight_unit": {
+            "$ref": "#/components/schemas/WeightUnit"
+          }
+        },
+        "required": [
+          "weight_unit",
+          "coach_notes",
+          "onboarding_completed_at"
+        ],
+        "title": "ProfileOut",
+        "type": "object"
+      },
+      "ProfileUpdate": {
+        "properties": {
+          "coach_notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "weight_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ProfileUpdate",
+        "type": "object"
+      },
       "TmpxItemCreate": {
         "properties": {
           "name": {
@@ -142,6 +207,14 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WeightUnit": {
+        "enum": [
+          "lbs",
+          "kg"
+        ],
+        "title": "WeightUnit",
+        "type": "string"
+      },
       "WhoamiOut": {
         "properties": {
           "display_name": {
@@ -206,6 +279,87 @@
         "summary": "Auth Config",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "operationId": "getProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Profile",
+        "tags": [
+          "profile"
+        ]
+      },
+      "patch": {
+        "operationId": "updateProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Profile",
+        "tags": [
+          "profile"
+        ]
+      }
+    },
+    "/api/profile/complete-onboarding": {
+      "post": {
+        "operationId": "completeOnboarding",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Complete Onboarding",
+        "tags": [
+          "profile"
         ]
       }
     },

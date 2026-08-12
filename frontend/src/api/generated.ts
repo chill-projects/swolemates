@@ -28,6 +28,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["getProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Profile */
+        patch: operations["updateProfile"];
+        trace?: never;
+    };
+    "/api/profile/complete-onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Onboarding */
+        post: operations["completeOnboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tmpx": {
         parameters: {
             query?: never;
@@ -151,6 +186,20 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ProfileOut */
+        ProfileOut: {
+            /** Coach Notes */
+            coach_notes: string | null;
+            /** Onboarding Completed At */
+            onboarding_completed_at: string | null;
+            weight_unit: components["schemas"]["WeightUnit"];
+        };
+        /** ProfileUpdate */
+        ProfileUpdate: {
+            /** Coach Notes */
+            coach_notes?: string | null;
+            weight_unit?: components["schemas"]["WeightUnit"] | null;
+        };
         /** TmpxItemCreate */
         TmpxItemCreate: {
             /** Name */
@@ -191,6 +240,11 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WeightUnit
+         * @enum {string}
+         */
+        WeightUnit: "lbs" | "kg";
         /** WhoamiOut */
         WhoamiOut: {
             /** Display Name */
@@ -225,6 +279,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthConfigOut"];
+                };
+            };
+        };
+    };
+    getProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+        };
+    };
+    updateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    completeOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
                 };
             };
         };

@@ -15,7 +15,9 @@ from sqlalchemy import delete
 
 from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
+from app.models.profile import WeightUnit
 from app.models.tmpx import TmpxItem
+from app.services import profile as profile_service
 from app.services import tmpx as tmpx_service
 
 PARTNER_SUB = "dev_partner_11111111"
@@ -33,6 +35,15 @@ async def seed(*, reset: bool) -> None:
         if reset:
             await session.execute(delete(TmpxItem).where(TmpxItem.user_id.in_([me, PARTNER_SUB])))
 
+        # Idempotent regardless of --reset — a profile is one row per user, so
+        # re-running this just re-applies the same values, no accumulation risk.
+        await profile_service.update_profile(
+            session, me, weight_unit=WeightUnit.lbs, coach_notes="Seeded dev profile."
+        )
+        await profile_service.complete_onboarding(session, me)
+        await profile_service.update_profile(session, PARTNER_SUB, weight_unit=WeightUnit.kg)
+        await profile_service.complete_onboarding(session, PARTNER_SUB)
+
         existing = await tmpx_service.list_items(session, me)
         if existing and not reset:
             print(
@@ -47,7 +58,10 @@ async def seed(*, reset: bool) -> None:
         )
         await session.commit()
 
-    print(f"Seeded {len(TMPX_SEED)} items for {me}, plus 1 for {PARTNER_SUB}.")
+    print(
+        f"Seeded profiles for {me} and {PARTNER_SUB}, "
+        f"plus {len(TMPX_SEED)} tmpx items for {me}, plus 1 for {PARTNER_SUB}."
+    )
     await dispose_engine()
 
 
