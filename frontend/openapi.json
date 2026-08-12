@@ -39,6 +39,72 @@
         "title": "AuthConfigOut",
         "type": "object"
       },
+      "GoalIn": {
+        "properties": {
+          "is_streak_target": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Streak Target"
+          },
+          "target_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Target Value"
+          },
+          "trackable_key": {
+            "title": "Trackable Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackable_key",
+          "target_value"
+        ],
+        "title": "GoalIn",
+        "type": "object"
+      },
+      "GoalOut": {
+        "properties": {
+          "is_streak_target": {
+            "title": "Is Streak Target",
+            "type": "boolean"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "target_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Target Value",
+            "type": "string"
+          },
+          "trackable_key": {
+            "title": "Trackable Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackable_key",
+          "target_value",
+          "period",
+          "is_streak_target"
+        ],
+        "title": "GoalOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -50,6 +116,132 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LogNutritionRequest": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/NutritionEntryIn"
+            },
+            "minItems": 1,
+            "title": "Entries",
+            "type": "array"
+          },
+          "logged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged At"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "source": {
+            "default": "manual",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "LogNutritionRequest",
+        "type": "object"
+      },
+      "LogOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "logged_at": {
+            "format": "date-time",
+            "title": "Logged At",
+            "type": "string"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "logged_at",
+          "meal_type"
+        ],
+        "title": "LogOut",
+        "type": "object"
+      },
+      "NutritionEntryIn": {
+        "properties": {
+          "trackable_key": {
+            "title": "Trackable Key",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "trackable_key",
+          "value"
+        ],
+        "title": "NutritionEntryIn",
         "type": "object"
       },
       "ProfileOut": {
@@ -117,6 +309,23 @@
         "title": "ProfileUpdate",
         "type": "object"
       },
+      "SetGoalsRequest": {
+        "properties": {
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/GoalIn"
+            },
+            "minItems": 1,
+            "title": "Goals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "goals"
+        ],
+        "title": "SetGoalsRequest",
+        "type": "object"
+      },
       "TmpxItemCreate": {
         "properties": {
           "name": {
@@ -165,6 +374,39 @@
           "created_at"
         ],
         "title": "TmpxItemOut",
+        "type": "object"
+      },
+      "TrackableTypeOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "goal_eligible": {
+            "title": "Goal Eligible",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "category",
+          "goal_eligible"
+        ],
+        "title": "TrackableTypeOut",
         "type": "object"
       },
       "ValidationError": {
@@ -279,6 +521,140 @@
         "summary": "Auth Config",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/nutrition/goals": {
+      "get": {
+        "operationId": "getGoals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GoalOut"
+                  },
+                  "title": "Response Getgoals",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Goals",
+        "tags": [
+          "nutrition"
+        ]
+      },
+      "put": {
+        "operationId": "setGoals",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetGoalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GoalOut"
+                  },
+                  "title": "Response Setgoals",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Goals",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/logs": {
+      "post": {
+        "operationId": "logNutrition",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogNutritionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Log Nutrition",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
+    "/api/nutrition/trackable-types": {
+      "get": {
+        "operationId": "listTrackableTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrackableTypeOut"
+                  },
+                  "title": "Response Listtrackabletypes",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Trackable Types",
+        "tags": [
+          "nutrition"
         ]
       }
     },

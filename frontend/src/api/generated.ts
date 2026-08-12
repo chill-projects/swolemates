@@ -28,6 +28,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nutrition/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Goals */
+        get: operations["getGoals"];
+        /** Set Goals */
+        put: operations["setGoals"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrition/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Nutrition */
+        post: operations["logNutrition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nutrition/trackable-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Trackable Types */
+        get: operations["listTrackableTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile": {
         parameters: {
             query?: never;
@@ -181,10 +233,70 @@ export interface components {
             /** Resource */
             resource: string;
         };
+        /** GoalIn */
+        GoalIn: {
+            /** Is Streak Target */
+            is_streak_target?: boolean | null;
+            /** Target Value */
+            target_value: number | string;
+            /** Trackable Key */
+            trackable_key: string;
+        };
+        /** GoalOut */
+        GoalOut: {
+            /** Is Streak Target */
+            is_streak_target: boolean;
+            /** Period */
+            period: string;
+            /** Target Value */
+            target_value: string;
+            /** Trackable Key */
+            trackable_key: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LogNutritionRequest */
+        LogNutritionRequest: {
+            /** Entries */
+            entries: components["schemas"]["NutritionEntryIn"][];
+            /** Logged At */
+            logged_at?: string | null;
+            /** Meal Type */
+            meal_type?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+        };
+        /** LogOut */
+        LogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Logged At
+             * Format: date-time
+             */
+            logged_at: string;
+            /** Meal Type */
+            meal_type: string | null;
+            /** Name */
+            name: string | null;
+        };
+        /** NutritionEntryIn */
+        NutritionEntryIn: {
+            /** Trackable Key */
+            trackable_key: string;
+            /** Value */
+            value: number | string;
         };
         /** ProfileOut */
         ProfileOut: {
@@ -199,6 +311,11 @@ export interface components {
             /** Coach Notes */
             coach_notes?: string | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
+        };
+        /** SetGoalsRequest */
+        SetGoalsRequest: {
+            /** Goals */
+            goals: components["schemas"]["GoalIn"][];
         };
         /** TmpxItemCreate */
         TmpxItemCreate: {
@@ -226,6 +343,19 @@ export interface components {
             name: string;
             /** Value */
             value: number;
+        };
+        /** TrackableTypeOut */
+        TrackableTypeOut: {
+            /** Category */
+            category: string;
+            /** Goal Eligible */
+            goal_eligible: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -279,6 +409,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthConfigOut"];
+                };
+            };
+        };
+    };
+    getGoals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"][];
+                };
+            };
+        };
+    };
+    setGoals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetGoalsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logNutrition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogNutritionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listTrackableTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackableTypeOut"][];
                 };
             };
         };

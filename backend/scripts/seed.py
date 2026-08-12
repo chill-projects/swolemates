@@ -17,12 +17,34 @@ from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.models.profile import WeightUnit
 from app.models.tmpx import TmpxItem
+from app.services import nutrition as nutrition_service
 from app.services import profile as profile_service
 from app.services import tmpx as tmpx_service
 
 PARTNER_SUB = "dev_partner_11111111"
 
 TMPX_SEED = [("first template item", 1), ("second template item", 2), ("third template item", 3)]
+
+NUTRITION_GOALS = [
+    {"trackable_key": "calories", "target_value": 2200, "is_streak_target": True},
+    {"trackable_key": "protein_g", "target_value": 150},
+]
+
+NUTRITION_LOGS = [
+    {
+        "entries": [
+            {"trackable_key": "calories", "value": 450},
+            {"trackable_key": "protein_g", "value": 32},
+        ],
+        "name": "chicken and rice",
+        "meal_type": "lunch",
+    },
+    {
+        "entries": [{"trackable_key": "calories", "value": 180}],
+        "name": "protein shake",
+        "meal_type": "snack",
+    },
+]
 
 
 async def seed(*, reset: bool) -> None:
@@ -44,6 +66,9 @@ async def seed(*, reset: bool) -> None:
         await profile_service.update_profile(session, PARTNER_SUB, weight_unit=WeightUnit.kg)
         await profile_service.complete_onboarding(session, PARTNER_SUB)
 
+        # Idempotent regardless of --reset — goals upsert by (user, trackable_key).
+        await nutrition_service.set_goals(session, me, goals=NUTRITION_GOALS)
+
         existing = await tmpx_service.list_items(session, me)
         if existing and not reset:
             print(
@@ -56,11 +81,14 @@ async def seed(*, reset: bool) -> None:
         await tmpx_service.add_item(
             session, PARTNER_SUB, name="PARTNER ITEM — you should never see this", value=999
         )
+        for log in NUTRITION_LOGS:
+            await nutrition_service.log_nutrition(session, me, **log)
         await session.commit()
 
     print(
         f"Seeded profiles for {me} and {PARTNER_SUB}, "
-        f"plus {len(TMPX_SEED)} tmpx items for {me}, plus 1 for {PARTNER_SUB}."
+        f"plus {len(TMPX_SEED)} tmpx items for {me}, plus 1 for {PARTNER_SUB}, "
+        f"plus goals + {len(NUTRITION_LOGS)} nutrition logs for {me}."
     )
     await dispose_engine()
 
