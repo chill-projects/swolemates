@@ -40,4 +40,9 @@ def _auth_provider():
 mcp: FastMCP = FastMCP(name="Swolemates", auth=_auth_provider())
 
 # Registers tools on the server above. Imported for the side effect.
-from app.mcp import profile_tools, tmpx_tools  # noqa: E402,F401
+from app.mcp import (  # noqa: E402,F401
+    food_facts_tools,
+    nutrition_tools,
+    profile_tools,
+    tmpx_tools,
+)
