@@ -1,11 +1,10 @@
-from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
 
 from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
-from app.db import get_sessionmaker
+from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import tmpx as service
 
@@ -15,18 +14,6 @@ TMPX_UI_URI = "ui://swolemates/tmpx.html"
 # file renders in Claude (via the ui:// resource below) and in the SPA (fetched over
 # HTTP and hosted in an iframe by AppRenderer).
 TMPX_UI_BUNDLE = Path(__file__).resolve().parent.parent.parent / "static" / "mcp-apps" / "tmpx.html"
-
-
-@asynccontextmanager
-async def tool_session():
-    """MCP tools aren't FastAPI requests, so they manage their own session lifecycle."""
-    async with get_sessionmaker()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
 
 
 async def _items_payload(session, user_sub: str) -> dict:
@@ -56,12 +43,14 @@ async def _items_payload(session, user_sub: str) -> dict:
 
 
 @mcp.tool
+@catches_service_errors
 async def whoami() -> str:
     """Report which Swolemates account this connection is authenticated as."""
     return f"Authenticated as {mcp_user_sub()}."
 
 
 @mcp.tool(app=AppConfig(resource_uri=TMPX_UI_URI))
+@catches_service_errors
 async def tmpx_list() -> dict:
     """Show the caller's TmpX items in an interactive list."""
     user_sub = mcp_user_sub()
@@ -70,6 +59,7 @@ async def tmpx_list() -> dict:
 
 
 @mcp.tool(app=AppConfig(resource_uri=TMPX_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def tmpx_add(name: str, value: int = 0) -> dict:
     """Add an item to the caller's TmpX list.
 
@@ -84,6 +74,7 @@ async def tmpx_add(name: str, value: int = 0) -> dict:
 
 
 @mcp.tool(app=AppConfig(resource_uri=TMPX_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def tmpx_delete(item_id: str) -> dict:
     """Delete one of the caller's TmpX items by id."""
     user_sub = mcp_user_sub()
@@ -91,7 +82,9 @@ async def tmpx_delete(item_id: str) -> dict:
         try:
             await service.delete_item(session, user_sub, UUID(item_id))
         except (service.NotFoundError, ValueError):
-            pass  # deleting something already gone is not an error worth surfacing
+            pass  # deleting something already gone is not an error worth surfacing —
+            # deliberately different from @catches_service_errors' default (return the
+            # message as text); kept as its own inner catch for that reason.
         return await _items_payload(session, user_sub)
 
 

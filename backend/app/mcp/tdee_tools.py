@@ -4,26 +4,14 @@ point for nutrition goals, re-runnable anytime on request, but it never silently
 rewrites your goals on its own.
 """
 
-from contextlib import asynccontextmanager
-
 from app.auth import mcp_user_sub
-from app.db import get_sessionmaker
+from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import tdee as service
 
 
-@asynccontextmanager
-async def tool_session():
-    async with get_sessionmaker()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-
 @mcp.tool
+@catches_service_errors
 async def calculate_targets() -> str:
     """Calculate calorie/macro targets from the caller's profile stats (sex, age,
     height, activity level, goal type — set via update_profile) and their most
@@ -33,10 +21,7 @@ async def calculate_targets() -> str:
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        try:
-            targets, tdee = await service.calculate_and_apply_targets(session, user_sub)
-        except ValueError as exc:
-            return str(exc)
+        targets, tdee = await service.calculate_and_apply_targets(session, user_sub)
     return (
         f"Estimated TDEE: ~{round(tdee):,} cal/day. Set targets: {targets.calories:,} cal, "
         f"{targets.protein_g}g protein, {targets.carbs_g}g carbs, {targets.fat_g}g fat, "

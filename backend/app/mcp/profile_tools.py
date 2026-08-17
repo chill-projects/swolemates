@@ -2,24 +2,11 @@
 conversation (#9), not a rendered widget, so these are plain text-returning tools.
 """
 
-from contextlib import asynccontextmanager
-
 from app.auth import mcp_user_sub
-from app.db import get_sessionmaker
+from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.models.profile import ActivityLevel, BiologicalSex, GoalType, WeightUnit
 from app.services import profile as service
-
-
-@asynccontextmanager
-async def tool_session():
-    async with get_sessionmaker()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
 
 
 def _summary(profile) -> str:
@@ -41,6 +28,7 @@ def _summary(profile) -> str:
 
 
 @mcp.tool
+@catches_service_errors
 async def get_profile() -> str:
     """Read the caller's profile: weight-unit preference, coach notes, onboarding state."""
     user_sub = mcp_user_sub()
@@ -50,6 +38,7 @@ async def get_profile() -> str:
 
 
 @mcp.tool
+@catches_service_errors
 async def update_profile(
     weight_unit: str | None = None,
     coach_notes: str | None = None,
@@ -89,6 +78,7 @@ async def update_profile(
 
 
 @mcp.tool
+@catches_service_errors
 async def complete_onboarding() -> str:
     """Mark the caller's welcome/onboarding step as done, so it never shows again."""
     user_sub = mcp_user_sub()

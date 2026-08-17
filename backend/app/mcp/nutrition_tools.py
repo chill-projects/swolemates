@@ -5,7 +5,6 @@ without an extra round trip (the tmpx pattern). get_goals/set_goals stay text-on
 permanently, per claude-tools-v1.md §3.4.
 """
 
-from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -13,7 +12,7 @@ from uuid import UUID
 from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
-from app.db import get_sessionmaker
+from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import nutrition as service
 
@@ -22,17 +21,6 @@ NUTRITION_UI_URI = "ui://swolemates/nutrition-day.html"
 NUTRITION_UI_BUNDLE = (
     Path(__file__).resolve().parent.parent.parent / "static" / "mcp-apps" / "nutrition-day.html"
 )
-
-
-@asynccontextmanager
-async def tool_session():
-    async with get_sessionmaker()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
 
 
 def _progress(tp: service.TrackableProgress) -> dict:
@@ -135,6 +123,7 @@ async def _resolve_template_id(
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI))
+@catches_service_errors
 async def get_nutrition_day() -> dict:
     """Show today's nutrition so far against the caller's goals."""
     user_sub = mcp_user_sub()
@@ -143,6 +132,7 @@ async def get_nutrition_day() -> dict:
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def log_nutrition(
     entries: list[dict], name: str | None = None, meal_type: str | None = None
 ) -> dict:
@@ -165,6 +155,7 @@ async def log_nutrition(
 
 
 @mcp.tool
+@catches_service_errors
 async def update_nutrition_log(
     log_id: str,
     name: str | None = None,
@@ -198,6 +189,7 @@ async def update_nutrition_log(
 
 
 @mcp.tool
+@catches_service_errors
 async def amend_last_log(
     name: str | None = None,
     meal_type: str | None = None,
@@ -229,6 +221,7 @@ async def amend_last_log(
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def save_meal_template(
     name: str,
     log_ids: list[str],
@@ -261,6 +254,7 @@ async def save_meal_template(
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def update_meal_template_item(
     template_id: str,
     item_id: str,
@@ -296,6 +290,7 @@ async def update_meal_template_item(
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
 async def log_meal_template(
     template_id: str | None = None,
     name: str | None = None,
@@ -324,6 +319,7 @@ async def log_meal_template(
 
 
 @mcp.tool
+@catches_service_errors
 async def get_goals() -> str:
     """Read the caller's current nutrition goals."""
     user_sub = mcp_user_sub()
@@ -335,6 +331,7 @@ async def get_goals() -> str:
 
 
 @mcp.tool
+@catches_service_errors
 async def set_goals(goals: list[dict]) -> str:
     """Set or update any subset of nutrition goals in one call.
 
@@ -345,10 +342,7 @@ async def set_goals(goals: list[dict]) -> str:
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        try:
-            updated = await service.set_goals(session, user_sub, goals=goals)
-        except ValueError as exc:
-            return str(exc)
+        updated = await service.set_goals(session, user_sub, goals=goals)
         return ", ".join(f"{g.trackable_key}: {g.target_value}" for g in updated)
 
 

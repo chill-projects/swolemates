@@ -2,24 +2,12 @@
 logging). Text-only for now — no ui:// component until slice 2 (in-workout mode).
 """
 
-from contextlib import asynccontextmanager
 from datetime import date, datetime
 
 from app.auth import mcp_user_sub
-from app.db import get_sessionmaker
+from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import workouts as service
-
-
-@asynccontextmanager
-async def tool_session():
-    async with get_sessionmaker()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
 
 
 def _format_set(s: service.SetOut) -> str:
@@ -43,6 +31,7 @@ def _format_workout(w: service.WorkoutOut) -> str:
 
 
 @mcp.tool
+@catches_service_errors
 async def log_workout(
     exercises: list[dict], title: str | None = None, date: str | None = None
 ) -> str:
@@ -61,16 +50,14 @@ async def log_workout(
     user_sub = mcp_user_sub()
     when = datetime.fromisoformat(date) if date else None
     async with tool_session() as session:
-        try:
-            workout = await service.log_workout(
-                session, user_sub, exercises=exercises, title=title, logged_at=when
-            )
-        except ValueError as exc:
-            return str(exc)
+        workout = await service.log_workout(
+            session, user_sub, exercises=exercises, title=title, logged_at=when
+        )
     return f"Logged: {_format_workout(workout)}"
 
 
 @mcp.tool
+@catches_service_errors
 async def log_activity(
     activity_type: str,
     duration_minutes: int,
@@ -91,22 +78,20 @@ async def log_activity(
     user_sub = mcp_user_sub()
     when = datetime.fromisoformat(date) if date else None
     async with tool_session() as session:
-        try:
-            workout = await service.log_activity(
-                session,
-                user_sub,
-                activity_type=activity_type,
-                duration_minutes=duration_minutes,
-                title=title,
-                notes=notes,
-                logged_at=when,
-            )
-        except ValueError as exc:
-            return str(exc)
+        workout = await service.log_activity(
+            session,
+            user_sub,
+            activity_type=activity_type,
+            duration_minutes=duration_minutes,
+            title=title,
+            notes=notes,
+            logged_at=when,
+        )
     return f"Logged: {_format_workout(workout)}"
 
 
 @mcp.tool
+@catches_service_errors
 async def get_workout_history(
     start: str | None = None, end: str | None = None, exercise: str | None = None
 ) -> str:

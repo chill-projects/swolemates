@@ -18,14 +18,7 @@ from app.models.nutrition import (
     MealTemplateItemValue,
     TrackableType,
 )
-
-
-class NotFoundError(Exception):
-    """Raised when a row doesn't exist *or* belongs to someone else.
-
-    Deliberately not distinguished — telling a caller that an id exists but isn't theirs
-    leaks the existence of other users' rows.
-    """
+from app.services.errors import NotFoundError
 
 
 async def list_trackable_types(session: AsyncSession) -> list[TrackableType]:

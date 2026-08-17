@@ -13,14 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.tmpx import TmpxItem
-
-
-class NotFoundError(Exception):
-    """Raised when a row doesn't exist *or* belongs to someone else.
-
-    Deliberately not distinguished — telling a caller that an id exists but isn't theirs
-    leaks the existence of other users' rows.
-    """
+from app.services.errors import NotFoundError
 
 
 async def list_items(session: AsyncSession, user_sub: str, *, limit: int = 50) -> list[TmpxItem]:
