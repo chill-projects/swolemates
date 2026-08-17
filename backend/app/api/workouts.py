@@ -81,7 +81,12 @@ async def get_workout_history(
 async def start_workout(
     body: StartWorkoutRequest, user_sub: CurrentUser, session: DbSession
 ) -> WorkoutOut:
-    workout = await service.start_workout(session, user_sub, exercises=body.exercises)
+    try:
+        workout = await service.start_workout(
+            session, user_sub, exercises=body.exercises, template_id=body.template_id
+        )
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return WorkoutOut.model_validate(workout)
 
 

@@ -4,6 +4,7 @@
 (templates/plans) as an additive migration exactly when that slice needs it, same
 pattern as nutrition's `group_id`/`group_name`. `superset_group` on `WorkoutExercise`
 landed in slice 2b, once the in-workout accordion actually grouped by it.
+`WorkoutTemplate`/`TemplateExercise` and `WorkoutExercise.target_*` landed in slice 3a.
 """
 
 import enum
@@ -106,14 +107,23 @@ class WorkoutExercise(Base):
     # "notes-for-next-time": surfaced next time this exercise comes up (later
     # slices' planned view / in-workout mode show the most recent one per exercise)
     next_time_note: Mapped[str | None] = mapped_column(Text)
+    # Copied from TemplateExercise by start_workout(template_id=...); null for ad-hoc
+    # exercises. Per-exercise, not per-set (the resolved doc's "uniform sets x reps @
+    # weight" decision) — deliberately not WorkoutSet.prescribed_*, which predates
+    # that decision and stays unused.
+    target_sets: Mapped[int | None] = mapped_column(Integer)
+    target_reps: Mapped[int | None] = mapped_column(Integer)
+    target_seconds: Mapped[int | None] = mapped_column(Integer)
+    target_weight: Mapped[object | None] = mapped_column(Numeric)
 
     __table_args__ = (Index("ix_workout_exercises_workout_id", "workout_id"),)
 
 
 class WorkoutSet(Base):
-    """`prescribed_*` stays unused until slice 3 (templates) copies targets in at
-    session start. For slice 1's one-shot `log_workout`, only `actual_*` is written
-    and `completed_at` is set immediately (no in-progress state yet).
+    """`prescribed_*` predates the resolved doc's decision that a template's
+    prescription is uniform per *exercise*, not per set — that decision landed on
+    `WorkoutExercise.target_*` instead (slice 3a), so these columns stay unused. Only
+    `actual_*` is written, when a set is logged.
     """
 
     __tablename__ = "workout_sets"
@@ -144,3 +154,45 @@ class WorkoutSet(Base):
         ),
         Index("ix_workout_sets_workout_exercise_id", "workout_exercise_id"),
     )
+
+
+class WorkoutTemplate(Base, TimestampMixin):
+    """A prescription — "Pull day" — created conversationally, started from, and
+    edited in place (chat + SPA share one `ui://template.html` component). Removal
+    is archiving, not deleting: `archived_at IS NOT NULL` excludes it from listing.
+    """
+
+    __tablename__ = "workout_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_workout_templates_user_id", "user_id"),)
+
+
+class TemplateExercise(Base):
+    """One exercise's uniform prescription within a template — `target_sets` sets of
+    `target_reps` reps (or `target_seconds` for timed) at `target_weight`. Copied onto
+    `WorkoutExercise.target_*` by `start_workout(template_id=...)`; editing the
+    template afterward never rewrites a past session's copy.
+    """
+
+    __tablename__ = "template_exercises"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    superset_group: Mapped[int | None] = mapped_column(Integer)
+    target_sets: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_reps: Mapped[int | None] = mapped_column(Integer)
+    target_seconds: Mapped[int | None] = mapped_column(Integer)
+    target_weight: Mapped[object | None] = mapped_column(Numeric)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (Index("ix_template_exercises_template_id", "template_id"),)

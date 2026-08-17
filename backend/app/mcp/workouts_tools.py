@@ -59,6 +59,17 @@ def _last_time_payload(lt: service.LastTimeOut | None) -> dict | None:
     }
 
 
+def _target_payload(t: service.TargetOut | None) -> dict | None:
+    if t is None:
+        return None
+    return {
+        "sets": t.sets,
+        "reps": t.reps,
+        "seconds": t.seconds,
+        "weight": float(t.weight) if t.weight is not None else None,
+    }
+
+
 def _exercise_payload(e: service.ExerciseEntryOut) -> dict:
     return {
         "id": str(e.id),
@@ -78,6 +89,7 @@ def _exercise_payload(e: service.ExerciseEntryOut) -> dict:
             for s in e.sets
         ],
         "last_time": _last_time_payload(e.last_time),
+        "target": _target_payload(e.target),
     }
 
 
@@ -189,19 +201,27 @@ async def get_workout_history(
 
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
-async def start_workout(exercises: list[str] | None = None) -> dict:
-    """Begin a workout session — from a blank slate or a known list of exercise
-    names. If one's already in progress, this just resumes it rather than
-    starting a duplicate (starting from a template/planned workout comes in a
-    later slice, once those exist).
+async def start_workout(exercises: list[str] | None = None, template_id: str | None = None) -> dict:
+    """Begin a workout session — from a blank slate, a known list of exercise names,
+    or a saved template (planned-workout start comes in a later slice, once that
+    exists). If one's already in progress, this just resumes it rather than starting
+    a duplicate.
 
     Args:
         exercises: exercise names to start with, e.g. ["Back Squat", "Bench Press"].
-            Optional — sets can be logged via log_set even without this.
+            Ignored if template_id is given.
+        template_id: start from a saved template (from a prior
+            create_workout_template/list_workout_templates result) — copies its
+            exercises, superset grouping, and target sets/reps/weight in.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        workout = await service.start_workout(session, user_sub, exercises=exercises)
+        workout = await service.start_workout(
+            session,
+            user_sub,
+            exercises=exercises,
+            template_id=UUID(template_id) if template_id else None,
+        )
         live = await service.get_workout_live(session, user_sub, workout)
     return _live_payload(live)
 

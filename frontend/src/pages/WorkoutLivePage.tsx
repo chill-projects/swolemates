@@ -38,6 +38,14 @@ function toExercisePayload(e: ExerciseEntryOut) {
           note: e.last_time.note,
         }
       : null,
+    target: e.target
+      ? {
+          sets: e.target.sets,
+          reps: e.target.reps,
+          seconds: e.target.seconds,
+          weight: numeric(e.target.weight),
+        }
+      : null,
   };
 }
 
@@ -78,7 +86,10 @@ export function WorkoutLivePage({ me }: { me: Me }) {
           break;
         case "start_workout": {
           const { error } = await api.POST("/api/workouts/start", {
-            body: { exercises: (args.exercises as string[] | undefined) ?? null },
+            body: {
+              exercises: (args.exercises as string[] | undefined) ?? null,
+              template_id: (args.template_id as string | undefined) ?? null,
+            },
           });
           if (error) throw new Error("start workout failed");
           break;
@@ -90,7 +101,8 @@ export function WorkoutLivePage({ me }: { me: Me }) {
               reps: (args.reps as number | undefined) ?? null,
               weight: (args.weight as number | undefined) ?? null,
               is_warmup: (args.is_warmup as boolean | undefined) ?? false,
-              set_type: "reps",
+              set_type: (args.set_type as string | undefined) ?? "reps",
+              work_seconds: (args.work_seconds as number | undefined) ?? null,
               sets: 1,
             },
           });

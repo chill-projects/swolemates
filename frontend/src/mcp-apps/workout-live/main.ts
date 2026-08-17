@@ -29,6 +29,13 @@ interface LastTime {
   note: string | null;
 }
 
+interface Target {
+  sets: number;
+  reps: number | null;
+  seconds: number | null;
+  weight: number | null;
+}
+
 interface SetEntry {
   id: string;
   set_number: number;
@@ -46,6 +53,7 @@ interface ExerciseEntry {
   next_time_note: string | null;
   sets: SetEntry[];
   last_time: LastTime | null;
+  target: Target | null;
 }
 
 interface Group {
@@ -89,6 +97,10 @@ const finishBtn = $<HTMLButtonElement>("finish-btn");
 // Open/collapsed accordion state and the exercise catalog cache both live outside
 // render() so they survive the re-renders every tool call triggers.
 const openGroups = new Set<string>();
+// Only the very first render defaults a group open — `openGroups.size === 0` isn't
+// a safe proxy for "first render," since collapsing the last open group also makes
+// it 0 and would otherwise snap that group right back open.
+let hasSetDefaultOpenGroup = false;
 let currentPayload: LivePayload | null = null;
 let exerciseCatalog: CatalogExercise[] | null = null;
 let pickerSupersetWith: string | null = null;
@@ -121,6 +133,11 @@ function formatLastTime(lt: LastTime): string {
     .join(", ");
   const base = sets || "no sets logged";
   return lt.note ? `${base} — ${lt.note}` : base;
+}
+
+function formatTarget(t: Target): string {
+  const perSet = t.seconds != null ? `${t.seconds}s` : `${t.reps ?? "?"} reps`;
+  return t.weight != null ? `${t.sets}×${perSet} @ ${t.weight}lbs` : `${t.sets}×${perSet}`;
 }
 
 function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
@@ -158,6 +175,13 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
 
   wrap.appendChild(header);
 
+  if (e.target) {
+    const target = document.createElement("div");
+    target.className = "muted last-time";
+    target.textContent = `Target: ${formatTarget(e.target)}`;
+    wrap.appendChild(target);
+  }
+
   if (e.last_time) {
     const lt = document.createElement("div");
     lt.className = "muted last-time";
@@ -183,17 +207,39 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
   if (!finished) {
     const draft = document.createElement("div");
     draft.className = "draft-set";
+    // A template can prescribe a timed exercise (target.seconds); ad-hoc exercises
+    // stay reps-only in this draft row, same as before templates existed.
+    const isTimed = e.target?.seconds != null;
+    const lastSet = e.last_time?.sets[e.last_time.sets.length - 1];
 
     const weightInput = document.createElement("input");
     weightInput.type = "number";
     weightInput.step = "5";
     weightInput.placeholder = "lbs";
+    weightInput.value =
+      e.target?.weight != null
+        ? String(e.target.weight)
+        : lastSet?.weight != null
+          ? String(lastSet.weight)
+          : "";
     weightInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} weight`);
 
-    const repsInput = document.createElement("input");
-    repsInput.type = "number";
-    repsInput.placeholder = "reps";
-    repsInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} reps`);
+    const mainInput = document.createElement("input");
+    mainInput.type = "number";
+    mainInput.placeholder = isTimed ? "seconds" : "reps";
+    mainInput.value = isTimed
+      ? e.target?.seconds != null
+        ? String(e.target.seconds)
+        : ""
+      : e.target?.reps != null
+        ? String(e.target.reps)
+        : lastSet?.reps != null
+          ? String(lastSet.reps)
+          : "";
+    mainInput.setAttribute(
+      "aria-label",
+      `${e.exercise_name ?? "Exercise"} ${isTimed ? "seconds" : "reps"}`,
+    );
 
     const warmupLabel = document.createElement("label");
     const warmupInput = document.createElement("input");
@@ -204,17 +250,19 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     logBtn.type = "button";
     logBtn.textContent = "Log set";
     logBtn.onclick = () => {
-      if (repsInput.value === "") return;
+      if (mainInput.value === "") return;
       const weight = weightInput.value === "" ? undefined : Number(weightInput.value);
       void callAndRender("log_set", {
         exercise: e.exercise_name,
         weight,
-        reps: Number(repsInput.value),
         is_warmup: warmupInput.checked,
+        ...(isTimed
+          ? { set_type: "time", work_seconds: Number(mainInput.value) }
+          : { reps: Number(mainInput.value) }),
       });
     };
 
-    draft.append(weightInput, repsInput, warmupLabel, logBtn);
+    draft.append(weightInput, mainInput, warmupLabel, logBtn);
     wrap.appendChild(draft);
 
     const noteInput = document.createElement("input");
@@ -312,7 +360,10 @@ function render(payload: LivePayload): void {
 
   const groups = payload.groups ?? [];
   const firstGroup = groups[0];
-  if (openGroups.size === 0 && firstGroup) openGroups.add(groupKey(firstGroup));
+  if (!hasSetDefaultOpenGroup && firstGroup) {
+    openGroups.add(groupKey(firstGroup));
+    hasSetDefaultOpenGroup = true;
+  }
   groupsEl.replaceChildren(...groups.map((g) => renderGroup(g, finished)));
 }
 

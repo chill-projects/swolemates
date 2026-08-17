@@ -103,6 +103,18 @@ class LastTimeOut:
 
 
 @dataclass
+class TargetOut:
+    """The uniform prescription copied from a `TemplateExercise` at
+    `start_workout(template_id=...)` time. `None` on `ExerciseEntryOut` for ad-hoc
+    exercises — there's nothing to prefill from."""
+
+    sets: int
+    reps: int | None
+    seconds: int | None
+    weight: Decimal | None
+
+
+@dataclass
 class ExerciseEntryOut:
     id: uuid.UUID
     exercise_id: uuid.UUID
@@ -115,6 +127,7 @@ class ExerciseEntryOut:
     # this dataclass (get_workout_history, log_workout, ...) since it'd otherwise
     # be an extra query per exercise on every past workout returned.
     last_time: LastTimeOut | None = None
+    target: TargetOut | None = None
 
 
 @dataclass
@@ -179,6 +192,16 @@ async def _load_workout_details(
             continue
         entry = entries_by_we_id.get(we.id)
         if entry is None:
+            target = (
+                TargetOut(
+                    sets=we.target_sets,
+                    reps=we.target_reps,
+                    seconds=we.target_seconds,
+                    weight=we.target_weight,
+                )
+                if we.target_sets is not None
+                else None
+            )
             entry = ExerciseEntryOut(
                 id=we.id,
                 exercise_id=we.exercise_id,
@@ -186,6 +209,7 @@ async def _load_workout_details(
                 notes=we.notes,
                 next_time_note=we.next_time_note,
                 superset_group=we.superset_group,
+                target=target,
             )
             entries_by_we_id[we.id] = entry
             out.exercises.append(entry)
@@ -394,13 +418,20 @@ async def get_workout_history(
 
 
 async def start_workout(
-    session: AsyncSession, user_sub: str, *, exercises: list[str] | None = None
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    exercises: list[str] | None = None,
+    template_id: uuid.UUID | None = None,
 ) -> WorkoutOut:
-    """Begin a workout session — from a blank slate or a known list of exercise
-    names (`template_id`/`planned_id` come in slice 3, once those tables exist).
-    At most one active workout per user: if one's already in progress, this just
-    returns it rather than creating a duplicate — resumability is a server-side-
-    state guarantee, not a per-call one (#3, resolved)."""
+    """Begin a workout session — from a blank slate, a known list of exercise names,
+    or a saved template (`planned_id` comes in a later slice, once planned workouts
+    exist). `template_id` takes precedence over `exercises` when both are given —
+    copies each exercise's order, superset grouping, and target prescription onto the
+    new session's `workout_exercises`; editing the template afterward never rewrites
+    this copy. At most one active workout per user: if one's already in progress,
+    this just returns it rather than creating a duplicate — resumability is a
+    server-side-state guarantee, not a per-call one (#3, resolved)."""
     active = await _get_active_workout(session, user_sub)
     if active is not None:
         details = await _load_workout_details(session, [active.id])
@@ -416,11 +447,32 @@ async def start_workout(
     session.add(workout)
     await session.flush()
 
-    for order, name in enumerate(exercises or []):
-        resolved = await _resolve_exercise(session, user_sub, name)
-        session.add(
-            WorkoutExercise(workout_id=workout.id, exercise_id=resolved.id, order_index=order)
-        )
+    if template_id is not None:
+        # Deferred import: workout_templates.py imports _resolve_exercise from this
+        # module at load time, so the reverse reference has to happen at call time
+        # instead, to avoid a circular import.
+        from app.services import workout_templates
+
+        template = await workout_templates.get_workout_template(session, user_sub, template_id)
+        for te in template.exercises:
+            session.add(
+                WorkoutExercise(
+                    workout_id=workout.id,
+                    exercise_id=te.exercise_id,
+                    order_index=te.order_index,
+                    superset_group=te.superset_group,
+                    target_sets=te.sets,
+                    target_reps=te.reps,
+                    target_seconds=te.seconds,
+                    target_weight=te.weight,
+                )
+            )
+    else:
+        for order, name in enumerate(exercises or []):
+            resolved = await _resolve_exercise(session, user_sub, name)
+            session.add(
+                WorkoutExercise(workout_id=workout.id, exercise_id=resolved.id, order_index=order)
+            )
 
     await session.flush()
     events.publish(user_sub, "workouts")

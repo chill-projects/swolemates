@@ -269,6 +269,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workout Templates */
+        get: operations["listWorkoutTemplates"];
+        put?: never;
+        /** Create Workout Template */
+        post: operations["createWorkoutTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workout Template */
+        get: operations["getWorkoutTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/{template_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Workout Template */
+        post: operations["archiveWorkoutTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/{template_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Workout Template */
+        post: operations["updateWorkoutTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tmpx": {
         parameters: {
             query?: never;
@@ -588,6 +657,30 @@ export interface components {
             /** Tdee */
             tdee: number;
         };
+        /** CreateTemplateExerciseIn */
+        CreateTemplateExerciseIn: {
+            /** Exercise */
+            exercise: string;
+            /** Group */
+            group?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Reps */
+            reps?: number | null;
+            /** Seconds */
+            seconds?: number | null;
+            /** Sets */
+            sets: number;
+            /** Weight */
+            weight?: number | string | null;
+        };
+        /** CreateWorkoutTemplateRequest */
+        CreateWorkoutTemplateRequest: {
+            /** Exercises */
+            exercises: components["schemas"]["CreateTemplateExerciseIn"][];
+            /** Name */
+            name: string;
+        };
         /** DayLogItemOut */
         DayLogItemOut: {
             /**
@@ -661,6 +754,7 @@ export interface components {
             sets: components["schemas"]["SetOut"][];
             /** Superset Group */
             superset_group?: number | null;
+            target?: components["schemas"]["TargetOut"] | null;
         };
         /** ExerciseOut */
         ExerciseOut: {
@@ -1017,6 +1111,64 @@ export interface components {
         StartWorkoutRequest: {
             /** Exercises */
             exercises?: string[] | null;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /** TargetOut */
+        TargetOut: {
+            /** Reps */
+            reps: number | null;
+            /** Seconds */
+            seconds: number | null;
+            /** Sets */
+            sets: number;
+            /** Weight */
+            weight: string | null;
+        };
+        /** TemplateExerciseOut */
+        TemplateExerciseOut: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Exercise Name */
+            exercise_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string | null;
+            /** Order Index */
+            order_index: number;
+            /** Reps */
+            reps: number | null;
+            /** Seconds */
+            seconds: number | null;
+            /** Sets */
+            sets: number;
+            /** Superset Group */
+            superset_group: number | null;
+            /** Weight */
+            weight: string | null;
+        };
+        /** TemplateOut */
+        TemplateOut: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Exercises */
+            exercises: components["schemas"]["TemplateExerciseOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** TmpxItemCreate */
         TmpxItemCreate: {
@@ -1107,6 +1259,31 @@ export interface components {
             superset_with?: string | null;
             /** Workout Exercise Id */
             workout_exercise_id?: string | null;
+        };
+        /** UpdateWorkoutTemplateRequest */
+        UpdateWorkoutTemplateRequest: {
+            /** Action */
+            action: string;
+            /** Exercise */
+            exercise?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Order */
+            order?: string[] | null;
+            /** Reps */
+            reps?: number | null;
+            /** Seconds */
+            seconds?: number | null;
+            /** Sets */
+            sets?: number | null;
+            /** Superset With */
+            superset_with?: string | null;
+            /** Template Exercise Id */
+            template_exercise_id?: string | null;
+            /** Weight */
+            weight?: number | string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1709,6 +1886,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalculateTargetsResponse"];
+                };
+            };
+        };
+    };
+    listWorkoutTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"][];
+                };
+            };
+        };
+    };
+    createWorkoutTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkoutTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getWorkoutTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archiveWorkoutTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateWorkoutTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkoutTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

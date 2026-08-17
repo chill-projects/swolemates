@@ -40,6 +40,7 @@ class LogActivityRequest(BaseModel):
 
 class StartWorkoutRequest(BaseModel):
     exercises: list[str] | None = None
+    template_id: UUID | None = None
 
 
 class LogSetRequest(BaseModel):
@@ -84,6 +85,15 @@ class LastTimeOut(BaseModel):
     note: str | None
 
 
+class TargetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sets: int
+    reps: int | None
+    seconds: int | None
+    weight: Decimal | None
+
+
 class ExerciseEntryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -95,6 +105,7 @@ class ExerciseEntryOut(BaseModel):
     sets: list[SetOut]
     superset_group: int | None = None
     last_time: LastTimeOut | None = None
+    target: TargetOut | None = None
 
 
 class WorkoutOut(BaseModel):

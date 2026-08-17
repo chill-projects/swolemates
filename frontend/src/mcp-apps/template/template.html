@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Template editor</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        --accent: #2f9e8f;
+        --border: color-mix(in srgb, currentColor 14%, transparent);
+        --field-border: color-mix(in srgb, currentColor 35%, transparent);
+      }
+      body { margin: 0; padding: 0.85rem; }
+      .muted { opacity: 0.65; }
+      .error { color: #d33; }
+      button {
+        padding: 0.35rem 0.65rem; border: 1px solid var(--field-border);
+        border-radius: 0.375rem; background: transparent; color: inherit; cursor: pointer;
+        font-size: 0.8rem;
+      }
+      input[type="text"], input[type="number"] {
+        padding: 0.3rem 0.4rem; border: 1px solid var(--field-border);
+        border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.8rem;
+      }
+
+      #status { margin: 0 0 0.5rem; }
+      #name-input { font-size: 1rem; font-weight: 600; width: 100%; box-sizing: border-box; margin-bottom: 0.75rem; }
+
+      .group {
+        border: 1px solid var(--border); border-radius: 0.6rem;
+        padding: 0.6rem; margin-bottom: 0.6rem;
+      }
+      .group-toggle {
+        display: flex; align-items: center; gap: 0.4rem; width: 100%;
+        border: none; padding: 0; background: none; color: inherit; text-align: left;
+        font: inherit; font-weight: 600; cursor: pointer;
+      }
+      .badge {
+        font-size: 0.65rem; font-weight: 400; border: 1px solid var(--field-border);
+        border-radius: 999px; padding: 0.05rem 0.5rem; color: var(--accent);
+      }
+      .group-body:not([hidden]) { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.9rem; }
+      .superset-hint { font-size: 0.75rem; margin: 0; }
+      hr { border: none; border-top: 1px solid var(--border); opacity: 0.6; margin: 0; }
+
+      .exercise-header { display: flex; align-items: center; gap: 0.5rem; }
+      .exercise-header strong { flex: 1; }
+      .exercise-header button { padding: 0.15rem 0.5rem; font-size: 0.7rem; }
+      .remove-x { padding: 0 0.35rem !important; }
+
+      .targets { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+      .targets label { display: flex; flex-direction: column; font-size: 0.65rem; opacity: 0.75; gap: 0.15rem; }
+      .targets input { width: 4rem; }
+
+      .notes-input { width: 100%; box-sizing: border-box; margin-top: 0.4rem; }
+
+      #controls { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+
+      #picker:not([hidden]) {
+        border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.6rem;
+        margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem;
+      }
+      #picker-list { list-style: none; margin: 0; padding: 0; max-height: 12rem; overflow-y: auto; }
+      #picker-list li { padding: 0.1rem 0; }
+      .picker-group-label {
+        font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em;
+        opacity: 0.55; margin-top: 0.4rem;
+      }
+      #picker-list button { width: 100%; text-align: left; border: none; padding: 0.25rem 0.1rem; }
+    </style>
+  </head>
+  <body>
+    <p id="status" class="muted">Connecting…</p>
+
+    <div id="template" hidden>
+      <input id="name-input" type="text" aria-label="Template name" />
+
+      <div id="groups"></div>
+
+      <div id="picker" hidden>
+        <input id="picker-filter" type="text" placeholder="Filter exercises…" aria-label="Filter exercises" />
+        <ul id="picker-list"></ul>
+        <button type="button" id="picker-cancel">Cancel</button>
+      </div>
+
+      <div id="controls">
+        <button type="button" id="add-exercise-btn">+ Add exercise</button>
+        <button type="button" id="archive-btn">Archive</button>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
