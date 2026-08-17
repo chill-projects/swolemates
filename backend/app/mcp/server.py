@@ -46,4 +46,5 @@ from app.mcp import (  # noqa: E402,F401
     profile_tools,
     tdee_tools,
     tmpx_tools,
+    workouts_tools,
 )

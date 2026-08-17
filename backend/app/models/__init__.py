@@ -12,6 +12,7 @@ from app.models.nutrition import (
 )
 from app.models.profile import UserProfile, WeightUnit
 from app.models.tmpx import TmpxItem
+from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
 
 __all__ = [
     "Base",
@@ -26,4 +27,10 @@ __all__ = [
     "MealTemplate",
     "MealTemplateItem",
     "MealTemplateItemValue",
+    "Exercise",
+    "Workout",
+    "WorkoutExercise",
+    "WorkoutSet",
+    "WorkoutType",
+    "SetType",
 ]

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.api import food_facts, nutrition, profile, tdee, tmpx
+from app.api import food_facts, nutrition, profile, tdee, tmpx, workouts
 from app.deps import AppSettings, CurrentPrincipal
 
 api_router = APIRouter()
@@ -10,6 +10,7 @@ api_router.include_router(profile.router)
 api_router.include_router(nutrition.router)
 api_router.include_router(food_facts.router)
 api_router.include_router(tdee.router)
+api_router.include_router(workouts.router)
 
 
 class WhoamiOut(BaseModel):
