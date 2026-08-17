@@ -1,16 +1,22 @@
+import asyncio
 import uuid
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 
+from app import events
 from app.deps import CurrentUser, DbSession
 from app.schemas.workouts import (
+    ExerciseOut,
     FinishWorkoutRequest,
     LogActivityRequest,
     LogSetRequest,
     LogSetResponse,
     LogWorkoutRequest,
     StartWorkoutRequest,
+    UpdateWorkoutEntryRequest,
+    WorkoutLiveOut,
     WorkoutOut,
 )
 from app.services import workouts as service
@@ -120,3 +126,74 @@ async def finish_workout(
 async def get_active_workout(user_sub: CurrentUser, session: DbSession) -> WorkoutOut | None:
     workout = await service.get_active_workout(session, user_sub)
     return WorkoutOut.model_validate(workout) if workout else None
+
+
+@router.get("/exercises", response_model=list[ExerciseOut], operation_id="listWorkoutExercises")
+async def list_exercises(user_sub: CurrentUser, session: DbSession) -> list[ExerciseOut]:
+    exercises = await service.list_exercises(session, user_sub)
+    return [ExerciseOut.model_validate(e) for e in exercises]
+
+
+@router.get("/{workout_id}/live", response_model=WorkoutLiveOut, operation_id="getWorkoutLive")
+async def get_workout_live(
+    workout_id: uuid.UUID, user_sub: CurrentUser, session: DbSession
+) -> WorkoutLiveOut:
+    try:
+        workout = await service.get_workout(session, user_sub, workout_id)
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    live = await service.get_workout_live(session, user_sub, workout)
+    return WorkoutLiveOut.model_validate(live)
+
+
+@router.post(
+    "/{workout_id}/entries", response_model=WorkoutLiveOut, operation_id="updateWorkoutEntry"
+)
+async def update_workout_entry(
+    workout_id: uuid.UUID,
+    body: UpdateWorkoutEntryRequest,
+    user_sub: CurrentUser,
+    session: DbSession,
+) -> WorkoutLiveOut:
+    try:
+        workout = await service.update_workout_entry(
+            session,
+            user_sub,
+            workout_id=workout_id,
+            action=body.action,
+            exercise=body.exercise,
+            workout_exercise_id=body.workout_exercise_id,
+            superset_with=body.superset_with,
+            order=body.order,
+            note=body.note,
+        )
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    live = await service.get_workout_live(session, user_sub, workout)
+    return WorkoutLiveOut.model_validate(live)
+
+
+@router.get("/events", operation_id="workoutsEvents", include_in_schema=False)
+async def workouts_events(user_sub: CurrentUser) -> StreamingResponse:
+    """Server-sent events: one `changed` event per mutation to this user's workout
+    data. Events carry no data — clients refetch through the normal authz'd path.
+    Excluded from the OpenAPI schema because the generated client can't type a
+    stream; the SPA consumes it with a raw fetch (nutrition's pattern)."""
+
+    async def stream():
+        yield "retry: 3000\n\n"
+        async with events.subscribe(user_sub) as queue:
+            while True:
+                try:
+                    topic = await asyncio.wait_for(queue.get(), timeout=25)
+                    yield f"event: changed\ndata: {topic}\n\n"
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

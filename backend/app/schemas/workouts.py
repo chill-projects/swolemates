@@ -70,6 +70,20 @@ class SetOut(BaseModel):
     work_seconds: int | None
 
 
+class LastTimeSetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    weight: Decimal | None
+    reps: int | None
+
+
+class LastTimeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sets: list[LastTimeSetOut]
+    note: str | None
+
+
 class ExerciseEntryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,6 +93,8 @@ class ExerciseEntryOut(BaseModel):
     notes: str | None
     next_time_note: str | None
     sets: list[SetOut]
+    superset_group: int | None = None
+    last_time: LastTimeOut | None = None
 
 
 class WorkoutOut(BaseModel):
@@ -99,3 +115,39 @@ class WorkoutOut(BaseModel):
 class LogSetResponse(BaseModel):
     workout: WorkoutOut | None = None
     needs_clarification: str | None = None
+
+
+class WorkoutGroupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    superset_group: int | None
+    is_superset: bool
+    exercises: list[ExerciseEntryOut]
+
+
+class WorkoutLiveOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    started_at: datetime
+    completed_at: datetime | None
+    notes: str | None
+    groups: list[WorkoutGroupOut]
+    summary: str
+
+
+class UpdateWorkoutEntryRequest(BaseModel):
+    action: str
+    exercise: str | None = None
+    workout_exercise_id: UUID | None = None
+    superset_with: UUID | None = None
+    order: list[UUID] | None = None
+    note: str | None = None
+
+
+class ExerciseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    muscle_group: str

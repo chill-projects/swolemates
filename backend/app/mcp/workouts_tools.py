@@ -1,17 +1,30 @@
 """Workouts tools (#3, resolved). Slice 1: core domain model + one-shot logging.
-Slice 2a: in-workout core (start/log_set/finish/get_active) — chat-usable today
-per the #6 addendum ("bench 185x8" texted mid-workout), but still text-only —
-no ui:// component until slice 2b.
+Slice 2a: in-workout core (start/log_set/finish/get_active) — chat-usable per the #6
+addendum ("bench 185x8" texted mid-workout). Slice 2b: bound to the
+ui://swolemates/workout-live.html accordion (grouped by superset, last-time framing) —
+any call that changes the active workout returns the full current picture, so the
+component re-renders from any result without an extra round trip (the tmpx/nutrition-
+day pattern). `update_workout_entry`/`list_workout_exercises` are app-only — driven by
+the component's own buttons, no chat use case.
 """
 
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
+
+from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import workouts as service
+
+WORKOUT_LIVE_URI = "ui://swolemates/workout-live.html"
+
+WORKOUT_LIVE_BUNDLE = (
+    Path(__file__).resolve().parent.parent.parent / "static" / "mcp-apps" / "workout-live.html"
+)
 
 
 def _format_set(s: service.SetOut) -> str:
@@ -32,6 +45,59 @@ def _format_workout(w: service.WorkoutOut) -> str:
         f"{e.exercise_name}: " + ", ".join(_format_set(s) for s in e.sets) for e in w.exercises
     )
     return f"{when} — {header}: {exercise_lines}"
+
+
+def _last_time_payload(lt: service.LastTimeOut | None) -> dict | None:
+    if lt is None:
+        return None
+    return {
+        "sets": [
+            {"weight": float(s.weight) if s.weight is not None else None, "reps": s.reps}
+            for s in lt.sets
+        ],
+        "note": lt.note,
+    }
+
+
+def _exercise_payload(e: service.ExerciseEntryOut) -> dict:
+    return {
+        "id": str(e.id),
+        "exercise_id": str(e.exercise_id),
+        "exercise_name": e.exercise_name,
+        "next_time_note": e.next_time_note,
+        "sets": [
+            {
+                "id": str(s.id),
+                "set_number": s.set_number,
+                "set_type": s.set_type.value,
+                "is_warmup": s.is_warmup,
+                "weight": float(s.weight) if s.weight is not None else None,
+                "reps": s.reps,
+                "work_seconds": s.work_seconds,
+            }
+            for s in e.sets
+        ],
+        "last_time": _last_time_payload(e.last_time),
+    }
+
+
+def _live_payload(live: service.WorkoutLiveOut) -> dict:
+    return {
+        "active": True,
+        "id": str(live.id),
+        "started_at": live.started_at.isoformat(),
+        "completed_at": live.completed_at.isoformat() if live.completed_at else None,
+        "notes": live.notes,
+        "groups": [
+            {
+                "superset_group": g.superset_group,
+                "is_superset": g.is_superset,
+                "exercises": [_exercise_payload(e) for e in g.exercises],
+            }
+            for g in live.groups
+        ],
+        "summary": live.summary,
+    }
 
 
 @mcp.tool
@@ -121,9 +187,9 @@ async def get_workout_history(
     return "\n".join(_format_workout(w) for w in workouts)
 
 
-@mcp.tool
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
-async def start_workout(exercises: list[str] | None = None) -> str:
+async def start_workout(exercises: list[str] | None = None) -> dict:
     """Begin a workout session — from a blank slate or a known list of exercise
     names. If one's already in progress, this just resumes it rather than
     starting a duplicate (starting from a template/planned workout comes in a
@@ -136,11 +202,11 @@ async def start_workout(exercises: list[str] | None = None) -> str:
     user_sub = mcp_user_sub()
     async with tool_session() as session:
         workout = await service.start_workout(session, user_sub, exercises=exercises)
-    verb = "Resuming your open workout" if workout.resumed else "Started a new workout"
-    return f"{verb}: {_format_workout(workout)}"
+        live = await service.get_workout_live(session, user_sub, workout)
+    return _live_payload(live)
 
 
-@mcp.tool
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
 async def log_set(
     exercise: str,
@@ -152,7 +218,7 @@ async def log_set(
     sets: int = 1,
     note: str | None = None,
     continue_session: bool | None = None,
-) -> str:
+) -> dict | str:
     """Record one or more sets against the active workout — auto-starts one if
     none is active. Auto-continues an already-open workout with no question
     asked if its last set was within 90 minutes; past that gap, nothing gets
@@ -187,14 +253,15 @@ async def log_set(
             note=note,
             continue_session=continue_session,
         )
-    if result.needs_clarification:
-        return result.needs_clarification
-    return f"Logged: {_format_workout(result.workout)}"
+        if result.needs_clarification:
+            return result.needs_clarification
+        live = await service.get_workout_live(session, user_sub, result.workout)
+    return _live_payload(live)
 
 
-@mcp.tool
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
-async def finish_workout(workout_id: str, notes: str | None = None) -> str:
+async def finish_workout(workout_id: str, notes: str | None = None) -> dict:
     """Finish an in-progress workout — stamps it complete.
 
     Args:
@@ -206,16 +273,90 @@ async def finish_workout(workout_id: str, notes: str | None = None) -> str:
         workout = await service.finish_workout(
             session, user_sub, workout_id=UUID(workout_id), notes=notes
         )
-    return f"Finished: {_format_workout(workout)}"
+        live = await service.get_workout_live(session, user_sub, workout)
+    return _live_payload(live)
 
 
-@mcp.tool
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["app"]))
 @catches_service_errors
-async def get_active_workout() -> str:
-    """Check whether the caller has a workout currently in progress."""
+async def get_active_workout() -> dict:
+    """Check whether the caller has a workout currently in progress. App-only —
+    driven by the component on load, not a chat entry point (start_workout/log_set
+    already surface active-workout state when the model calls those)."""
     user_sub = mcp_user_sub()
     async with tool_session() as session:
         workout = await service.get_active_workout(session, user_sub)
-    if workout is None:
-        return "No active workout."
-    return f"Active: {_format_workout(workout)}"
+        if workout is None:
+            return {"active": False, "summary": "No active workout."}
+        live = await service.get_workout_live(session, user_sub, workout)
+    return _live_payload(live)
+
+
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["app"]))
+@catches_service_errors
+async def update_workout_entry(
+    workout_id: str,
+    action: str,
+    exercise: str | None = None,
+    workout_exercise_id: str | None = None,
+    superset_with: str | None = None,
+    order: list[str] | None = None,
+    note: str | None = None,
+) -> dict:
+    """App-only: add/remove/reorder an exercise mid-workout, or edit its
+    next-time note. Driven by the component's own buttons.
+
+    Args:
+        workout_id: the in-progress workout being edited.
+        action: "add_exercise" | "remove_exercise" | "reorder_exercises" |
+            "set_next_time_note".
+        exercise: for add_exercise — the exercise name.
+        workout_exercise_id: for remove_exercise / set_next_time_note.
+        superset_with: for add_exercise — an existing workout_exercise_id to
+            group the new exercise with as a superset.
+        order: for reorder_exercises — every current workout_exercise_id, in
+            the new order.
+        note: for set_next_time_note.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        workout = await service.update_workout_entry(
+            session,
+            user_sub,
+            workout_id=UUID(workout_id),
+            action=action,
+            exercise=exercise,
+            workout_exercise_id=UUID(workout_exercise_id) if workout_exercise_id else None,
+            superset_with=UUID(superset_with) if superset_with else None,
+            order=[UUID(i) for i in order] if order else None,
+            note=note,
+        )
+        live = await service.get_workout_live(session, user_sub, workout)
+    return _live_payload(live)
+
+
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["app"]))
+@catches_service_errors
+async def list_workout_exercises() -> dict:
+    """App-only: the exercise catalog for the in-workout picker (filterable
+    client-side — no chat search use case here)."""
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        exercises = await service.list_exercises(session, user_sub)
+    return {
+        "exercises": [
+            {"id": str(e.id), "name": e.name, "muscle_group": e.muscle_group} for e in exercises
+        ]
+    }
+
+
+@mcp.resource(WORKOUT_LIVE_URI)
+def workout_live_ui() -> str:
+    """The in-workout component — one bundle rendered by Claude and the SPA alike."""
+    if WORKOUT_LIVE_BUNDLE.is_file():
+        return WORKOUT_LIVE_BUNDLE.read_text()
+    return (
+        "<html><body style='font-family:system-ui;padding:1rem'>"
+        "<p>The workout-live component bundle isn't built. Run <code>make apps</code>.</p>"
+        "</body></html>"
+    )

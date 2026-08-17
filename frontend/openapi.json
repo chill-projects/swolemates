@@ -293,6 +293,16 @@
             "title": "Id",
             "type": "string"
           },
+          "last_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastTimeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "next_time_note": {
             "anyOf": [
               {
@@ -321,6 +331,17 @@
             },
             "title": "Sets",
             "type": "array"
+          },
+          "superset_group": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superset Group"
           }
         },
         "required": [
@@ -332,6 +353,30 @@
           "sets"
         ],
         "title": "ExerciseEntryOut",
+        "type": "object"
+      },
+      "ExerciseOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "muscle_group": {
+            "title": "Muscle Group",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "muscle_group"
+        ],
+        "title": "ExerciseOut",
         "type": "object"
       },
       "FinishWorkoutRequest": {
@@ -528,6 +573,67 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LastTimeOut": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/LastTimeSetOut"
+            },
+            "title": "Sets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sets",
+          "note"
+        ],
+        "title": "LastTimeOut",
+        "type": "object"
+      },
+      "LastTimeSetOut": {
+        "properties": {
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "weight",
+          "reps"
+        ],
+        "title": "LastTimeSetOut",
         "type": "object"
       },
       "LogActivityRequest": {
@@ -1714,6 +1820,80 @@
         "title": "UpdateNutritionLogRequest",
         "type": "object"
       },
+      "UpdateWorkoutEntryRequest": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "exercise": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "superset_with": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superset With"
+          },
+          "workout_exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workout Exercise Id"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UpdateWorkoutEntryRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1797,6 +1977,97 @@
           "display_name"
         ],
         "title": "WhoamiOut",
+        "type": "object"
+      },
+      "WorkoutGroupOut": {
+        "properties": {
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseEntryOut"
+            },
+            "title": "Exercises",
+            "type": "array"
+          },
+          "is_superset": {
+            "title": "Is Superset",
+            "type": "boolean"
+          },
+          "superset_group": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superset Group"
+          }
+        },
+        "required": [
+          "superset_group",
+          "is_superset",
+          "exercises"
+        ],
+        "title": "WorkoutGroupOut",
+        "type": "object"
+      },
+      "WorkoutLiveOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "started_at",
+          "completed_at",
+          "notes",
+          "groups",
+          "summary"
+        ],
+        "title": "WorkoutLiveOut",
         "type": "object"
       },
       "WorkoutOut": {
@@ -2842,6 +3113,31 @@
         ]
       }
     },
+    "/api/workouts/exercises": {
+      "get": {
+        "operationId": "listWorkoutExercises",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExerciseOut"
+                  },
+                  "title": "Response Listworkoutexercises",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Exercises",
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
     "/api/workouts/log": {
       "post": {
         "operationId": "logWorkout",
@@ -3006,6 +3302,59 @@
         ]
       }
     },
+    "/api/workouts/{workout_id}/entries": {
+      "post": {
+        "operationId": "updateWorkoutEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workout_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workout Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkoutEntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutLiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workout Entry",
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
     "/api/workouts/{workout_id}/finish": {
       "post": {
         "operationId": "finishWorkout",
@@ -3054,6 +3403,49 @@
           }
         },
         "summary": "Finish Workout",
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
+    "/api/workouts/{workout_id}/live": {
+      "get": {
+        "operationId": "getWorkoutLive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workout_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workout Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutLiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workout Live",
         "tags": [
           "workouts"
         ]

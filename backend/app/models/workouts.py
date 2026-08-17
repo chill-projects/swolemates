@@ -1,9 +1,9 @@
 """Workouts core (#3, resolved — slice 1 of 5: core domain model + one-shot logging).
 
-`template_id` on `Workout` and `superset_group` on `WorkoutExercise` are deliberately
-left out — they land in later slices (templates/plans, in-workout mode) as additive
-migrations exactly when those slices need them, same pattern as nutrition's
-`group_id`/`group_name`.
+`template_id` on `Workout` is deliberately left out — it lands in a later slice
+(templates/plans) as an additive migration exactly when that slice needs it, same
+pattern as nutrition's `group_id`/`group_name`. `superset_group` on `WorkoutExercise`
+landed in slice 2b, once the in-workout accordion actually grouped by it.
 """
 
 import enum
@@ -98,6 +98,10 @@ class WorkoutExercise(Base):
     )
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Null = solo exercise. Exercises sharing a value (and workout) are one superset,
+    # worked back-to-back before the shared rest — an arbitrary int scoped to the
+    # workout, not a global id.
+    superset_group: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
     # "notes-for-next-time": surfaced next time this exercise comes up (later
     # slices' planned view / in-workout mode show the most recent one per exercise)

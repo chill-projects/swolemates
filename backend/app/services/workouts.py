@@ -91,6 +91,18 @@ class SetOut:
 
 
 @dataclass
+class LastTimeSetOut:
+    weight: Decimal | None
+    reps: int | None
+
+
+@dataclass
+class LastTimeOut:
+    sets: list[LastTimeSetOut]
+    note: str | None
+
+
+@dataclass
 class ExerciseEntryOut:
     id: uuid.UUID
     exercise_id: uuid.UUID
@@ -98,6 +110,11 @@ class ExerciseEntryOut:
     notes: str | None
     next_time_note: str | None
     sets: list[SetOut] = field(default_factory=list)
+    superset_group: int | None = None
+    # Populated only by `get_workout_live` — cheap everywhere else that reuses
+    # this dataclass (get_workout_history, log_workout, ...) since it'd otherwise
+    # be an extra query per exercise on every past workout returned.
+    last_time: LastTimeOut | None = None
 
 
 @dataclass
@@ -168,6 +185,7 @@ async def _load_workout_details(
                 exercise_name=exercise_name,
                 notes=we.notes,
                 next_time_note=we.next_time_note,
+                superset_group=we.superset_group,
             )
             entries_by_we_id[we.id] = entry
             out.exercises.append(entry)
@@ -536,9 +554,225 @@ async def finish_workout(
     return details[0]
 
 
+async def get_workout(session: AsyncSession, user_sub: str, workout_id: uuid.UUID) -> WorkoutOut:
+    result = await session.execute(
+        select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
+    )
+    workout = result.scalar_one_or_none()
+    if workout is None:
+        raise NotFoundError(f"No workout {workout_id}")
+    details = await _load_workout_details(session, [workout.id])
+    return details[0]
+
+
 async def get_active_workout(session: AsyncSession, user_sub: str) -> WorkoutOut | None:
     active = await _get_active_workout(session, user_sub)
     if active is None:
         return None
     details = await _load_workout_details(session, [active.id])
+    return details[0]
+
+
+@dataclass
+class GroupOut:
+    superset_group: int | None
+    is_superset: bool
+    exercises: list[ExerciseEntryOut]
+
+
+@dataclass
+class WorkoutLiveOut:
+    id: uuid.UUID
+    started_at: datetime
+    completed_at: datetime | None
+    notes: str | None
+    groups: list[GroupOut]
+    summary: str
+
+
+async def _get_last_time(
+    session: AsyncSession, user_sub: str, exercise_id: uuid.UUID, *, before_workout_id: uuid.UUID
+) -> LastTimeOut | None:
+    """The most recent *other*, *completed* workout that included this exercise —
+    its sets plus whatever next-time note was left, for the progressive-overload
+    framing ("Last time: 135lbs x 8, 8, 7"). `None` if this exercise has never
+    been logged before."""
+    result = await session.execute(
+        select(WorkoutExercise.id, WorkoutExercise.next_time_note)
+        .join(Workout, Workout.id == WorkoutExercise.workout_id)
+        .where(
+            Workout.user_id == user_sub,
+            Workout.id != before_workout_id,
+            Workout.completed_at.isnot(None),
+            WorkoutExercise.exercise_id == exercise_id,
+        )
+        .order_by(Workout.completed_at.desc())
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        return None
+    workout_exercise_id, note = row
+
+    sets_result = await session.execute(
+        select(WorkoutSet.actual_weight, WorkoutSet.actual_reps)
+        .where(WorkoutSet.workout_exercise_id == workout_exercise_id)
+        .order_by(WorkoutSet.set_number)
+    )
+    sets = [LastTimeSetOut(weight=w, reps=r) for w, r in sets_result.all()]
+    return LastTimeOut(sets=sets, note=note)
+
+
+def _group_exercises(exercises: list[ExerciseEntryOut]) -> list[GroupOut]:
+    """The accordion unit is the group, not the exercise: null `superset_group` is
+    a solo group of one (keyed by the entry's own id so nulls never merge); equal
+    values form a superset. Dict insertion order preserves `_load_workout_details`'s
+    order-by-`order_index` ordering, so groups display in first-appearance order
+    with no separate ordering field needed."""
+    buckets: dict[uuid.UUID | int, list[ExerciseEntryOut]] = {}
+    for entry in exercises:
+        key: uuid.UUID | int = (
+            entry.superset_group if entry.superset_group is not None else entry.id
+        )
+        buckets.setdefault(key, []).append(entry)
+    return [
+        GroupOut(
+            superset_group=key if isinstance(key, int) else None,
+            is_superset=len(members) > 1,
+            exercises=members,
+        )
+        for key, members in buckets.items()
+    ]
+
+
+def _live_summary(workout: WorkoutOut, groups: list[GroupOut]) -> str:
+    total_sets = sum(len(e.sets) for g in groups for e in g.exercises)
+    if workout.completed_at is not None:
+        return f"Workout complete — {len(groups)} exercise group(s), {total_sets} sets logged."
+    if not groups:
+        return "No exercises yet."
+    return f"{len(groups)} exercise group(s) so far, {total_sets} sets logged."
+
+
+async def get_workout_live(
+    session: AsyncSession, user_sub: str, workout: WorkoutOut
+) -> WorkoutLiveOut:
+    """The accordion view: `workout`'s exercises grouped by superset, each enriched
+    with `last_time`. Takes an already-fetched `WorkoutOut` (every caller — start/
+    log_set/finish/get_active — already has one) rather than reloading."""
+    for entry in workout.exercises:
+        entry.last_time = await _get_last_time(
+            session, user_sub, entry.exercise_id, before_workout_id=workout.id
+        )
+    groups = _group_exercises(workout.exercises)
+    return WorkoutLiveOut(
+        id=workout.id,
+        started_at=workout.started_at,
+        completed_at=workout.completed_at,
+        notes=workout.notes,
+        groups=groups,
+        summary=_live_summary(workout, groups),
+    )
+
+
+async def _next_superset_group(session: AsyncSession, workout_id: uuid.UUID) -> int:
+    result = await session.execute(
+        select(func.max(WorkoutExercise.superset_group)).where(
+            WorkoutExercise.workout_id == workout_id
+        )
+    )
+    return (result.scalar_one_or_none() or 0) + 1
+
+
+async def _require_active_workout(
+    session: AsyncSession, user_sub: str, workout_id: uuid.UUID
+) -> Workout:
+    result = await session.execute(
+        select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
+    )
+    workout = result.scalar_one_or_none()
+    if workout is None:
+        raise NotFoundError(f"No workout {workout_id}")
+    if workout.completed_at is not None:
+        raise ValueError("This workout is already finished.")
+    return workout
+
+
+async def update_workout_entry(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    workout_id: uuid.UUID,
+    action: str,
+    exercise: str | None = None,
+    workout_exercise_id: uuid.UUID | None = None,
+    superset_with: uuid.UUID | None = None,
+    order: list[uuid.UUID] | None = None,
+    note: str | None = None,
+) -> WorkoutOut:
+    """App-only mutations for the in-workout component: add/remove/reorder an
+    exercise mid-workout, or edit its next-time note. Editing an *already-logged*
+    set is out of scope here (that's `update_workout`, slice 5) — `log_set` is the
+    only way sets get written."""
+    workout = await _require_active_workout(session, user_sub, workout_id)
+
+    if action == "add_exercise":
+        if exercise is None:
+            raise ValueError("add_exercise needs 'exercise'.")
+        resolved = await _resolve_exercise(session, user_sub, exercise)
+        count_result = await session.execute(
+            select(func.count(WorkoutExercise.id)).where(WorkoutExercise.workout_id == workout.id)
+        )
+        group = None
+        if superset_with is not None:
+            partner = await session.get(WorkoutExercise, superset_with)
+            if partner is None or partner.workout_id != workout.id:
+                raise NotFoundError("No such exercise in this workout.")
+            if partner.superset_group is None:
+                partner.superset_group = await _next_superset_group(session, workout.id)
+            group = partner.superset_group
+        session.add(
+            WorkoutExercise(
+                workout_id=workout.id,
+                exercise_id=resolved.id,
+                order_index=count_result.scalar_one() or 0,
+                superset_group=group,
+            )
+        )
+    elif action == "remove_exercise":
+        if workout_exercise_id is None:
+            raise ValueError("remove_exercise needs 'workout_exercise_id'.")
+        we = await session.get(WorkoutExercise, workout_exercise_id)
+        if we is None or we.workout_id != workout.id:
+            raise NotFoundError("No such exercise in this workout.")
+        set_count = await session.execute(
+            select(func.count(WorkoutSet.id)).where(WorkoutSet.workout_exercise_id == we.id)
+        )
+        if set_count.scalar_one():
+            raise ValueError("Can't remove an exercise that already has logged sets.")
+        await session.execute(delete(WorkoutExercise).where(WorkoutExercise.id == we.id))
+    elif action == "reorder_exercises":
+        if not order:
+            raise ValueError("reorder_exercises needs 'order'.")
+        result = await session.execute(
+            select(WorkoutExercise).where(WorkoutExercise.workout_id == workout.id)
+        )
+        existing = {we.id: we for we in result.scalars()}
+        if set(order) != set(existing):
+            raise ValueError("'order' must include exactly this workout's current exercises.")
+        for index, we_id in enumerate(order):
+            existing[we_id].order_index = index
+    elif action == "set_next_time_note":
+        if workout_exercise_id is None:
+            raise ValueError("set_next_time_note needs 'workout_exercise_id'.")
+        we = await session.get(WorkoutExercise, workout_exercise_id)
+        if we is None or we.workout_id != workout.id:
+            raise NotFoundError("No such exercise in this workout.")
+        we.next_time_note = note
+    else:
+        raise ValueError(f"Unknown action: {action!r}")
+
+    await session.flush()
+    events.publish(user_sub, "workouts")
+    details = await _load_workout_details(session, [workout.id])
     return details[0]

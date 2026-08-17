@@ -7,6 +7,7 @@ import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
 import { NutritionPage } from "./pages/NutritionPage";
 import { ProfileForm } from "./pages/ProfileForm";
+import { WorkoutLivePage } from "./pages/WorkoutLivePage";
 
 /**
  * A real router lands once more than one feature needs a route. For now it gates the
@@ -85,6 +86,7 @@ function AuthenticatedApp({
 }) {
   const profile = useProfile();
   const onSettingsRoute = window.location.pathname === "/profile";
+  const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
 
   if (profile.isPending) return <p className="muted">Loading your profile…</p>;
   if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
@@ -108,6 +110,10 @@ function AuthenticatedApp({
         <ProfileForm profile={profile.data} />
       </>
     );
+  }
+
+  if (onWorkoutsLiveRoute) {
+    return <WorkoutLivePage me={me} />;
   }
 
   return <NutritionPage me={me} />;

@@ -352,6 +352,193 @@ async def test_get_active_workout_returns_the_in_progress_one(session: AsyncSess
     assert active.id == started.id
 
 
+async def test_get_workout_live_groups_solo_exercises_separately(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift", "Bench Press"])
+
+    live = await service.get_workout_live(session, TEST_USER, workout)
+
+    assert len(live.groups) == 2
+    assert all(not g.is_superset and g.superset_group is None for g in live.groups)
+    assert [g.exercises[0].exercise_name for g in live.groups] == ["Deadlift", "Bench Press"]
+
+
+async def test_update_workout_entry_add_exercise_as_superset_groups_them(
+    session: AsyncSession,
+) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+    deadlift_id = workout.exercises[0].id
+
+    workout = await service.update_workout_entry(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        action="add_exercise",
+        exercise="Overhead Press",
+        superset_with=deadlift_id,
+    )
+    live = await service.get_workout_live(session, TEST_USER, workout)
+
+    assert len(live.groups) == 1
+    group = live.groups[0]
+    assert group.is_superset is True
+    assert group.superset_group is not None
+    assert {e.exercise_name for e in group.exercises} == {"Deadlift", "Overhead Press"}
+
+
+async def test_update_workout_entry_add_exercise_solo_by_default(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER)
+
+    workout = await service.update_workout_entry(
+        session, TEST_USER, workout_id=workout.id, action="add_exercise", exercise="Deadlift"
+    )
+
+    assert len(workout.exercises) == 1
+    assert workout.exercises[0].superset_group is None
+
+
+async def test_update_workout_entry_remove_exercise_requires_zero_sets(
+    session: AsyncSession,
+) -> None:
+    result = await service.log_set(session, TEST_USER, exercise="Back Squat", reps=5, weight=185)
+    we_id = result.workout.exercises[0].id
+
+    with pytest.raises(ValueError, match="already has logged sets"):
+        await service.update_workout_entry(
+            session,
+            TEST_USER,
+            workout_id=result.workout.id,
+            action="remove_exercise",
+            workout_exercise_id=we_id,
+        )
+
+
+async def test_update_workout_entry_remove_exercise_succeeds_with_no_sets(
+    session: AsyncSession,
+) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift", "Squat"])
+    to_remove = workout.exercises[1].id
+
+    workout = await service.update_workout_entry(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        action="remove_exercise",
+        workout_exercise_id=to_remove,
+    )
+
+    assert [e.exercise_name for e in workout.exercises] == ["Deadlift"]
+
+
+async def test_update_workout_entry_reorder_exercises(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift", "Squat"])
+    ids = [e.id for e in workout.exercises]
+
+    workout = await service.update_workout_entry(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        action="reorder_exercises",
+        order=list(reversed(ids)),
+    )
+
+    assert [e.id for e in workout.exercises] == list(reversed(ids))
+
+
+async def test_update_workout_entry_reorder_rejects_mismatched_list(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift", "Squat"])
+    bogus_id = workout.exercises[0].id
+
+    with pytest.raises(ValueError, match="current exercises"):
+        await service.update_workout_entry(
+            session, TEST_USER, workout_id=workout.id, action="reorder_exercises", order=[bogus_id]
+        )
+
+
+async def test_update_workout_entry_set_next_time_note(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+    we_id = workout.exercises[0].id
+
+    workout = await service.update_workout_entry(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        action="set_next_time_note",
+        workout_exercise_id=we_id,
+        note="add 5 next time",
+    )
+
+    assert workout.exercises[0].next_time_note == "add 5 next time"
+
+
+async def test_update_workout_entry_rejects_unknown_action(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER)
+
+    with pytest.raises(ValueError, match="Unknown action"):
+        await service.update_workout_entry(
+            session, TEST_USER, workout_id=workout.id, action="bogus"
+        )
+
+
+async def test_update_workout_entry_404s_for_another_users_workout(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER)
+
+    with pytest.raises(service.NotFoundError):
+        await service.update_workout_entry(
+            session, OTHER_USER, workout_id=workout.id, action="add_exercise", exercise="Deadlift"
+        )
+
+
+async def test_update_workout_entry_rejects_a_finished_workout(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER)
+    finished = await service.finish_workout(session, TEST_USER, workout_id=workout.id)
+
+    with pytest.raises(ValueError, match="already finished"):
+        await service.update_workout_entry(
+            session,
+            TEST_USER,
+            workout_id=finished.id,
+            action="add_exercise",
+            exercise="Deadlift",
+        )
+
+
+async def test_get_workout_live_last_time_from_most_recent_finished_workout(
+    session: AsyncSession,
+) -> None:
+    old = await service.log_set(session, TEST_USER, exercise="Back Squat", reps=5, weight=135)
+    await service.finish_workout(session, TEST_USER, workout_id=old.workout.id)
+
+    recent = await service.log_set(session, TEST_USER, exercise="Back Squat", reps=8, weight=145)
+    await service.finish_workout(session, TEST_USER, workout_id=recent.workout.id)
+
+    current = await service.start_workout(session, TEST_USER, exercises=["Back Squat"])
+    live = await service.get_workout_live(session, TEST_USER, current)
+
+    entry = live.groups[0].exercises[0]
+    assert entry.last_time is not None
+    assert entry.last_time.sets[0].weight == 145
+    assert entry.last_time.sets[0].reps == 8
+
+
+async def test_get_workout_live_last_time_excludes_the_current_workout(
+    session: AsyncSession,
+) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Back Squat"])
+    live = await service.get_workout_live(session, TEST_USER, workout)
+
+    assert live.groups[0].exercises[0].last_time is None
+
+
+async def test_get_workout_live_last_time_none_when_never_done_before(
+    session: AsyncSession,
+) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+
+    live = await service.get_workout_live(session, TEST_USER, workout)
+
+    assert live.groups[0].exercises[0].last_time is None
+
+
 async def test_log_workout_over_rest(client: AsyncClient) -> None:
     resp = await client.post(
         "/api/workouts/log",
@@ -435,3 +622,48 @@ async def test_get_active_workout_over_rest_returns_null_when_none(client: Async
 
     assert resp.status_code == 200
     assert resp.json() is None
+
+
+async def test_get_workout_live_over_rest(client: AsyncClient) -> None:
+    start_resp = await client.post("/api/workouts/start", json={"exercises": ["Deadlift"]})
+    workout_id = start_resp.json()["id"]
+
+    resp = await client.get(f"/api/workouts/{workout_id}/live")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["groups"]) == 1
+    assert body["groups"][0]["exercises"][0]["exercise_name"] == "Deadlift"
+
+
+async def test_update_workout_entry_over_rest(client: AsyncClient) -> None:
+    start_resp = await client.post("/api/workouts/start", json={"exercises": ["Deadlift"]})
+    workout_id = start_resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/workouts/{workout_id}/entries",
+        json={"action": "add_exercise", "exercise": "Bench Press"},
+    )
+
+    assert resp.status_code == 200
+    names = {e["exercise_name"] for g in resp.json()["groups"] for e in g["exercises"]}
+    assert names == {"Deadlift", "Bench Press"}
+
+
+async def test_update_workout_entry_over_rest_400s_on_bad_action(client: AsyncClient) -> None:
+    start_resp = await client.post("/api/workouts/start", json={})
+    workout_id = start_resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/workouts/{workout_id}/entries", json={"action": "not_a_real_action"}
+    )
+
+    assert resp.status_code == 400
+
+
+async def test_list_workout_exercises_over_rest(client: AsyncClient) -> None:
+    resp = await client.get("/api/workouts/exercises")
+
+    assert resp.status_code == 200
+    names = {e["name"] for e in resp.json()}
+    assert "Deadlift" in names
