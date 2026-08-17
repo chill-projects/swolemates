@@ -4,14 +4,19 @@
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
+from app.services.errors import NotFoundError
+
+# log_set auto-continues an open workout within this window of its last set with no
+# question asked; past it, Claude asks rather than guesses (#3/#6, resolved).
+CONTINUATION_WINDOW = timedelta(minutes=90)
 
 
 async def list_exercises(session: AsyncSession, user_sub: str) -> list[Exercise]:
@@ -106,6 +111,21 @@ class WorkoutOut:
     started_at: datetime
     completed_at: datetime | None
     exercises: list[ExerciseEntryOut] = field(default_factory=list)
+    # Set only by start_workout, when it found (and returned) an already-active
+    # workout instead of creating one — distinct from "has exercises", which is
+    # also true for a brand-new workout started with a given exercise list (a bug
+    # caught live: the MCP tool originally guessed this from `bool(exercises)`).
+    resumed: bool = False
+
+
+@dataclass
+class LogSetResult:
+    """`workout` is None exactly when `needs_clarification` is set — the >90-minute
+    gap case, where nothing gets written until the caller says which workout they
+    mean (#3/#6, resolved: Claude asks rather than guesses)."""
+
+    workout: WorkoutOut | None
+    needs_clarification: str | None = None
 
 
 async def _load_workout_details(
@@ -165,6 +185,63 @@ async def _load_workout_details(
             )
 
     return [workouts_by_id[wid] for wid in workout_ids if wid in workouts_by_id]
+
+
+async def _get_active_workout(session: AsyncSession, user_sub: str) -> Workout | None:
+    """At most one in-progress (`completed_at IS NULL`) workout per user, enforced
+    here and in `start_workout`/`log_set` rather than a DB constraint — `.limit(1)`
+    ordered most-recent-first is a defensive fallback if that invariant is ever
+    violated, not an expectation that it will be."""
+    result = await session.execute(
+        select(Workout)
+        .where(Workout.user_id == user_sub, Workout.completed_at.is_(None))
+        .order_by(Workout.started_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _last_activity_at(session: AsyncSession, workout: Workout) -> datetime:
+    """The most recent set logged in this workout, or its start time if none yet —
+    what "90 minutes since you last did anything" actually measures against."""
+    result = await session.execute(
+        select(func.max(WorkoutSet.completed_at))
+        .join(WorkoutExercise, WorkoutExercise.id == WorkoutSet.workout_exercise_id)
+        .where(WorkoutExercise.workout_id == workout.id)
+    )
+    return result.scalar_one_or_none() or workout.started_at
+
+
+async def _find_or_create_workout_exercise(
+    session: AsyncSession,
+    user_sub: str,
+    workout: Workout,
+    exercise_name: str,
+    *,
+    note: str | None = None,
+) -> WorkoutExercise:
+    resolved = await _resolve_exercise(session, user_sub, exercise_name)
+    result = await session.execute(
+        select(WorkoutExercise).where(
+            WorkoutExercise.workout_id == workout.id, WorkoutExercise.exercise_id == resolved.id
+        )
+    )
+    workout_exercise = result.scalar_one_or_none()
+    if workout_exercise is None:
+        count_result = await session.execute(
+            select(func.count(WorkoutExercise.id)).where(WorkoutExercise.workout_id == workout.id)
+        )
+        workout_exercise = WorkoutExercise(
+            workout_id=workout.id,
+            exercise_id=resolved.id,
+            order_index=count_result.scalar_one() or 0,
+            notes=note,
+        )
+        session.add(workout_exercise)
+        await session.flush()
+    elif note is not None:
+        workout_exercise.notes = note
+    return workout_exercise
 
 
 async def log_workout(
@@ -296,3 +373,172 @@ async def get_workout_history(
     )
     workout_ids = [row[0] for row in result.all()]
     return await _load_workout_details(session, workout_ids)
+
+
+async def start_workout(
+    session: AsyncSession, user_sub: str, *, exercises: list[str] | None = None
+) -> WorkoutOut:
+    """Begin a workout session — from a blank slate or a known list of exercise
+    names (`template_id`/`planned_id` come in slice 3, once those tables exist).
+    At most one active workout per user: if one's already in progress, this just
+    returns it rather than creating a duplicate — resumability is a server-side-
+    state guarantee, not a per-call one (#3, resolved)."""
+    active = await _get_active_workout(session, user_sub)
+    if active is not None:
+        details = await _load_workout_details(session, [active.id])
+        details[0].resumed = True
+        return details[0]
+
+    workout = Workout(
+        user_id=user_sub,
+        workout_type=WorkoutType.strength,
+        started_at=datetime.now(UTC),
+        completed_at=None,
+    )
+    session.add(workout)
+    await session.flush()
+
+    for order, name in enumerate(exercises or []):
+        resolved = await _resolve_exercise(session, user_sub, name)
+        session.add(
+            WorkoutExercise(workout_id=workout.id, exercise_id=resolved.id, order_index=order)
+        )
+
+    await session.flush()
+    events.publish(user_sub, "workouts")
+    details = await _load_workout_details(session, [workout.id])
+    return details[0]
+
+
+async def log_set(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    exercise: str,
+    reps: int | None = None,
+    weight: Decimal | None = None,
+    set_type: str = "reps",
+    work_seconds: int | None = None,
+    is_warmup: bool = False,
+    sets: int = 1,
+    note: str | None = None,
+    continue_session: bool | None = None,
+) -> LogSetResult:
+    """Record one or more sets (`sets` — "3 sets of squats at 185x5" — against the
+    active workout, auto-starting one if none is active. An open workout auto-
+    continues with no question asked if its last set was within
+    `CONTINUATION_WINDOW`; past that, nothing is written and a clarifying message
+    comes back instead, unless `continue_session` says explicitly which the caller
+    means (#3/#6, resolved).
+    """
+    _validate_sets(
+        exercise,
+        [{"set_type": set_type, "reps": reps, "weight": weight, "work_seconds": work_seconds}]
+        * sets,
+    )
+
+    active = await _get_active_workout(session, user_sub)
+    if active is not None:
+        last_activity = await _last_activity_at(session, active)
+        gap = datetime.now(UTC) - last_activity
+        if gap > CONTINUATION_WINDOW:
+            if continue_session is None:
+                hours = round(gap.total_seconds() / 3600, 1)
+                return LogSetResult(
+                    workout=None,
+                    needs_clarification=(
+                        f"You have a workout from {hours}h ago still open — continue that one, "
+                        "or start fresh? (pass continue_session=true to continue it, "
+                        "or continue_session=false to start a new one)"
+                    ),
+                )
+            if continue_session is False:
+                active.completed_at = last_activity
+                await session.flush()
+                events.publish(user_sub, "workouts")
+                active = None
+
+    if active is None:
+        active = Workout(
+            user_id=user_sub,
+            workout_type=WorkoutType.strength,
+            started_at=datetime.now(UTC),
+            completed_at=None,
+        )
+        session.add(active)
+        await session.flush()
+
+    workout_exercise = await _find_or_create_workout_exercise(
+        session, user_sub, active, exercise, note=note
+    )
+
+    count_result = await session.execute(
+        select(func.count(WorkoutSet.id)).where(
+            WorkoutSet.workout_exercise_id == workout_exercise.id
+        )
+    )
+    next_set_number = (count_result.scalar_one() or 0) + 1
+
+    when = datetime.now(UTC)
+    for i in range(sets):
+        session.add(
+            WorkoutSet(
+                workout_exercise_id=workout_exercise.id,
+                set_number=next_set_number + i,
+                set_type=SetType(set_type),
+                is_warmup=is_warmup,
+                actual_weight=weight,
+                actual_reps=reps,
+                work_seconds=work_seconds,
+                completed_at=when,
+            )
+        )
+
+    await session.flush()
+    events.publish(user_sub, "workouts")
+    details = await _load_workout_details(session, [active.id])
+    return LogSetResult(workout=details[0])
+
+
+async def finish_workout(
+    session: AsyncSession, user_sub: str, *, workout_id: uuid.UUID, notes: str | None = None
+) -> WorkoutOut:
+    """Stamps `completed_at`, drops any never-logged sets (workoutValidation port:
+    empty prescribed-but-unlogged sets are dropped, not errors — a no-op today
+    since blank-start sessions never create unlogged sets, but ready for slice 3's
+    template-prescribed ones). No PR/streak computation yet — that's slice 4,
+    wrapping around this function without changing its signature. Finishing with
+    zero logged sets is allowed; there's no separate "discard" tool in this slice.
+    """
+    result = await session.execute(
+        select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
+    )
+    workout = result.scalar_one_or_none()
+    if workout is None:
+        raise NotFoundError(f"No workout {workout_id}")
+
+    await session.execute(
+        delete(WorkoutSet).where(
+            WorkoutSet.completed_at.is_(None),
+            WorkoutSet.workout_exercise_id.in_(
+                select(WorkoutExercise.id).where(WorkoutExercise.workout_id == workout_id)
+            ),
+        )
+    )
+
+    workout.completed_at = datetime.now(UTC)
+    if notes is not None:
+        workout.notes = notes
+
+    await session.flush()
+    events.publish(user_sub, "workouts")
+    details = await _load_workout_details(session, [workout.id])
+    return details[0]
+
+
+async def get_active_workout(session: AsyncSession, user_sub: str) -> WorkoutOut | None:
+    active = await _get_active_workout(session, user_sub)
+    if active is None:
+        return None
+    details = await _load_workout_details(session, [active.id])
+    return details[0]

@@ -1,8 +1,12 @@
-"""Workouts tools (#3, resolved — slice 1 of 5: core domain model + one-shot
-logging). Text-only for now — no ui:// component until slice 2 (in-workout mode).
+"""Workouts tools (#3, resolved). Slice 1: core domain model + one-shot logging.
+Slice 2a: in-workout core (start/log_set/finish/get_active) — chat-usable today
+per the #6 addendum ("bench 185x8" texted mid-workout), but still text-only —
+no ui:// component until slice 2b.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
+from uuid import UUID
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
@@ -115,3 +119,103 @@ async def get_workout_history(
     if not workouts:
         return "No workouts found."
     return "\n".join(_format_workout(w) for w in workouts)
+
+
+@mcp.tool
+@catches_service_errors
+async def start_workout(exercises: list[str] | None = None) -> str:
+    """Begin a workout session — from a blank slate or a known list of exercise
+    names. If one's already in progress, this just resumes it rather than
+    starting a duplicate (starting from a template/planned workout comes in a
+    later slice, once those exist).
+
+    Args:
+        exercises: exercise names to start with, e.g. ["Back Squat", "Bench Press"].
+            Optional — sets can be logged via log_set even without this.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        workout = await service.start_workout(session, user_sub, exercises=exercises)
+    verb = "Resuming your open workout" if workout.resumed else "Started a new workout"
+    return f"{verb}: {_format_workout(workout)}"
+
+
+@mcp.tool
+@catches_service_errors
+async def log_set(
+    exercise: str,
+    reps: int | None = None,
+    weight: Decimal | None = None,
+    set_type: str = "reps",
+    work_seconds: int | None = None,
+    is_warmup: bool = False,
+    sets: int = 1,
+    note: str | None = None,
+    continue_session: bool | None = None,
+) -> str:
+    """Record one or more sets against the active workout — auto-starts one if
+    none is active. Auto-continues an already-open workout with no question
+    asked if its last set was within 90 minutes; past that gap, nothing gets
+    written and you'll get a clarifying question back instead, unless
+    `continue_session` says explicitly which workout is meant.
+
+    Args:
+        exercise: e.g. "Back Squat".
+        reps: for rep-based sets, > 0.
+        weight: lbs, >= 0 (0 for bodyweight). Required for rep-based sets.
+        set_type: "reps" (default) or "time".
+        work_seconds: for timed sets, > 0.
+        is_warmup: excludes this set from PR checks (later slice).
+        sets: how many identical sets to log at once, e.g. 3 for "3 sets of squats
+            at 185x5".
+        note: freeform note for this exercise (e.g. "felt easy, add 5 next time").
+        continue_session: only needed if you get a clarifying question back —
+            true to continue the old open workout, false to start a fresh one.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        result = await service.log_set(
+            session,
+            user_sub,
+            exercise=exercise,
+            reps=reps,
+            weight=weight,
+            set_type=set_type,
+            work_seconds=work_seconds,
+            is_warmup=is_warmup,
+            sets=sets,
+            note=note,
+            continue_session=continue_session,
+        )
+    if result.needs_clarification:
+        return result.needs_clarification
+    return f"Logged: {_format_workout(result.workout)}"
+
+
+@mcp.tool
+@catches_service_errors
+async def finish_workout(workout_id: str, notes: str | None = None) -> str:
+    """Finish an in-progress workout — stamps it complete.
+
+    Args:
+        workout_id: from a prior start_workout/log_set/get_active_workout result.
+        notes: optional freeform notes for the session.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        workout = await service.finish_workout(
+            session, user_sub, workout_id=UUID(workout_id), notes=notes
+        )
+    return f"Finished: {_format_workout(workout)}"
+
+
+@mcp.tool
+@catches_service_errors
+async def get_active_workout() -> str:
+    """Check whether the caller has a workout currently in progress."""
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        workout = await service.get_active_workout(session, user_sub)
+    if workout is None:
+        return "No active workout."
+    return f"Active: {_format_workout(workout)}"

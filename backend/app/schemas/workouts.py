@@ -38,6 +38,26 @@ class LogActivityRequest(BaseModel):
     logged_at: datetime | None = None
 
 
+class StartWorkoutRequest(BaseModel):
+    exercises: list[str] | None = None
+
+
+class LogSetRequest(BaseModel):
+    exercise: str
+    reps: int | None = None
+    weight: Decimal | None = None
+    set_type: str = "reps"
+    work_seconds: int | None = None
+    is_warmup: bool = False
+    sets: int = 1
+    note: str | None = None
+    continue_session: bool | None = None
+
+
+class FinishWorkoutRequest(BaseModel):
+    notes: str | None = None
+
+
 class SetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -73,3 +93,9 @@ class WorkoutOut(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     exercises: list[ExerciseEntryOut]
+    resumed: bool = False
+
+
+class LogSetResponse(BaseModel):
+    workout: WorkoutOut | None = None
+    needs_clarification: str | None = None
