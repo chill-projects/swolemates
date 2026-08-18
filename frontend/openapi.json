@@ -720,6 +720,31 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InvitePreviewOut": {
+        "properties": {
+          "inviter_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inviter Display Name"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inviter_display_name",
+          "valid"
+        ],
+        "title": "InvitePreviewOut",
+        "type": "object"
+      },
       "LastTimeOut": {
         "properties": {
           "note": {
@@ -1397,6 +1422,140 @@
         "title": "NutritionLogOut",
         "type": "object"
       },
+      "PartnerFrequencyOut": {
+        "properties": {
+          "last_workout_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Workout At"
+          },
+          "total_workouts": {
+            "title": "Total Workouts",
+            "type": "integer"
+          },
+          "workouts_last_30_days": {
+            "title": "Workouts Last 30 Days",
+            "type": "integer"
+          },
+          "workouts_last_7_days": {
+            "title": "Workouts Last 7 Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "workouts_last_7_days",
+          "workouts_last_30_days",
+          "total_workouts",
+          "last_workout_at"
+        ],
+        "title": "PartnerFrequencyOut",
+        "type": "object"
+      },
+      "PartnerInviteOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "PartnerInviteOut",
+        "type": "object"
+      },
+      "PartnerPersonalRecordOut": {
+        "properties": {
+          "achieved_at": {
+            "format": "date-time",
+            "title": "Achieved At",
+            "type": "string"
+          },
+          "exercise_name": {
+            "title": "Exercise Name",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PersonalRecordKind"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exercise_name",
+          "kind",
+          "value",
+          "achieved_at"
+        ],
+        "title": "PartnerPersonalRecordOut",
+        "type": "object"
+      },
+      "PartnerSummaryOut": {
+        "description": "The privacy boundary itself (#12, resolved) \u2014 every field here is an\naggregate value. There is no field food logs or weight entries could travel\nthrough, so a careless future change to `services/partner.py` has nowhere to\nput that data even by accident.",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/PartnerFrequencyOut"
+          },
+          "nutrition_streak": {
+            "title": "Nutrition Streak",
+            "type": "integer"
+          },
+          "partner_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner Display Name"
+          },
+          "personal_records": {
+            "items": {
+              "$ref": "#/components/schemas/PartnerPersonalRecordOut"
+            },
+            "title": "Personal Records",
+            "type": "array"
+          },
+          "streak": {
+            "$ref": "#/components/schemas/StreakOut"
+          }
+        },
+        "required": [
+          "partner_display_name",
+          "streak",
+          "frequency",
+          "nutrition_streak",
+          "personal_records"
+        ],
+        "title": "PartnerSummaryOut",
+        "type": "object"
+      },
+      "PersonalRecordKind": {
+        "enum": [
+          "weight",
+          "e1rm"
+        ],
+        "title": "PersonalRecordKind",
+        "type": "string"
+      },
       "PlanWorkoutRequest": {
         "properties": {
           "scheduled_for": {
@@ -1673,6 +1832,19 @@
           }
         },
         "title": "ProfileUpdate",
+        "type": "object"
+      },
+      "RedeemInviteRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "RedeemInviteRequest",
         "type": "object"
       },
       "SaveMealTemplateRequest": {
@@ -3571,6 +3743,140 @@
         ]
       }
     },
+    "/api/partner": {
+      "get": {
+        "operationId": "getPartnerSummary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PartnerSummaryOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Getpartnersummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Partner",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/invite": {
+      "post": {
+        "operationId": "generatePartnerInvite",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerInviteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Generate Invite",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/invite/{code}": {
+      "get": {
+        "description": "Unauthenticated by design \u2014 no `CurrentUser`/`CurrentPrincipal` parameter, same\npattern as `/auth/config`. An unauthenticated visitor has to see this before\nsigning up, and never anything more than a name and a validity flag.",
+        "operationId": "getPartnerInvitePreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitePreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Invite Preview",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/redeem": {
+      "post": {
+        "operationId": "redeemPartnerInvite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Redeem Invite",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
     "/api/planned-workouts": {
       "get": {
         "operationId": "getPlannedWorkouts",
@@ -4107,7 +4413,7 @@
     },
     "/api/whoami": {
       "get": {
-        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.\n\nemail/first_name/last_name come from the environment's JWT template \u2014 they're custom\nclaims, not defaults, so a missing email means the template got dropped in WorkOS.",
+        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.\n\nemail/first_name/last_name come from the environment's JWT template \u2014 they're custom\nclaims, not defaults, so a missing email means the template got dropped in WorkOS.\n\nAlso syncs `UserProfile.display_name` from these same claims (#5, Partner v1) \u2014\nevery authenticated SPA session calls this on load, which is the only place a\nuser's own current name is available to persist for a future partner to read.",
         "operationId": "whoami",
         "responses": {
           "200": {

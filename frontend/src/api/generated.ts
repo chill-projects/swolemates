@@ -234,6 +234,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/partner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Partner */
+        get: operations["getPartnerSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/partner/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Invite */
+        post: operations["generatePartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/partner/invite/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Invite Preview
+         * @description Unauthenticated by design — no `CurrentUser`/`CurrentPrincipal` parameter, same
+         *     pattern as `/auth/config`. An unauthenticated visitor has to see this before
+         *     signing up, and never anything more than a name and a validity flag.
+         */
+        get: operations["getPartnerInvitePreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/partner/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem Invite */
+        post: operations["redeemPartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/planned-workouts": {
         parameters: {
             query?: never;
@@ -421,6 +494,10 @@ export interface paths {
          *
          *     email/first_name/last_name come from the environment's JWT template — they're custom
          *     claims, not defaults, so a missing email means the template got dropped in WorkOS.
+         *
+         *     Also syncs `UserProfile.display_name` from these same claims (#5, Partner v1) —
+         *     every authenticated SPA session calls this on load, which is the only place a
+         *     user's own current name is available to persist for a future partner to read.
          */
         get: operations["whoami"];
         put?: never;
@@ -885,6 +962,13 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InvitePreviewOut */
+        InvitePreviewOut: {
+            /** Inviter Display Name */
+            inviter_display_name: string | null;
+            /** Valid */
+            valid: boolean;
+        };
         /** LastTimeOut */
         LastTimeOut: {
             /** Note */
@@ -1099,6 +1183,62 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** PartnerFrequencyOut */
+        PartnerFrequencyOut: {
+            /** Last Workout At */
+            last_workout_at: string | null;
+            /** Total Workouts */
+            total_workouts: number;
+            /** Workouts Last 30 Days */
+            workouts_last_30_days: number;
+            /** Workouts Last 7 Days */
+            workouts_last_7_days: number;
+        };
+        /** PartnerInviteOut */
+        PartnerInviteOut: {
+            /** Code */
+            code: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** PartnerPersonalRecordOut */
+        PartnerPersonalRecordOut: {
+            /**
+             * Achieved At
+             * Format: date-time
+             */
+            achieved_at: string;
+            /** Exercise Name */
+            exercise_name: string;
+            kind: components["schemas"]["PersonalRecordKind"];
+            /** Value */
+            value: string;
+        };
+        /**
+         * PartnerSummaryOut
+         * @description The privacy boundary itself (#12, resolved) — every field here is an
+         *     aggregate value. There is no field food logs or weight entries could travel
+         *     through, so a careless future change to `services/partner.py` has nowhere to
+         *     put that data even by accident.
+         */
+        PartnerSummaryOut: {
+            frequency: components["schemas"]["PartnerFrequencyOut"];
+            /** Nutrition Streak */
+            nutrition_streak: number;
+            /** Partner Display Name */
+            partner_display_name: string | null;
+            /** Personal Records */
+            personal_records: components["schemas"]["PartnerPersonalRecordOut"][];
+            streak: components["schemas"]["StreakOut"];
+        };
+        /**
+         * PersonalRecordKind
+         * @enum {string}
+         */
+        PersonalRecordKind: "weight" | "e1rm";
         /** PlanWorkoutRequest */
         PlanWorkoutRequest: {
             /**
@@ -1171,6 +1311,11 @@ export interface components {
             height_in?: number | string | null;
             sex?: components["schemas"]["BiologicalSex"] | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
+        };
+        /** RedeemInviteRequest */
+        RedeemInviteRequest: {
+            /** Code */
+            code: string;
         };
         /** SaveMealTemplateRequest */
         SaveMealTemplateRequest: {
@@ -1971,6 +2116,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackableTypeOut"][];
+                };
+            };
+        };
+    };
+    getPartnerSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerSummaryOut"] | null;
+                };
+            };
+        };
+    };
+    generatePartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerInviteOut"];
+                };
+            };
+        };
+    };
+    getPartnerInvitePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redeemPartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

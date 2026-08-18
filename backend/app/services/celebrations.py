@@ -44,6 +44,14 @@ class StreakOut:
     target: int
 
 
+@dataclass
+class FrequencyOut:
+    workouts_last_7_days: int
+    workouts_last_30_days: int
+    total_workouts: int
+    last_workout_at: datetime | None
+
+
 def _week_bounds(d: date) -> tuple[date, date]:
     start = d - timedelta(days=d.weekday())
     return start, start + timedelta(days=6)
@@ -207,6 +215,31 @@ async def get_streak(
         week_start -= timedelta(days=7)
 
     return StreakOut(weeks=weeks, this_week=this_week, target=target)
+
+
+async def get_workout_frequency(
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+) -> FrequencyOut:
+    """7/30-day counts, total, and last-workout date — the partner-summary stats,
+    ported from legacy's `get_partner_workout_summary`. Reuses `_completed_count`
+    windowed twice rather than a new query shape."""
+    as_of = as_of or date.today()
+    last_7 = await _completed_count(session, user_sub, as_of - timedelta(days=6), as_of)
+    last_30 = await _completed_count(session, user_sub, as_of - timedelta(days=29), as_of)
+
+    result = await session.execute(
+        select(func.count(Workout.id), func.max(Workout.completed_at)).where(
+            Workout.user_id == user_sub, Workout.completed_at.isnot(None)
+        )
+    )
+    total, last_workout_at = result.one()
+
+    return FrequencyOut(
+        workouts_last_7_days=last_7,
+        workouts_last_30_days=last_30,
+        total_workouts=total,
+        last_workout_at=last_workout_at,
+    )
 
 
 async def recompute_pr(

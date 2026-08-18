@@ -16,6 +16,7 @@ from app.services.nutrition.day import (
     TrackableProgress,
     get_nutrition_calendar,
     get_nutrition_day,
+    get_nutrition_streak,
 )
 from app.services.nutrition.goals import get_goals, set_goals
 from app.services.nutrition.logs import (
@@ -60,4 +61,5 @@ __all__ = [
     "delete_meal_template",
     "log_meal_template",
     "get_nutrition_day",
+    "get_nutrition_streak",
 ]

@@ -56,6 +56,18 @@ async def update_profile(
     return profile
 
 
+async def sync_display_name(session: AsyncSession, user_sub: str, display_name: str) -> None:
+    """Called from `whoami` on every authenticated SPA load (#5, Partner v1) — keeps
+    the display-name cache fresh from the caller's own current JWT claims. Not routed
+    through `update_profile`/`events.publish`: this isn't a user-initiated settings
+    change, just incidental upkeep, and firing a profile-changed event on every page
+    load would spam the SSE listeners for nothing."""
+    profile = await get_or_create_profile(session, user_sub)
+    if profile.display_name != display_name:
+        profile.display_name = display_name
+        await session.flush()
+
+
 async def complete_onboarding(session: AsyncSession, user_sub: str) -> UserProfile:
     """Idempotent — set once, never re-triggered by calling this again."""
     profile = await get_or_create_profile(session, user_sub)

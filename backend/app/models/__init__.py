@@ -10,6 +10,7 @@ from app.models.nutrition import (
     MealTemplateItemValue,
     TrackableType,
 )
+from app.models.partner import InviteStatus, PartnerInvite, PartnerLink
 from app.models.profile import UserProfile, WeightUnit
 from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
 
@@ -31,4 +32,7 @@ __all__ = [
     "WorkoutSet",
     "WorkoutType",
     "SetType",
+    "PartnerInvite",
+    "PartnerLink",
+    "InviteStatus",
 ]

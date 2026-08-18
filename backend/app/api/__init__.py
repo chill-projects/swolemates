@@ -4,13 +4,15 @@ from pydantic import BaseModel
 from app.api import (
     food_facts,
     nutrition,
+    partner,
     planned_workouts,
     profile,
     tdee,
     templates,
     workouts,
 )
-from app.deps import AppSettings, CurrentPrincipal
+from app.deps import AppSettings, CurrentPrincipal, DbSession
+from app.services import profile as profile_service
 
 api_router = APIRouter()
 api_router.include_router(profile.router)
@@ -20,6 +22,7 @@ api_router.include_router(tdee.router)
 api_router.include_router(workouts.router)
 api_router.include_router(templates.router)
 api_router.include_router(planned_workouts.router)
+api_router.include_router(partner.router)
 
 
 class WhoamiOut(BaseModel):
@@ -40,14 +43,20 @@ class AuthConfigOut(BaseModel):
 
 
 @api_router.get("/whoami", tags=["auth"], operation_id="whoami")
-async def whoami(principal: CurrentPrincipal) -> WhoamiOut:
+async def whoami(principal: CurrentPrincipal, session: DbSession) -> WhoamiOut:
     """The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.
 
     email/first_name/last_name come from the environment's JWT template — they're custom
     claims, not defaults, so a missing email means the template got dropped in WorkOS.
+
+    Also syncs `UserProfile.display_name` from these same claims (#5, Partner v1) —
+    every authenticated SPA session calls this on load, which is the only place a
+    user's own current name is available to persist for a future partner to read.
     """
     claims = principal.claims
     name = " ".join(p for p in (claims.get("first_name"), claims.get("last_name")) if p)
+    if name:
+        await profile_service.sync_display_name(session, principal.sub, name)
     return WhoamiOut(
         user_sub=principal.sub,
         email=claims.get("email"),

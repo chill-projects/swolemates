@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import events
 from app.models.workouts import (
     Exercise,
+    PersonalRecord,
     PersonalRecordKind,
     SetType,
     Workout,
@@ -43,6 +44,34 @@ async def list_exercises(session: AsyncSession, user_sub: str) -> list[Exercise]
         .order_by(Exercise.name)
     )
     return list(result.scalars())
+
+
+@dataclass
+class PersonalRecordSummary:
+    exercise_name: str
+    kind: PersonalRecordKind
+    value: Decimal
+    achieved_at: datetime
+
+
+async def list_personal_records(
+    session: AsyncSession, user_sub: str
+) -> list[PersonalRecordSummary]:
+    """The current-record cache `PersonalRecord` holds, joined to the exercise name —
+    nothing lists this today; `check_and_record_prs`/`recompute_pr` only ever touch
+    one `(user_id, exercise_id, kind)` row at a time."""
+    result = await session.execute(
+        select(PersonalRecord, Exercise.name)
+        .join(Exercise, Exercise.id == PersonalRecord.exercise_id)
+        .where(PersonalRecord.user_id == user_sub)
+        .order_by(Exercise.name, PersonalRecord.kind)
+    )
+    return [
+        PersonalRecordSummary(
+            exercise_name=name, kind=pr.kind, value=pr.value, achieved_at=pr.achieved_at
+        )
+        for pr, name in result.all()
+    ]
 
 
 async def _resolve_exercise(

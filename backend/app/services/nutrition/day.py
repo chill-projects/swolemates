@@ -20,6 +20,10 @@ from app.services.nutrition.trackables import list_trackable_types
 
 DayStatus = Literal["hit", "miss", "no-data"]
 
+# Sanity bound on the backward walk in get_nutrition_streak, mirroring
+# celebrations.py's MAX_STREAK_WEEKS_LOOKBACK — not a real limit anyone should hit.
+MAX_NUTRITION_STREAK_LOOKBACK_DAYS = 365
+
 
 @dataclass
 class TrackableProgress:
@@ -271,3 +275,32 @@ async def get_nutrition_calendar(
         d += timedelta(days=1)
 
     return days
+
+
+async def get_nutrition_streak(
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+) -> int:
+    """Consecutive *logged* days walking back from `as_of` (today by default) — the
+    partner-summary nutrition streak. Matches legacy's `computeStreak()`: any status
+    counts (logged, not hit), so a logged-but-missed day keeps the streak alive; only
+    a day with zero logs breaks it. A single distinct-dates query over a bounded
+    lookback window, not one query per day."""
+    as_of = as_of or datetime.now(UTC).date()
+    start_dt = datetime.combine(
+        as_of - timedelta(days=MAX_NUTRITION_STREAK_LOOKBACK_DAYS), time.min, tzinfo=UTC
+    )
+    end_dt = datetime.combine(as_of, time.max, tzinfo=UTC)
+
+    result = await session.execute(
+        select(Log.logged_at).where(
+            Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at <= end_dt
+        )
+    )
+    logged_dates = {row[0].date() for row in result.all()}
+
+    streak = 0
+    d = as_of
+    while d in logged_dates:
+        streak += 1
+        d -= timedelta(days=1)
+    return streak

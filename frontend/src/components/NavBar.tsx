@@ -10,6 +10,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/templates", label: "Templates", icon: "📋" },
   { href: "/planned", label: "Planned", icon: "🗓️" },
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
+  { href: "/partner", label: "Partner", icon: "🤝" },
   { href: "/profile", label: "Profile", icon: "⚙️" },
 ];
 

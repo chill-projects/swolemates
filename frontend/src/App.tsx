@@ -1,13 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
+import { useRedeemInvite } from "./api/partner";
 import { useProfile } from "./api/profile";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
 import { NavBar } from "./components/NavBar";
 import { DashboardPage } from "./pages/DashboardPage";
+import {
+  InvitePreviewPage,
+  clearPendingInviteCode,
+  readPendingInviteCode,
+  setInviteRedeemError,
+} from "./pages/InvitePreviewPage";
 import { NutritionPage } from "./pages/NutritionPage";
+import { PartnerPage } from "./pages/PartnerPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { ProfileForm } from "./pages/ProfileForm";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -29,6 +37,7 @@ export function App() {
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["authConfig"], queryFn: fetchAuthConfig, retry: false });
   const whoami = useWhoami();
+  const redeemInvite = useRedeemInvite();
 
   useEffect(() => {
     if (!returningFromLogin || !config.data || exchangeStarted.current) return;
@@ -50,6 +59,23 @@ export function App() {
       }
       setReturningFromLogin(false);
       queryClient.invalidateQueries({ queryKey: ["whoami"] });
+
+      // A code stashed by InvitePreviewPage before this login started (#5, Partner
+      // v1) — completeLogin() always resets the URL to "/" on success, so this is
+      // the only place left to finish the redeem and send the new user somewhere
+      // that shows the result. Sent to /partner either way; a failure (already
+      // linked, expired mid-flight) surfaces there as a one-time banner instead of
+      // blocking sign-in itself.
+      if (result === "ok") {
+        const pendingCode = readPendingInviteCode();
+        if (pendingCode) {
+          clearPendingInviteCode();
+          redeemInvite.mutate(pendingCode, {
+            onError: (err) => setInviteRedeemError(err.message),
+            onSettled: () => window.location.assign("/partner"),
+          });
+        }
+      }
     }).catch((err: unknown) => {
       // A thrown exchange (network/CORS failure) previously left the app stuck on
       // "Signing in…" forever — the promise rejected and nothing reset the state.
@@ -59,6 +85,7 @@ export function App() {
     });
   }, [returningFromLogin, config.data, queryClient]);
 
+  const onInviteRoute = window.location.pathname.startsWith("/invite/");
   const busy = config.isPending || whoami.isPending || returningFromLogin;
 
   return (
@@ -68,13 +95,22 @@ export function App() {
         <h1>Swolemates</h1>
       </header>
 
-      {busy && <p className="muted">Signing in…</p>}
-      {!busy && config.isError && (
-        <p className="error">Couldn’t reach the server. Is the backend running?</p>
+      {onInviteRoute ? (
+        <InvitePreviewPage
+          code={window.location.pathname.slice("/invite/".length).split("/")[0] ?? ""}
+          config={config.data ?? null}
+        />
+      ) : (
+        <>
+          {busy && <p className="muted">Signing in…</p>}
+          {!busy && config.isError && (
+            <p className="error">Couldn’t reach the server. Is the backend running?</p>
+          )}
+          {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
+          {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
+          {!busy && whoami.data && <AuthenticatedApp me={whoami.data} />}
+        </>
       )}
-      {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
-      {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
-      {!busy && whoami.data && <AuthenticatedApp me={whoami.data} />}
     </main>
   );
 }
@@ -95,6 +131,7 @@ function AuthenticatedApp({
   const onTemplatesRoute = window.location.pathname === "/templates";
   const onPlannedRoute = window.location.pathname === "/planned";
   const onDashboardRoute = window.location.pathname === "/dashboard";
+  const onPartnerRoute = window.location.pathname === "/partner";
 
   if (profile.isPending) return <p className="muted">Loading your profile…</p>;
   if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
@@ -121,6 +158,8 @@ function AuthenticatedApp({
         </>
       ) : onDashboardRoute ? (
         <DashboardPage />
+      ) : onPartnerRoute ? (
+        <PartnerPage />
       ) : onWorkoutsLiveRoute ? (
         <WorkoutLivePage me={me} />
       ) : onTemplatesRoute ? (

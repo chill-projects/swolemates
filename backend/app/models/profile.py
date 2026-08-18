@@ -45,11 +45,19 @@ class UserProfile(Base, TimestampMixin):
     calculator (#19, resolved) — all nullable, since the calculator is opt-in and
     re-runnable, not a hard onboarding gate. Current weight is *not* stored here —
     it's the most recent `weight_lbs` trackable log, per #19's resolution.
+
+    `display_name` (#5, added for Partner v1) is a cache, not the source of truth —
+    WorkOS claims (`first_name`/`last_name`) are per-request JWT contents, never
+    persisted anywhere else, so there'd otherwise be no way to show *another* user's
+    name (e.g. a linked partner's) without a live WorkOS Management API call. Kept
+    fresh opportunistically by `whoami`, which every authenticated SPA session calls
+    on load — by the time any partner action is reachable, this is guaranteed set.
     """
 
     __tablename__ = "user_profiles"
 
     user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    display_name: Mapped[str | None] = mapped_column(String(200))
     weight_unit: Mapped[WeightUnit] = mapped_column(
         Enum(WeightUnit, name="weight_unit"), nullable=False, default=WeightUnit.lbs
     )
