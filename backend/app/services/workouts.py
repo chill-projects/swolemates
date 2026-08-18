@@ -11,8 +11,22 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
-from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
-from app.services.celebrations import CelebrationOut, StreakOut, check_and_record_prs, get_streak
+from app.models.workouts import (
+    Exercise,
+    PersonalRecordKind,
+    SetType,
+    Workout,
+    WorkoutExercise,
+    WorkoutSet,
+    WorkoutType,
+)
+from app.services.celebrations import (
+    CelebrationOut,
+    StreakOut,
+    check_and_record_prs,
+    get_streak,
+    recompute_pr,
+)
 from app.services.errors import NotFoundError
 
 # log_set auto-continues an open workout within this window of its last set with no
@@ -668,6 +682,97 @@ async def get_workout(session: AsyncSession, user_sub: str, workout_id: uuid.UUI
     workout = result.scalar_one_or_none()
     if workout is None:
         raise NotFoundError(f"No workout {workout_id}")
+    details = await _load_workout_details(session, [workout.id])
+    return details[0]
+
+
+async def update_workout(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    workout_id: uuid.UUID,
+    exercise_updates: list[dict] | None = None,
+    notes: str | None = None,
+) -> WorkoutOut:
+    """Edit a past session's actuals conversationally ("actually that was 8 reps
+    not 6") — no add-exercise, no add-set, this corrects what's there rather than
+    re-logging (`log_workout` covers backfilling a whole session). Targets by
+    exercise name + `set_number` (1-indexed, stable, how a human would say "the
+    second set of squats") rather than raw ids, which chat has no way to have
+    seen. Recomputes any `personal_records` this touches — an edit or delete can
+    just as easily unseat a cached record as set a new one.
+
+    `exercise_updates`: [{"exercise": str, "notes"?, "next_time_note"?, "sets"?:
+    [{"set_number": int, "weight"?, "reps"?, "work_seconds"?, "is_warmup"?,
+    "delete"?: bool}]}]. Only passed fields change.
+    """
+    result = await session.execute(
+        select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
+    )
+    workout = result.scalar_one_or_none()
+    if workout is None:
+        raise NotFoundError(f"No workout {workout_id}")
+
+    if notes is not None:
+        workout.notes = notes
+
+    touched_exercise_ids: set[uuid.UUID] = set()
+    for entry in exercise_updates or []:
+        exercise_name = entry["exercise"]
+        we_result = await session.execute(
+            select(WorkoutExercise, Exercise.id)
+            .join(Exercise, Exercise.id == WorkoutExercise.exercise_id)
+            .where(
+                WorkoutExercise.workout_id == workout.id,
+                func.lower(Exercise.name) == exercise_name.strip().lower(),
+            )
+        )
+        row = we_result.first()
+        if row is None:
+            raise ValueError(f"This workout has no {exercise_name!r}.")
+        workout_exercise, exercise_id = row
+
+        if "notes" in entry:
+            workout_exercise.notes = entry["notes"]
+        if "next_time_note" in entry:
+            workout_exercise.next_time_note = entry["next_time_note"]
+
+        for set_update in entry.get("sets", []):
+            set_number = set_update["set_number"]
+            set_result = await session.execute(
+                select(WorkoutSet).where(
+                    WorkoutSet.workout_exercise_id == workout_exercise.id,
+                    WorkoutSet.set_number == set_number,
+                )
+            )
+            workout_set = set_result.scalar_one_or_none()
+            if workout_set is None:
+                raise ValueError(f"{exercise_name} has no set {set_number}.")
+
+            if set_update.get("delete"):
+                await session.execute(delete(WorkoutSet).where(WorkoutSet.id == workout_set.id))
+                touched_exercise_ids.add(exercise_id)
+                continue
+
+            if "weight" in set_update:
+                workout_set.actual_weight = set_update["weight"]
+            if "reps" in set_update:
+                workout_set.actual_reps = set_update["reps"]
+            if "work_seconds" in set_update:
+                workout_set.work_seconds = set_update["work_seconds"]
+            if "is_warmup" in set_update:
+                workout_set.is_warmup = set_update["is_warmup"]
+            touched_exercise_ids.add(exercise_id)
+
+    await session.flush()
+
+    for exercise_id in touched_exercise_ids:
+        await recompute_pr(
+            session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.weight
+        )
+        await recompute_pr(session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.e1rm)
+
+    events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
     return details[0]
 

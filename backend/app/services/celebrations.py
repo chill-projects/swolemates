@@ -19,6 +19,7 @@ from app.models.workouts import (
     PlannedWorkout,
     SetType,
     Workout,
+    WorkoutExercise,
     WorkoutSet,
 )
 
@@ -46,6 +47,12 @@ class StreakOut:
 def _week_bounds(d: date) -> tuple[date, date]:
     start = d - timedelta(days=d.weekday())
     return start, start + timedelta(days=6)
+
+
+def _e1rm(weight: Decimal, reps: int) -> Decimal:
+    return (weight * (1 + Decimal(reps) / Decimal(30))).quantize(
+        Decimal("0.1"), rounding=ROUND_HALF_UP
+    )
 
 
 async def _maybe_upsert_pr(
@@ -125,9 +132,7 @@ async def check_and_record_prs(
                 )
             )
 
-        e1rm = (s.actual_weight * (1 + Decimal(s.actual_reps) / Decimal(30))).quantize(
-            Decimal("0.1"), rounding=ROUND_HALF_UP
-        )
+        e1rm = _e1rm(s.actual_weight, s.actual_reps)
         e1rm_result = await _maybe_upsert_pr(
             session,
             user_sub,
@@ -202,3 +207,69 @@ async def get_streak(
         week_start -= timedelta(days=7)
 
     return StreakOut(weeks=weeks, this_week=this_week, target=target)
+
+
+async def recompute_pr(
+    session: AsyncSession, user_sub: str, *, exercise_id: uuid.UUID, kind: PersonalRecordKind
+) -> None:
+    """A full rescan, not the "does this beat the cached value" check
+    `check_and_record_prs` does — for `update_workout` (slice 5), where an edit or
+    delete can just as easily unseat the current record as set a new one. Deletes
+    the cached row if nothing qualifies anymore, else points it at whichever set
+    now genuinely holds the max."""
+    result = await session.execute(
+        select(WorkoutSet)
+        .join(WorkoutExercise, WorkoutExercise.id == WorkoutSet.workout_exercise_id)
+        .join(Workout, Workout.id == WorkoutExercise.workout_id)
+        .where(
+            Workout.user_id == user_sub,
+            WorkoutExercise.exercise_id == exercise_id,
+            WorkoutSet.is_warmup.is_(False),
+            WorkoutSet.set_type == SetType.reps,
+            WorkoutSet.actual_weight.isnot(None),
+            WorkoutSet.actual_reps.isnot(None),
+        )
+    )
+    sets = list(result.scalars())
+
+    best_set: WorkoutSet | None = None
+    best_value: Decimal | None = None
+    for s in sets:
+        value = (
+            s.actual_weight
+            if kind == PersonalRecordKind.weight
+            else _e1rm(s.actual_weight, s.actual_reps)
+        )
+        if best_value is None or value > best_value:
+            best_value = value
+            best_set = s
+
+    existing_result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == user_sub,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == kind,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+
+    if best_set is None or best_value is None:
+        if existing is not None:
+            await session.delete(existing)
+        return
+
+    if existing is None:
+        session.add(
+            PersonalRecord(
+                user_id=user_sub,
+                exercise_id=exercise_id,
+                kind=kind,
+                value=best_value,
+                workout_set_id=best_set.id,
+                achieved_at=best_set.completed_at,
+            )
+        )
+    else:
+        existing.value = best_value
+        existing.workout_set_id = best_set.id
+        existing.achieved_at = best_set.completed_at

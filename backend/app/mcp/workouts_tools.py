@@ -46,7 +46,12 @@ def _format_workout(w: service.WorkoutOut) -> str:
             f"{e.exercise_name}: " + ", ".join(_format_set(s) for s in e.sets) for e in w.exercises
         )
         base = f"{when} — {header}: {exercise_lines}"
-    extra = _format_celebrations(w.celebrations) + _format_streak(w.streak)
+    # So a later update_workout call has something to reference — text-only tools
+    # (log_workout/log_activity/get_workout_history/update_workout itself) never
+    # otherwise expose the id chat could target for a correction.
+    extra = (
+        f" (workout_id: {w.id})" + _format_celebrations(w.celebrations) + _format_streak(w.streak)
+    )
     return base + extra
 
 
@@ -235,6 +240,38 @@ async def get_workout_history(
     if not workouts:
         return "No workouts found."
     return "\n".join(_format_workout(w) for w in workouts)
+
+
+@mcp.tool
+@catches_service_errors
+async def update_workout(
+    workout_id: str, exercise_updates: list[dict] | None = None, notes: str | None = None
+) -> str:
+    """Correct a past session conversationally — "actually that was 8 reps not
+    6" — without needing to re-log anything. Not for adding a new exercise or
+    set (log_workout covers backfilling a whole session); this only edits or
+    removes what's already there. Recomputes any personal record this touches.
+
+    Args:
+        workout_id: from a prior log_workout/log_activity/get_workout_history/
+            update_workout result's "(workout_id: ...)".
+        exercise_updates: [{"exercise": "Back Squat" (must already be in this
+            workout), "notes"?, "next_time_note"?, "sets"?: [{"set_number": 1
+            (1-indexed, e.g. "the second set" = 2), "weight"?, "reps"?,
+            "work_seconds"?, "is_warmup"?, "delete"?: true}]}]. Only the fields
+            you pass on a set change; "delete" removes it entirely.
+        notes: replaces the whole workout's own notes, if given.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        workout = await service.update_workout(
+            session,
+            user_sub,
+            workout_id=UUID(workout_id),
+            exercise_updates=exercise_updates,
+            notes=notes,
+        )
+    return f"Updated: {_format_workout(workout)}"
 
 
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))

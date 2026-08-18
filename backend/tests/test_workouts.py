@@ -5,7 +5,13 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.workouts import Workout, WorkoutExercise, WorkoutSet
+from app.models.workouts import (
+    PersonalRecord,
+    PersonalRecordKind,
+    Workout,
+    WorkoutExercise,
+    WorkoutSet,
+)
 from app.services import workouts as service
 from tests.conftest import OTHER_USER, TEST_USER
 
@@ -537,6 +543,197 @@ async def test_get_workout_live_last_time_none_when_never_done_before(
     live = await service.get_workout_live(session, TEST_USER, workout)
 
     assert live.groups[0].exercises[0].last_time is None
+
+
+async def test_update_workout_edits_a_sets_actuals(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    updated = await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[{"exercise": "Bench Press", "sets": [{"set_number": 1, "reps": 8}]}],
+    )
+
+    entry = updated.exercises[0]
+    assert entry.sets[0].reps == 8
+    assert float(entry.sets[0].weight) == 100  # untouched field stays as-is
+
+
+async def test_update_workout_only_changes_passed_fields(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6, "is_warmup": False}]}
+        ],
+    )
+
+    updated = await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[
+            {"exercise": "Bench Press", "sets": [{"set_number": 1, "is_warmup": True}]}
+        ],
+    )
+
+    entry = updated.exercises[0]
+    assert entry.sets[0].is_warmup is True
+    assert entry.sets[0].reps == 6
+    assert float(entry.sets[0].weight) == 100
+
+
+async def test_update_workout_deletes_a_set(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {
+                "exercise": "Bench Press",
+                "sets": [{"weight": 100, "reps": 6}, {"weight": 105, "reps": 5}],
+            }
+        ],
+    )
+
+    updated = await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[{"exercise": "Bench Press", "sets": [{"set_number": 2, "delete": True}]}],
+    )
+
+    assert len(updated.exercises[0].sets) == 1
+    assert updated.exercises[0].sets[0].set_number == 1
+
+
+async def test_update_workout_edits_exercise_and_workout_notes(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    updated = await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[
+            {"exercise": "Bench Press", "notes": "felt strong", "next_time_note": "add 5"}
+        ],
+        notes="good session overall",
+    )
+
+    assert updated.notes == "good session overall"
+    entry = updated.exercises[0]
+    assert entry.notes == "felt strong"
+    assert entry.next_time_note == "add 5"
+
+
+async def test_update_workout_rejects_an_exercise_not_in_this_workout(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    with pytest.raises(ValueError, match="has no"):
+        await service.update_workout(
+            session,
+            TEST_USER,
+            workout_id=workout.id,
+            exercise_updates=[{"exercise": "Deadlift", "sets": []}],
+        )
+
+
+async def test_update_workout_rejects_an_out_of_range_set_number(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    with pytest.raises(ValueError, match="has no set"):
+        await service.update_workout(
+            session,
+            TEST_USER,
+            workout_id=workout.id,
+            exercise_updates=[{"exercise": "Bench Press", "sets": [{"set_number": 99, "reps": 1}]}],
+        )
+
+
+async def test_update_workout_404s_for_another_users_workout(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    with pytest.raises(service.NotFoundError):
+        await service.update_workout(session, OTHER_USER, workout_id=workout.id)
+
+
+async def test_update_workout_recomputes_a_personal_record_it_unseats(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {
+                "exercise": "Bench Press",
+                "sets": [{"weight": 100, "reps": 6}, {"weight": 105, "reps": 5}],
+            }
+        ],
+    )
+    exercise_id = workout.exercises[0].exercise_id
+
+    # Correcting the heavier (record-holding) set down should hand the weight
+    # record back to the lighter, untouched set — not delete it.
+    await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[{"exercise": "Bench Press", "sets": [{"set_number": 2, "weight": 90}]}],
+    )
+
+    result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == TEST_USER,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == PersonalRecordKind.weight,
+        )
+    )
+    pr = result.scalar_one()
+    assert float(pr.value) == 100
+
+
+async def test_update_workout_deletes_a_personal_record_with_no_sets_left(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 6}]}],
+    )
+
+    await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        exercise_updates=[{"exercise": "Bench Press", "sets": [{"set_number": 1, "delete": True}]}],
+    )
+
+    # A fresh, lower-weight set should now celebrate again, since the old record
+    # was deleted along with its only achieving set.
+    result = await service.log_set(session, TEST_USER, exercise="Bench Press", reps=6, weight=50)
+    assert len(result.workout.celebrations) == 2
 
 
 async def test_log_workout_over_rest(client: AsyncClient) -> None:

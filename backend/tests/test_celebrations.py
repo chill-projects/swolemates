@@ -1,13 +1,28 @@
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.workouts import PersonalRecord, PersonalRecordKind, WorkoutSet
 from app.services import celebrations as service
 from app.services import planned_workouts as planned_service
 from app.services import workout_templates as templates
 from app.services import workouts
 from tests.conftest import OTHER_USER, TEST_USER
+
+
+async def _pr_value(session: AsyncSession, user: str, exercise_id, kind: PersonalRecordKind):
+    result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == user,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == kind,
+        )
+    )
+    pr = result.scalar_one_or_none()
+    return pr.value if pr else None
 
 
 def _monday(d: date) -> date:
@@ -217,6 +232,66 @@ async def test_finish_workout_attaches_streak(session: AsyncSession) -> None:
 
     assert finished.streak is not None
     assert finished.streak.this_week >= 1
+
+
+async def test_recompute_pr_updates_weight_and_e1rm_independently(session: AsyncSession) -> None:
+    workout = await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {
+                "exercise": "Overhead Press",
+                "sets": [{"weight": 100, "reps": 10}, {"weight": 120, "reps": 1}],
+            }
+        ],
+    )
+    exercise_id = workout.exercises[0].exercise_id
+    set_b = next(s for s in workout.exercises[0].sets if float(s.weight) == 120)
+
+    # 120x1 holds the weight record; 100x10 (e1rm 133.3) holds the e1RM record —
+    # set independently at creation time.
+    assert await _pr_value(session, TEST_USER, exercise_id, PersonalRecordKind.weight) == 120
+    assert await _pr_value(session, TEST_USER, exercise_id, PersonalRecordKind.e1rm) == Decimal(
+        "133.3"
+    )
+
+    # Editing set B's reps up (120x1 -> 120x5, e1rm 140.0) should only move the
+    # e1RM record to it — the weight record was already correct and unaffected.
+    result = await session.execute(select(WorkoutSet).where(WorkoutSet.id == set_b.id))
+    orm_set = result.scalar_one()
+    orm_set.actual_reps = 5
+    await session.flush()
+
+    await service.recompute_pr(
+        session, TEST_USER, exercise_id=exercise_id, kind=PersonalRecordKind.weight
+    )
+    await service.recompute_pr(
+        session, TEST_USER, exercise_id=exercise_id, kind=PersonalRecordKind.e1rm
+    )
+
+    assert await _pr_value(session, TEST_USER, exercise_id, PersonalRecordKind.weight) == 120
+    assert await _pr_value(session, TEST_USER, exercise_id, PersonalRecordKind.e1rm) == Decimal(
+        "140.0"
+    )
+
+
+async def test_recompute_pr_does_not_touch_an_unrelated_exercise(session: AsyncSession) -> None:
+    ohp = await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Overhead Press", "sets": [{"weight": 95, "reps": 5}]}],
+    )
+    squat = await workouts.log_workout(
+        session, TEST_USER, exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}]
+    )
+    ohp_exercise_id = ohp.exercises[0].exercise_id
+    squat_exercise_id = squat.exercises[0].exercise_id
+
+    await service.recompute_pr(
+        session, TEST_USER, exercise_id=ohp_exercise_id, kind=PersonalRecordKind.weight
+    )
+
+    assert await _pr_value(session, TEST_USER, squat_exercise_id, PersonalRecordKind.weight) == 225
 
 
 async def test_log_set_over_rest_includes_celebrations(client: AsyncClient) -> None:
