@@ -15,8 +15,8 @@ COPY frontend/ ./
 # then serves index.html in its place and both hosts break with confusing CORS noise.
 RUN npm run build -- --outDir dist --emptyOutDir \
     && APPS_OUT_DIR=dist/mcp-apps npm run build:apps \
-    && test -s dist/mcp-apps/tmpx.html \
-    && ! grep -q "assets/index" dist/mcp-apps/tmpx.html
+    && test -s dist/mcp-apps/nutrition-day.html \
+    && ! grep -q "assets/index" dist/mcp-apps/nutrition-day.html
 
 # --- stage 2: the runtime -------------------------------------------------------------
 FROM python:3.13-slim AS runtime

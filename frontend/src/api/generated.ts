@@ -373,41 +373,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tmpx": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Tmpx Items */
-        get: operations["listTmpxItems"];
-        put?: never;
-        /** Create Tmpx Item */
-        post: operations["createTmpxItem"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tmpx/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Tmpx Item */
-        delete: operations["deleteTmpxItem"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/weekly-pattern": {
         parameters: {
             query?: never;
@@ -1294,33 +1259,6 @@ export interface components {
             id: string;
             /** Name */
             name: string;
-        };
-        /** TmpxItemCreate */
-        TmpxItemCreate: {
-            /** Name */
-            name: string;
-            /**
-             * Value
-             * @default 0
-             */
-            value: number;
-        };
-        /** TmpxItemOut */
-        TmpxItemOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
         };
         /** TrackableProgressOut */
         TrackableProgressOut: {
@@ -2286,88 +2224,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TemplateOut"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    listTmpxItems: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TmpxItemOut"][];
-                };
-            };
-        };
-    };
-    createTmpxItem: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TmpxItemCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TmpxItemOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    deleteTmpxItem: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

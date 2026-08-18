@@ -155,7 +155,7 @@ export function AppRenderer({
   return (
     <iframe
       ref={iframeRef}
-      title="TmpX component"
+      title="Embedded app"
       sandbox="allow-scripts"
       style={{ width: "100%", height: contentHeight, border: "none" }}
     />

@@ -39,23 +39,23 @@ test asserting it.
 
 ### Adding a feature
 
-The whole point of the layout is that a feature is one vertical slice. `tmpx` is a
-complete, working copy of that slice — start by copying it:
+The whole point of the layout is that a feature is one vertical slice, always the same
+shape. The nutrition slice (`backend/app/services/nutrition/`,
+`backend/app/api/nutrition.py`, `backend/app/mcp/nutrition_tools.py`,
+`frontend/src/pages/NutritionPage.tsx`) is a good reference to copy the shape of:
 
-| Step | File |
+| Step | Layer |
 |---|---|
-| 1. Table | `backend/app/models/tmpx.py` → then `make migrate m="…"` |
-| 2. Logic + authz | `backend/app/services/tmpx.py` |
-| 3. REST | `backend/app/api/tmpx.py` → then `make types` |
-| 4. MCP tools | `backend/app/mcp/tmpx_tools.py` |
-| 5. SPA | `frontend/src/api/tmpx.ts`, `frontend/src/pages/TmpxPage.tsx` |
-| 6. Tests | `backend/tests/test_tmpx.py` |
+| 1. Table | model + `make migrate m="…"` |
+| 2. Logic + authz | service |
+| 3. REST | router → then `make types` |
+| 4. MCP tools | `app/mcp/*_tools.py` |
+| 5. SPA | `frontend/src/api/*.ts`, `frontend/src/pages/*.tsx` |
+| 6. Tests | `backend/tests/test_*.py` |
 
 Steps 3 and 4 are both thin wrappers over step 2. If you find yourself writing a
 permission check in a router or a tool, it belongs in the service instead — otherwise it
 only applies to one of the two front doors.
-
-Delete `tmpx` once the first real feature lands.
 
 ## Deploying
 

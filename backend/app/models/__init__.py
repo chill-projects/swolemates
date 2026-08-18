@@ -11,13 +11,11 @@ from app.models.nutrition import (
     TrackableType,
 )
 from app.models.profile import UserProfile, WeightUnit
-from app.models.tmpx import TmpxItem
 from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
 
 __all__ = [
     "Base",
     "TimestampMixin",
-    "TmpxItem",
     "UserProfile",
     "WeightUnit",
     "TrackableType",

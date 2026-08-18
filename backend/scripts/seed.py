@@ -11,19 +11,13 @@ The second user exists so isolation bugs are visible by eye: if anything belongi
 import asyncio
 import sys
 
-from sqlalchemy import delete
-
 from app.config import get_settings
 from app.db import dispose_engine, get_sessionmaker
 from app.models.profile import WeightUnit
-from app.models.tmpx import TmpxItem
 from app.services import nutrition as nutrition_service
 from app.services import profile as profile_service
-from app.services import tmpx as tmpx_service
 
 PARTNER_SUB = "dev_partner_11111111"
-
-TMPX_SEED = [("first template item", 1), ("second template item", 2), ("third template item", 3)]
 
 NUTRITION_GOALS = [
     {"trackable_key": "calories", "target_value": 2200, "is_streak_target": True},
@@ -62,9 +56,6 @@ async def seed(*, reset: bool) -> None:
 
     me = settings.dev_user_sub
     async with get_sessionmaker()() as session:
-        if reset:
-            await session.execute(delete(TmpxItem).where(TmpxItem.user_id.in_([me, PARTNER_SUB])))
-
         # Idempotent regardless of --reset — a profile is one row per user, so
         # re-running this just re-applies the same values, no accumulation risk.
         await profile_service.update_profile(
@@ -77,25 +68,20 @@ async def seed(*, reset: bool) -> None:
         # Idempotent regardless of --reset — goals upsert by (user, trackable_key).
         await nutrition_service.set_goals(session, me, goals=NUTRITION_GOALS)
 
-        existing = await tmpx_service.list_items(session, me)
-        if existing and not reset:
+        today = await nutrition_service.get_nutrition_day(session, me)
+        if today.logs and not reset:
             print(
-                f"{me} already has {len(existing)} item(s); nothing to do. Use `make seed-reset`."
+                f"{me} already has {len(today.logs)} log(s) today; nothing to do. "
+                "Use `make seed-reset`."
             )
             return
 
-        for name, value in TMPX_SEED:
-            await tmpx_service.add_item(session, me, name=name, value=value)
-        await tmpx_service.add_item(
-            session, PARTNER_SUB, name="PARTNER ITEM — you should never see this", value=999
-        )
         for log in NUTRITION_LOGS:
             await nutrition_service.log_nutrition(session, me, **log)
         await session.commit()
 
     print(
         f"Seeded profiles for {me} and {PARTNER_SUB}, "
-        f"plus {len(TMPX_SEED)} tmpx items for {me}, plus 1 for {PARTNER_SUB}, "
         f"plus goals + {len(NUTRITION_LOGS)} nutrition logs for {me}."
     )
     await dispose_engine()

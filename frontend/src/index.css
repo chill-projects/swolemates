@@ -27,10 +27,25 @@ h1 {
   color: #b00020;
 }
 
-form {
+.ios-install-banner {
   display: flex;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: -1.5rem -1.5rem 1.5rem;
+  padding: 0.5rem 1rem;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 0.9rem;
+}
+
+.ios-install-banner button {
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  background: transparent;
+  color: inherit;
 }
 
 input {
@@ -61,8 +76,6 @@ textarea {
   resize: vertical;
 }
 
-/* Scoped rather than a bare `form` rule, since that one's already claimed by
-   TmpX's single-row add-item form (display: flex, as a row). */
 .profile-form {
   display: flex;
   flex-direction: column;

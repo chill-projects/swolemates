@@ -8,13 +8,11 @@ from app.api import (
     profile,
     tdee,
     templates,
-    tmpx,
     workouts,
 )
 from app.deps import AppSettings, CurrentPrincipal
 
 api_router = APIRouter()
-api_router.include_router(tmpx.router)
 api_router.include_router(profile.router)
 api_router.include_router(nutrition.router)
 api_router.include_router(food_facts.router)

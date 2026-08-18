@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { useProfile } from "./api/profile";
-import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
-import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
+import { completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
+import { IOSInstallBanner } from "./components/IOSInstallBanner";
 import { NutritionPage } from "./pages/NutritionPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { ProfileForm } from "./pages/ProfileForm";
@@ -61,6 +61,7 @@ export function App() {
 
   return (
     <main>
+      <IOSInstallBanner />
       <header>
         <h1>Swolemates</h1>
       </header>

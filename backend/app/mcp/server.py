@@ -9,6 +9,7 @@ import logging
 
 from fastmcp import FastMCP
 
+from app.auth import mcp_user_sub
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
@@ -39,6 +40,13 @@ def _auth_provider():
 
 mcp: FastMCP = FastMCP(name="Swolemates", auth=_auth_provider())
 
+
+@mcp.tool
+async def whoami() -> str:
+    """Report which Swolemates account this connection is authenticated as."""
+    return f"Authenticated as {mcp_user_sub()}."
+
+
 # Registers tools on the server above. Imported for the side effect.
 from app.mcp import (  # noqa: E402,F401
     food_facts_tools,
@@ -47,6 +55,5 @@ from app.mcp import (  # noqa: E402,F401
     profile_tools,
     tdee_tools,
     templates_tools,
-    tmpx_tools,
     workouts_tools,
 )

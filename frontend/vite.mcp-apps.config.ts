@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 /**
- * Builds ONE MCP app (selected by APP_NAME, default "tmpx") into a self-contained
+ * Builds ONE MCP app (selected by APP_NAME, default "nutrition-day") into a self-contained
  * HTML file (JS/CSS inlined). Self-containment isn't an optimization — app iframes get
  * no external network unless the resource declares CSP domains, so a bundle with
  * external refs simply doesn't render in Claude.
@@ -14,7 +14,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
  * Output lands next to the SPA build; the backend serves it as the ui:// resource
  * and the SPA fetches it over HTTP for AppRenderer.
  */
-const APP_NAME = process.env.APP_NAME ?? "tmpx";
+const APP_NAME = process.env.APP_NAME ?? "nutrition-day";
 
 export default defineConfig({
   root: resolve(__dirname, `src/mcp-apps/${APP_NAME}`),

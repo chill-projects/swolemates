@@ -6,6 +6,10 @@
  * than localStorage so it dies with the tab and never outlives the session.
  */
 
+import { useQuery } from "@tanstack/react-query";
+
+import { api } from "../api/client";
+
 export interface AuthConfig {
   configured: boolean;
   authkit_domain: string;
@@ -116,4 +120,16 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
   // Drop ?code= from the URL so a refresh doesn't retry a spent authorization code.
   window.history.replaceState({}, "", "/");
   return "ok";
+}
+
+export function useWhoami() {
+  return useQuery({
+    queryKey: ["whoami"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/whoami");
+      if (error) throw new Error("Not authenticated");
+      return data;
+    },
+    retry: false,
+  });
 }
