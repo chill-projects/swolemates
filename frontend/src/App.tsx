@@ -5,6 +5,7 @@ import { useProfile } from "./api/profile";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
+import { NavBar } from "./components/NavBar";
 import { NutritionPage } from "./pages/NutritionPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { ProfileForm } from "./pages/ProfileForm";
@@ -108,26 +109,23 @@ function AuthenticatedApp({
     );
   }
 
-  if (onSettingsRoute) {
-    return (
-      <>
-        <h2>Profile settings</h2>
-        <ProfileForm profile={profile.data} />
-      </>
-    );
-  }
-
-  if (onWorkoutsLiveRoute) {
-    return <WorkoutLivePage me={me} />;
-  }
-
-  if (onTemplatesRoute) {
-    return <TemplatesPage me={me} />;
-  }
-
-  if (onPlannedRoute) {
-    return <PlannedPage me={me} />;
-  }
-
-  return <NutritionPage me={me} />;
+  return (
+    <>
+      <NavBar />
+      {onSettingsRoute ? (
+        <>
+          <h2>Profile settings</h2>
+          <ProfileForm profile={profile.data} />
+        </>
+      ) : onWorkoutsLiveRoute ? (
+        <WorkoutLivePage me={me} />
+      ) : onTemplatesRoute ? (
+        <TemplatesPage me={me} />
+      ) : onPlannedRoute ? (
+        <PlannedPage me={me} />
+      ) : (
+        <NutritionPage me={me} />
+      )}
+    </>
+  );
 }

@@ -1,8 +1,25 @@
-/* Deliberately minimal. The real styling arrives in phase 6 with the ported screens;
-   docs/legacy/globals.css has the Tailwind setup the Next app used. */
+/* Colors ported from docs/legacy/globals.css so the SPA matches the legacy app's
+   palette. Legacy also pulled in Tailwind + custom fonts (Fraunces/Inter/JetBrains
+   Mono) — out of scope here, this file stays plain CSS. */
 
 :root {
-  color-scheme: light dark;
+  --sand: #f4f1e8;
+  --ink: #122a2e;
+  --ink-soft: #4e6367;
+  --teal: #0e5c56;
+  --teal-pale: #dceae7;
+  --coral: #ff6f59;
+  --coral-pale: #ffe3dd;
+  --gold: #d69a2d;
+  --gold-pale: #f5e7cb;
+  --plum: #7c6a9c;
+  --plum-pale: #e9e3f1;
+  --line: #ddd6c6;
+  --card: #ffffff;
+  --amber: #c77d12;
+  --red: #c24a3a;
+
+  color-scheme: light;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
 }
@@ -11,6 +28,8 @@ body {
   margin: 0;
   padding: 1.5rem;
   max-width: 40rem;
+  background: var(--sand);
+  color: var(--ink);
 }
 
 h1 {
@@ -21,10 +40,51 @@ h1 {
 .muted {
   opacity: 0.65;
   font-size: 0.9rem;
+  color: var(--ink-soft);
 }
 
 .error {
-  color: #b00020;
+  color: var(--red);
+}
+
+.nav-bar {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1rem -1.5rem 1.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.nav-bar-item {
+  display: flex;
+  flex: 1;
+  min-width: 4rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.nav-bar-item:hover {
+  background: var(--teal-pale);
+  color: var(--teal);
+}
+
+.nav-bar-item.active {
+  background: var(--teal-pale);
+  color: var(--teal);
+}
+
+.nav-bar-icon {
+  font-size: 1.2rem;
 }
 
 .ios-install-banner {
@@ -34,8 +94,8 @@ h1 {
   gap: 0.75rem;
   margin: -1.5rem -1.5rem 1.5rem;
   padding: 0.5rem 1rem;
-  background: #dbeafe;
-  color: #1e3a8a;
+  background: var(--teal-pale);
+  color: var(--teal);
   font-size: 0.9rem;
 }
 
