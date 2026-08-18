@@ -62,12 +62,27 @@ interface Group {
   exercises: ExerciseEntry[];
 }
 
+interface Celebration {
+  exercise_name: string;
+  kind: "weight" | "e1rm";
+  value: number;
+  previous: number | null;
+}
+
+interface Streak {
+  weeks: number;
+  this_week: number;
+  target: number;
+}
+
 interface LivePayload {
   active: boolean;
   id?: string;
   completed_at?: string | null;
   groups?: Group[];
   summary: string;
+  celebrations?: Celebration[];
+  streak?: Streak | null;
 }
 
 interface CatalogExercise {
@@ -83,6 +98,8 @@ const $ = <T extends Element>(id: string): T => {
 };
 
 const statusEl = $<HTMLParagraphElement>("status");
+const celebrationsEl = $<HTMLDivElement>("celebrations");
+const streakLineEl = $<HTMLParagraphElement>("streak-line");
 const emptyEl = $<HTMLDivElement>("empty");
 const startBtn = $<HTMLButtonElement>("start-btn");
 const workoutEl = $<HTMLDivElement>("workout");
@@ -340,10 +357,42 @@ function renderGroup(g: Group, finished: boolean): HTMLDivElement {
   return wrap;
 }
 
+function renderCelebrations(celebrations: Celebration[] | undefined): void {
+  if (!celebrations || celebrations.length === 0) {
+    celebrationsEl.hidden = true;
+    celebrationsEl.replaceChildren();
+    return;
+  }
+  celebrationsEl.hidden = false;
+  celebrationsEl.replaceChildren(
+    ...celebrations.map((c) => {
+      const div = document.createElement("div");
+      div.className = "celebration";
+      const label = c.kind === "e1rm" ? "e1RM" : "weight";
+      div.textContent =
+        c.previous != null
+          ? `New PR: ${c.exercise_name} ${label} ${c.value}lbs — up from ${c.previous}`
+          : `New PR: ${c.exercise_name} ${label} ${c.value}lbs`;
+      return div;
+    }),
+  );
+}
+
+function renderStreak(streak: Streak | null | undefined): void {
+  if (!streak) {
+    streakLineEl.hidden = true;
+    return;
+  }
+  streakLineEl.hidden = false;
+  streakLineEl.textContent = `${streak.weeks}-week streak — ${streak.this_week}/${streak.target} this week`;
+}
+
 function render(payload: LivePayload): void {
   currentPayload = payload;
   statusEl.textContent = payload.summary;
   statusEl.className = "muted";
+  renderCelebrations(payload.celebrations);
+  renderStreak(payload.streak);
 
   if (!payload.active) {
     emptyEl.hidden = false;

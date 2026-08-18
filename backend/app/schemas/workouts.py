@@ -109,6 +109,23 @@ class ExerciseEntryOut(BaseModel):
     target: TargetOut | None = None
 
 
+class CelebrationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    exercise_name: str
+    kind: str
+    value: Decimal
+    previous: Decimal | None
+
+
+class StreakOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    weeks: int
+    this_week: int
+    target: int
+
+
 class WorkoutOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,6 +139,8 @@ class WorkoutOut(BaseModel):
     completed_at: datetime | None
     exercises: list[ExerciseEntryOut]
     resumed: bool = False
+    celebrations: list[CelebrationOut] = []
+    streak: StreakOut | None = None
 
 
 class LogSetResponse(BaseModel):
@@ -146,6 +165,8 @@ class WorkoutLiveOut(BaseModel):
     notes: str | None
     groups: list[WorkoutGroupOut]
     summary: str
+    celebrations: list[CelebrationOut] = []
+    streak: StreakOut | None = None
 
 
 class UpdateWorkoutEntryRequest(BaseModel):

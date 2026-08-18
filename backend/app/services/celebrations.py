@@ -1,0 +1,204 @@
+"""Streaks + PR celebrations service (#3, resolved — slice 4).
+
+No circular-import risk, unlike workout_templates.py/planned_workouts.py: this
+module only needs app.models.workouts (plain table defs, no service logic) plus its
+own PersonalRecord — workouts.py imports it normally at module level, one direction.
+"""
+
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import ROUND_HALF_UP, Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.workouts import (
+    PersonalRecord,
+    PersonalRecordKind,
+    PlannedWorkout,
+    SetType,
+    Workout,
+    WorkoutSet,
+)
+
+WEEK_TARGET_FALLBACK = 3
+# A sanity bound on the backward walk in get_streak, not a real limit anyone should
+# hit — guards against an unbounded loop, nothing more.
+MAX_STREAK_WEEKS_LOOKBACK = 104
+
+
+@dataclass
+class CelebrationOut:
+    exercise_name: str
+    kind: str  # "weight" | "e1rm"
+    value: Decimal
+    previous: Decimal | None
+
+
+@dataclass
+class StreakOut:
+    weeks: int
+    this_week: int
+    target: int
+
+
+def _week_bounds(d: date) -> tuple[date, date]:
+    start = d - timedelta(days=d.weekday())
+    return start, start + timedelta(days=6)
+
+
+async def _maybe_upsert_pr(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    exercise_id: uuid.UUID,
+    kind: PersonalRecordKind,
+    value: Decimal,
+    workout_set_id: uuid.UUID,
+    achieved_at: datetime,
+) -> tuple[Decimal, Decimal | None] | None:
+    """Returns `(value, previous)` if this beat the cached record (or there wasn't
+    one), else `None`. A tie doesn't count as a new record."""
+    result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == user_sub,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == kind,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None and existing.value >= value:
+        return None
+
+    previous = existing.value if existing is not None else None
+    if existing is None:
+        session.add(
+            PersonalRecord(
+                user_id=user_sub,
+                exercise_id=exercise_id,
+                kind=kind,
+                value=value,
+                workout_set_id=workout_set_id,
+                achieved_at=achieved_at,
+            )
+        )
+    else:
+        existing.value = value
+        existing.workout_set_id = workout_set_id
+        existing.achieved_at = achieved_at
+    return value, previous
+
+
+async def check_and_record_prs(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    exercise_id: uuid.UUID,
+    exercise_name: str,
+    sets: list[WorkoutSet],
+) -> list[CelebrationOut]:
+    """Checks heaviest-weight and best-e1RM (Epley: `w * (1 + reps/30)`) for each
+    rep-based, non-warmup set with both weight and reps recorded. Timed and warmup
+    sets are skipped entirely — no weight-PR concept applies to them."""
+    celebrations: list[CelebrationOut] = []
+    for s in sets:
+        if s.is_warmup or s.set_type != SetType.reps:
+            continue
+        if s.actual_weight is None or s.actual_reps is None:
+            continue
+
+        weight_result = await _maybe_upsert_pr(
+            session,
+            user_sub,
+            exercise_id=exercise_id,
+            kind=PersonalRecordKind.weight,
+            value=s.actual_weight,
+            workout_set_id=s.id,
+            achieved_at=s.completed_at,
+        )
+        if weight_result is not None:
+            value, previous = weight_result
+            celebrations.append(
+                CelebrationOut(
+                    exercise_name=exercise_name, kind="weight", value=value, previous=previous
+                )
+            )
+
+        e1rm = (s.actual_weight * (1 + Decimal(s.actual_reps) / Decimal(30))).quantize(
+            Decimal("0.1"), rounding=ROUND_HALF_UP
+        )
+        e1rm_result = await _maybe_upsert_pr(
+            session,
+            user_sub,
+            exercise_id=exercise_id,
+            kind=PersonalRecordKind.e1rm,
+            value=e1rm,
+            workout_set_id=s.id,
+            achieved_at=s.completed_at,
+        )
+        if e1rm_result is not None:
+            value, previous = e1rm_result
+            celebrations.append(
+                CelebrationOut(
+                    exercise_name=exercise_name, kind="e1rm", value=value, previous=previous
+                )
+            )
+
+    if celebrations:
+        await session.flush()
+    return celebrations
+
+
+async def _week_target(session: AsyncSession, user_sub: str, start: date, end: date) -> int:
+    """The count of that week's `planned_workouts` rows (any status — rows are
+    never deleted, per slice 3b), falling back to a flat 3 for a week with none."""
+    result = await session.execute(
+        select(func.count(PlannedWorkout.id)).where(
+            PlannedWorkout.user_id == user_sub,
+            PlannedWorkout.scheduled_for.between(start, end),
+        )
+    )
+    count = result.scalar_one()
+    return count if count > 0 else WEEK_TARGET_FALLBACK
+
+
+async def _completed_count(session: AsyncSession, user_sub: str, start: date, end: date) -> int:
+    result = await session.execute(
+        select(func.count(Workout.id)).where(
+            Workout.user_id == user_sub,
+            Workout.completed_at.isnot(None),
+            Workout.completed_at >= datetime.combine(start, time.min, tzinfo=UTC),
+            Workout.completed_at <= datetime.combine(end, time.max, tzinfo=UTC),
+        )
+    )
+    return result.scalar_one()
+
+
+async def get_streak(
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+) -> StreakOut:
+    """`this_week` counts completed workouts of any type (strength or activity) —
+    "any day, any order, an unplanned bonus session counts too," per the resolved
+    doc. `weeks` is the current run: the current week counts as a bonus if it's
+    already hit target (even mid-week, since it isn't over yet), plus a backward
+    walk through fully-elapsed prior weeks, stopping at the first that fell short
+    of *its own* target.
+    """
+    as_of = as_of or date.today()
+    this_start, this_end = _week_bounds(as_of)
+    target = await _week_target(session, user_sub, this_start, this_end)
+    this_week = await _completed_count(session, user_sub, this_start, this_end)
+
+    weeks = 1 if this_week >= target else 0
+    week_start = this_start - timedelta(days=7)
+    for _ in range(MAX_STREAK_WEEKS_LOOKBACK):
+        week_end = week_start + timedelta(days=6)
+        target_for_week = await _week_target(session, user_sub, week_start, week_end)
+        completed = await _completed_count(session, user_sub, week_start, week_end)
+        if completed < target_for_week:
+            break
+        weeks += 1
+        week_start -= timedelta(days=7)
+
+    return StreakOut(weeks=weeks, this_week=this_week, target=target)

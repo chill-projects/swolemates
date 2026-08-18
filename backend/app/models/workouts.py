@@ -5,7 +5,8 @@
 pattern as nutrition's `group_id`/`group_name`. `superset_group` on `WorkoutExercise`
 landed in slice 2b, once the in-workout accordion actually grouped by it.
 `WorkoutTemplate`/`TemplateExercise` and `WorkoutExercise.target_*` landed in slice 3a.
-`WeeklyPatternDay`/`PlannedWorkout` landed in slice 3b.
+`WeeklyPatternDay`/`PlannedWorkout` landed in slice 3b. `PersonalRecord` landed in
+slice 4.
 """
 
 import enum
@@ -45,6 +46,11 @@ class PlannedWorkoutStatus(enum.StrEnum):
     planned = "planned"
     done = "done"
     skipped = "skipped"
+
+
+class PersonalRecordKind(enum.StrEnum):
+    weight = "weight"
+    e1rm = "e1rm"
 
 
 class Exercise(Base, TimestampMixin):
@@ -261,4 +267,34 @@ class PlannedWorkout(Base):
 
     __table_args__ = (
         Index("ix_planned_workouts_user_id_scheduled_for", "user_id", "scheduled_for"),
+    )
+
+
+class PersonalRecord(Base):
+    """A mutable *current-record* cache, not an append-only log (the doc's resolved
+    decision #4) — one row per `(user_id, exercise_id, kind)`, upserted in place
+    whenever `log_set`/`log_workout` writes a set that beats it. If the achieving set
+    is later edited or deleted, this should be recomputed from the remaining sets —
+    that hook needs `update_workout` (slice 5) and isn't built yet; today a record
+    only ever moves forward.
+    """
+
+    __tablename__ = "personal_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
+    kind: Mapped[PersonalRecordKind] = mapped_column(
+        Enum(PersonalRecordKind, name="personal_record_kind"), nullable=False
+    )
+    value: Mapped[object] = mapped_column(Numeric, nullable=False)
+    workout_set_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workout_sets.id", ondelete="CASCADE"), nullable=False
+    )
+    achieved_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "exercise_id", "kind", name="uq_personal_records_user_id_exercise_id_kind"
+        ),
     )

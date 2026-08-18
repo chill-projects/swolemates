@@ -710,6 +710,17 @@ export interface components {
             /** Tdee */
             tdee: number;
         };
+        /** CelebrationOut */
+        CelebrationOut: {
+            /** Exercise Name */
+            exercise_name: string;
+            /** Kind */
+            kind: string;
+            /** Previous */
+            previous: string | null;
+            /** Value */
+            value: string;
+        };
         /** CreateTemplateExerciseIn */
         CreateTemplateExerciseIn: {
             /** Exercise */
@@ -1219,6 +1230,15 @@ export interface components {
             /** Template Id */
             template_id?: string | null;
         };
+        /** StreakOut */
+        StreakOut: {
+            /** Target */
+            target: number;
+            /** This Week */
+            this_week: number;
+            /** Weeks */
+            weeks: number;
+        };
         /** TargetOut */
         TargetOut: {
             /** Reps */
@@ -1449,6 +1469,11 @@ export interface components {
         };
         /** WorkoutLiveOut */
         WorkoutLiveOut: {
+            /**
+             * Celebrations
+             * @default []
+             */
+            celebrations: components["schemas"]["CelebrationOut"][];
             /** Completed At */
             completed_at: string | null;
             /** Groups */
@@ -1465,6 +1490,7 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
+            streak?: components["schemas"]["StreakOut"] | null;
             /** Summary */
             summary: string;
         };
@@ -1472,6 +1498,11 @@ export interface components {
         WorkoutOut: {
             /** Activity Type */
             activity_type: string | null;
+            /**
+             * Celebrations
+             * @default []
+             */
+            celebrations: components["schemas"]["CelebrationOut"][];
             /** Completed At */
             completed_at: string | null;
             /** Duration Minutes */
@@ -1495,6 +1526,7 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
+            streak?: components["schemas"]["StreakOut"] | null;
             /** Title */
             title: string | null;
             workout_type: components["schemas"]["WorkoutType"];

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
+from app.services.celebrations import CelebrationOut, StreakOut, check_and_record_prs, get_streak
 from app.services.errors import NotFoundError
 
 # log_set auto-continues an open workout within this window of its last set with no
@@ -146,6 +147,14 @@ class WorkoutOut:
     # also true for a brand-new workout started with a given exercise list (a bug
     # caught live: the MCP tool originally guessed this from `bool(exercises)`).
     resumed: bool = False
+    # Populated only where sets are actually written (log_set, log_workout) — real
+    # time, with an accurate `previous` value at the moment it happens. Empty
+    # everywhere else, including finish_workout: it never writes sets in this app's
+    # architecture, so it has nothing new to check (#3/#6, resolved).
+    celebrations: list[CelebrationOut] = field(default_factory=list)
+    # Populated only where a workout just completed (finish_workout, log_activity,
+    # log_workout) — streak only depends on completed_at. None everywhere else.
+    streak: StreakOut | None = None
 
 
 @dataclass
@@ -320,6 +329,7 @@ async def log_workout(
     session.add(workout)
     await session.flush()
 
+    new_sets_by_exercise: list[tuple[uuid.UUID, str, list[WorkoutSet]]] = []
     for order, entry in enumerate(exercises):
         exercise = await _resolve_exercise(
             session, user_sub, entry["exercise"], muscle_group=entry.get("muscle_group")
@@ -334,23 +344,34 @@ async def log_workout(
         session.add(workout_exercise)
         await session.flush()
 
+        new_sets: list[WorkoutSet] = []
         for set_number, set_entry in enumerate(entry["sets"], start=1):
-            session.add(
-                WorkoutSet(
-                    workout_exercise_id=workout_exercise.id,
-                    set_number=set_number,
-                    set_type=SetType(set_entry.get("set_type", "reps")),
-                    is_warmup=bool(set_entry.get("is_warmup", False)),
-                    actual_weight=set_entry.get("weight"),
-                    actual_reps=set_entry.get("reps"),
-                    work_seconds=set_entry.get("work_seconds"),
-                    completed_at=when,
-                )
+            new_set = WorkoutSet(
+                workout_exercise_id=workout_exercise.id,
+                set_number=set_number,
+                set_type=SetType(set_entry.get("set_type", "reps")),
+                is_warmup=bool(set_entry.get("is_warmup", False)),
+                actual_weight=set_entry.get("weight"),
+                actual_reps=set_entry.get("reps"),
+                work_seconds=set_entry.get("work_seconds"),
+                completed_at=when,
             )
+            session.add(new_set)
+            new_sets.append(new_set)
+        new_sets_by_exercise.append((exercise.id, exercise.name, new_sets))
 
     await session.flush()
+
+    celebrations: list[CelebrationOut] = []
+    for exercise_id, exercise_name, new_sets in new_sets_by_exercise:
+        celebrations += await check_and_record_prs(
+            session, user_sub, exercise_id=exercise_id, exercise_name=exercise_name, sets=new_sets
+        )
+
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
+    details[0].celebrations = celebrations
+    details[0].streak = await get_streak(session, user_sub, as_of=when.date())
     return details[0]
 
 
@@ -384,6 +405,7 @@ async def log_activity(
     await session.flush()
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
+    details[0].streak = await get_streak(session, user_sub, as_of=when.date())
     return details[0]
 
 
@@ -567,23 +589,32 @@ async def log_set(
     next_set_number = (count_result.scalar_one() or 0) + 1
 
     when = datetime.now(UTC)
+    new_sets: list[WorkoutSet] = []
     for i in range(sets):
-        session.add(
-            WorkoutSet(
-                workout_exercise_id=workout_exercise.id,
-                set_number=next_set_number + i,
-                set_type=SetType(set_type),
-                is_warmup=is_warmup,
-                actual_weight=weight,
-                actual_reps=reps,
-                work_seconds=work_seconds,
-                completed_at=when,
-            )
+        new_set = WorkoutSet(
+            workout_exercise_id=workout_exercise.id,
+            set_number=next_set_number + i,
+            set_type=SetType(set_type),
+            is_warmup=is_warmup,
+            actual_weight=weight,
+            actual_reps=reps,
+            work_seconds=work_seconds,
+            completed_at=when,
         )
+        session.add(new_set)
+        new_sets.append(new_set)
 
     await session.flush()
+    celebrations = await check_and_record_prs(
+        session,
+        user_sub,
+        exercise_id=workout_exercise.exercise_id,
+        exercise_name=exercise,
+        sets=new_sets,
+    )
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [active.id])
+    details[0].celebrations = celebrations
     return LogSetResult(workout=details[0])
 
 
@@ -626,6 +657,7 @@ async def finish_workout(
 
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
+    details[0].streak = await get_streak(session, user_sub, as_of=workout.completed_at.date())
     return details[0]
 
 
@@ -663,6 +695,8 @@ class WorkoutLiveOut:
     notes: str | None
     groups: list[GroupOut]
     summary: str
+    celebrations: list[CelebrationOut] = field(default_factory=list)
+    streak: StreakOut | None = None
 
 
 async def _get_last_time(
@@ -747,6 +781,8 @@ async def get_workout_live(
         notes=workout.notes,
         groups=groups,
         summary=_live_summary(workout, groups),
+        celebrations=workout.celebrations,
+        streak=workout.streak,
     )
 
 

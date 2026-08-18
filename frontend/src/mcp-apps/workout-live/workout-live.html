@@ -35,6 +35,15 @@
          toggles `.hidden` to control visibility. */
       #empty:not([hidden]) { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 
+      #celebrations:not([hidden]) {
+        display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.75rem;
+      }
+      .celebration {
+        border: 1px solid var(--accent); border-radius: 0.5rem;
+        padding: 0.5rem 0.7rem; font-size: 0.85rem;
+      }
+      #streak-line { margin: 0 0 0.75rem; }
+
       .group {
         border: 1px solid var(--border); border-radius: 0.6rem;
         padding: 0.6rem; margin-bottom: 0.6rem;
@@ -86,6 +95,8 @@
   </head>
   <body>
     <p id="status" class="muted">Connecting…</p>
+    <div id="celebrations" hidden></div>
+    <p id="streak-line" class="muted" hidden></p>
 
     <div id="empty" hidden>
       <button type="button" id="start-btn">Start workout</button>

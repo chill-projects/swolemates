@@ -119,6 +119,43 @@
         "title": "CalculateTargetsResponse",
         "type": "object"
       },
+      "CelebrationOut": {
+        "properties": {
+          "exercise_name": {
+            "title": "Exercise Name",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exercise_name",
+          "kind",
+          "value",
+          "previous"
+        ],
+        "title": "CelebrationOut",
+        "type": "object"
+      },
       "CreateTemplateExerciseIn": {
         "properties": {
           "exercise": {
@@ -1851,6 +1888,29 @@
         "title": "StartWorkoutRequest",
         "type": "object"
       },
+      "StreakOut": {
+        "properties": {
+          "target": {
+            "title": "Target",
+            "type": "integer"
+          },
+          "this_week": {
+            "title": "This Week",
+            "type": "integer"
+          },
+          "weeks": {
+            "title": "Weeks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weeks",
+          "this_week",
+          "target"
+        ],
+        "title": "StreakOut",
+        "type": "object"
+      },
       "TargetOut": {
         "properties": {
           "reps": {
@@ -2673,6 +2733,14 @@
       },
       "WorkoutLiveOut": {
         "properties": {
+          "celebrations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CelebrationOut"
+            },
+            "title": "Celebrations",
+            "type": "array"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -2713,6 +2781,16 @@
             "title": "Started At",
             "type": "string"
           },
+          "streak": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreakOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -2741,6 +2819,14 @@
               }
             ],
             "title": "Activity Type"
+          },
+          "celebrations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CelebrationOut"
+            },
+            "title": "Celebrations",
+            "type": "array"
           },
           "completed_at": {
             "anyOf": [
@@ -2797,6 +2883,16 @@
             "format": "date-time",
             "title": "Started At",
             "type": "string"
+          },
+          "streak": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreakOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "anyOf": [

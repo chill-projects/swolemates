@@ -40,11 +40,33 @@ def _format_workout(w: service.WorkoutOut) -> str:
     header = w.title or (w.activity_type or "Workout")
     when = w.started_at.date().isoformat()
     if w.workout_type == service.WorkoutType.activity:
-        return f"{when} — {header}: {w.duration_minutes} min of {w.activity_type}"
-    exercise_lines = "; ".join(
-        f"{e.exercise_name}: " + ", ".join(_format_set(s) for s in e.sets) for e in w.exercises
-    )
-    return f"{when} — {header}: {exercise_lines}"
+        base = f"{when} — {header}: {w.duration_minutes} min of {w.activity_type}"
+    else:
+        exercise_lines = "; ".join(
+            f"{e.exercise_name}: " + ", ".join(_format_set(s) for s in e.sets) for e in w.exercises
+        )
+        base = f"{when} — {header}: {exercise_lines}"
+    extra = _format_celebrations(w.celebrations) + _format_streak(w.streak)
+    return base + extra
+
+
+def _format_celebrations(celebrations: list[service.CelebrationOut]) -> str:
+    if not celebrations:
+        return ""
+    parts = []
+    for c in celebrations:
+        label = "e1RM" if c.kind == "e1rm" else "weight"
+        if c.previous is not None:
+            parts.append(f"New PR: {c.exercise_name} {label} {c.value}lbs — up from {c.previous}")
+        else:
+            parts.append(f"New PR: {c.exercise_name} {label} {c.value}lbs")
+    return " — " + "; ".join(parts)
+
+
+def _format_streak(streak: service.StreakOut | None) -> str:
+    if streak is None:
+        return ""
+    return f" — {streak.weeks}-week streak, {streak.this_week}/{streak.target} this week"
 
 
 def _last_time_payload(lt: service.LastTimeOut | None) -> dict | None:
@@ -93,6 +115,21 @@ def _exercise_payload(e: service.ExerciseEntryOut) -> dict:
     }
 
 
+def _celebration_payload(c: service.CelebrationOut) -> dict:
+    return {
+        "exercise_name": c.exercise_name,
+        "kind": c.kind,
+        "value": float(c.value),
+        "previous": float(c.previous) if c.previous is not None else None,
+    }
+
+
+def _streak_payload(s: service.StreakOut | None) -> dict | None:
+    if s is None:
+        return None
+    return {"weeks": s.weeks, "this_week": s.this_week, "target": s.target}
+
+
 def _live_payload(live: service.WorkoutLiveOut) -> dict:
     return {
         "active": True,
@@ -109,6 +146,8 @@ def _live_payload(live: service.WorkoutLiveOut) -> dict:
             for g in live.groups
         ],
         "summary": live.summary,
+        "celebrations": [_celebration_payload(c) for c in live.celebrations],
+        "streak": _streak_payload(live.streak),
     }
 
 
@@ -124,8 +163,7 @@ async def log_workout(
         exercises: [{"exercise": "Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
             "notes"?, "next_time_note"?}, ...]. Each set: reps sets need "reps" > 0 and
             "weight" >= 0 (0 for bodyweight); timed sets need "set_type": "time" and
-            "work_seconds" > 0. Add "is_warmup": true to exclude a set from PR checks
-            (later slice).
+            "work_seconds" > 0. Add "is_warmup": true to exclude a set from PR checks.
         title: e.g. "Leg day".
         date: ISO date/datetime if backdating; defaults to now.
     """
@@ -260,7 +298,7 @@ async def log_set(
         weight: lbs, >= 0 (0 for bodyweight). Required for rep-based sets.
         set_type: "reps" (default) or "time".
         work_seconds: for timed sets, > 0.
-        is_warmup: excludes this set from PR checks (later slice).
+        is_warmup: excludes this set from PR checks.
         sets: how many identical sets to log at once, e.g. 3 for "3 sets of squats
             at 185x5".
         note: freeform note for this exercise (e.g. "felt easy, add 5 next time").

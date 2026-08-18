@@ -6,6 +6,7 @@ import type { components } from "../api/generated";
 
 type WorkoutLiveOut = components["schemas"]["WorkoutLiveOut"];
 type ExerciseEntryOut = components["schemas"]["ExerciseEntryOut"];
+type WorkoutOut = components["schemas"]["WorkoutOut"];
 interface Me {
   user_sub: string;
   email: string | null;
@@ -49,7 +50,18 @@ function toExercisePayload(e: ExerciseEntryOut) {
   };
 }
 
-function toLivePayload(live: WorkoutLiveOut): ToolResultPayload {
+/**
+ * `earnedCelebrations`/`earnedStreak` override `live`'s own (always-empty, since a
+ * plain re-read never earns anything) values — see the comment at the `/live`
+ * call site for why these have to be threaded through separately.
+ */
+function toLivePayload(
+  live: WorkoutLiveOut,
+  earnedCelebrations?: WorkoutOut["celebrations"] | null,
+  earnedStreak?: WorkoutOut["streak"] | null,
+): ToolResultPayload {
+  const celebrations = earnedCelebrations ?? live.celebrations;
+  const streak = earnedStreak ?? live.streak;
   const payload = {
     active: true,
     id: live.id,
@@ -60,6 +72,13 @@ function toLivePayload(live: WorkoutLiveOut): ToolResultPayload {
       exercises: g.exercises.map(toExercisePayload),
     })),
     summary: live.summary,
+    celebrations: celebrations.map((c) => ({
+      exercise_name: c.exercise_name,
+      kind: c.kind,
+      value: numeric(c.value),
+      previous: numeric(c.previous),
+    })),
+    streak: streak ? { weeks: streak.weeks, this_week: streak.this_week, target: streak.target } : null,
   };
   return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
 }
@@ -80,6 +99,19 @@ export function WorkoutLivePage({ me }: { me: Me }) {
         };
         return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
       }
+
+      // `/live` (fetched below, for the grouped accordion shape) is a plain re-read
+      // of current state — it has no memory of what a specific mutation just earned.
+      // celebrations/streak only ever appear on the response of the exact call that
+      // produced them (log_set/finish_workout), so that response's own values are
+      // captured here and merged into the freshly-fetched live payload afterward.
+      let earnedCelebrations: WorkoutOut["celebrations"] | null = null;
+      let earnedStreak: WorkoutOut["streak"] | null = null;
+      // Which workout to fetch /live for. Left null to fall back to /active below —
+      // but finish_workout's own workout is no longer active once it's finished, so
+      // that case sets this explicitly rather than losing the id (and the earned
+      // streak) to a "no active workout" short-circuit.
+      let workoutId: string | null = null;
 
       switch (name) {
         case "get_active_workout":
@@ -110,14 +142,18 @@ export function WorkoutLivePage({ me }: { me: Me }) {
           if (data.needs_clarification) {
             return { content: [{ type: "text", text: data.needs_clarification }] };
           }
+          earnedCelebrations = data.workout?.celebrations ?? null;
           break;
         }
         case "finish_workout": {
-          const { error } = await api.POST("/api/workouts/{workout_id}/finish", {
-            params: { path: { workout_id: String(args.workout_id ?? "") } },
+          const finishedId = String(args.workout_id ?? "");
+          const { data, error } = await api.POST("/api/workouts/{workout_id}/finish", {
+            params: { path: { workout_id: finishedId } },
             body: {},
           });
           if (error) throw new Error("finish workout failed");
+          earnedStreak = data.streak ?? null;
+          workoutId = finishedId;
           break;
         }
         case "update_workout_entry": {
@@ -139,15 +175,18 @@ export function WorkoutLivePage({ me }: { me: Me }) {
           throw new Error(`unknown tool: ${name}`);
       }
 
-      const active = await api.GET("/api/workouts/active");
-      if (active.error) throw new Error("active fetch failed");
-      if (!active.data) return emptyPayload;
+      if (workoutId === null) {
+        const active = await api.GET("/api/workouts/active");
+        if (active.error) throw new Error("active fetch failed");
+        if (!active.data) return emptyPayload;
+        workoutId = active.data.id;
+      }
 
       const live = await api.GET("/api/workouts/{workout_id}/live", {
-        params: { path: { workout_id: active.data.id } },
+        params: { path: { workout_id: workoutId } },
       });
       if (live.error || !live.data) throw new Error("live fetch failed");
-      return toLivePayload(live.data);
+      return toLivePayload(live.data, earnedCelebrations, earnedStreak);
     },
     [],
   );
