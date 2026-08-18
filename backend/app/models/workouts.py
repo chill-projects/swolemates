@@ -5,6 +5,7 @@
 pattern as nutrition's `group_id`/`group_name`. `superset_group` on `WorkoutExercise`
 landed in slice 2b, once the in-workout accordion actually grouped by it.
 `WorkoutTemplate`/`TemplateExercise` and `WorkoutExercise.target_*` landed in slice 3a.
+`WeeklyPatternDay`/`PlannedWorkout` landed in slice 3b.
 """
 
 import enum
@@ -13,6 +14,7 @@ import uuid
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -21,6 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -36,6 +39,12 @@ class WorkoutType(enum.StrEnum):
 class SetType(enum.StrEnum):
     reps = "reps"
     time = "time"
+
+
+class PlannedWorkoutStatus(enum.StrEnum):
+    planned = "planned"
+    done = "done"
+    skipped = "skipped"
 
 
 class Exercise(Base, TimestampMixin):
@@ -196,3 +205,60 @@ class TemplateExercise(Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (Index("ix_template_exercises_template_id", "template_id"),)
+
+
+class WeeklyPatternDay(Base):
+    """The standing split — "Monday is legs, Tuesday is pool." At most one row per
+    `(user_id, day_of_week)`; `set_weekly_pattern` replaces the caller's whole set at
+    once. `template_id IS NULL` means a rest day. Editing this only affects weeks
+    `get_planned_workouts` generates *after* the edit — already-materialized
+    `PlannedWorkout` rows are independent and don't retroactively change.
+    """
+
+    __tablename__ = "weekly_pattern"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="CASCADE")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "day_of_week", name="uq_weekly_pattern_user_id_day_of_week"),
+        CheckConstraint(
+            "day_of_week >= 0 AND day_of_week <= 6", name="ck_weekly_pattern_day_of_week"
+        ),
+    )
+
+
+class PlannedWorkout(Base):
+    """One concrete scheduled session, materialized from `WeeklyPatternDay` for an
+    upcoming week (or added directly via `plan_workout`, e.g. "an extra session").
+    Rows are never deleted, only status-changed — the row count for a week is what
+    slice 4's streak target reads from, so it can't shrink just because a session
+    gets skipped later. `workout_id` is set by `start_workout(planned_id=...)`;
+    `finish_workout` flips `status` to `done` once that workout completes.
+    """
+
+    __tablename__ = "planned_workouts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[object] = mapped_column(Date, nullable=False)
+    status: Mapped[PlannedWorkoutStatus] = mapped_column(
+        Enum(PlannedWorkoutStatus, name="planned_workout_status"),
+        nullable=False,
+        default=PlannedWorkoutStatus.planned,
+    )
+    workout_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workouts.id", ondelete="SET NULL")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_planned_workouts_user_id_scheduled_for", "user_id", "scheduled_for"),
+    )

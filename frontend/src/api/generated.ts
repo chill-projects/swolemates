@@ -217,6 +217,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/planned-workouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Planned Workouts */
+        get: operations["getPlannedWorkouts"];
+        put?: never;
+        /** Plan Workout */
+        post: operations["planWorkout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/planned-workouts/{planned_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Planned Workout */
+        post: operations["updatePlannedWorkout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile": {
         parameters: {
             query?: never;
@@ -368,6 +403,24 @@ export interface paths {
         post?: never;
         /** Delete Tmpx Item */
         delete: operations["deleteTmpxItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weekly-pattern": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Weekly Pattern */
+        get: operations["getWeeklyPattern"];
+        /** Set Weekly Pattern */
+        put: operations["setWeeklyPattern"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1020,6 +1073,51 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** PlanWorkoutRequest */
+        PlanWorkoutRequest: {
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+        };
+        /** PlannedWorkoutOut */
+        PlannedWorkoutOut: {
+            /** Exercise Names */
+            exercise_names: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            status: components["schemas"]["PlannedWorkoutStatus"];
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /** Template Name */
+            template_name: string;
+            /** Workout Id */
+            workout_id: string | null;
+        };
+        /**
+         * PlannedWorkoutStatus
+         * @enum {string}
+         */
+        PlannedWorkoutStatus: "planned" | "done" | "skipped";
         /** ProfileOut */
         ProfileOut: {
             activity_level: components["schemas"]["ActivityLevel"] | null;
@@ -1107,10 +1205,17 @@ export interface components {
          * @enum {string}
          */
         SetType: "reps" | "time";
+        /** SetWeeklyPatternRequest */
+        SetWeeklyPatternRequest: {
+            /** Days */
+            days: components["schemas"]["WeeklyPatternDayIn"][];
+        };
         /** StartWorkoutRequest */
         StartWorkoutRequest: {
             /** Exercises */
             exercises?: string[] | null;
+            /** Planned Id */
+            planned_id?: string | null;
             /** Template Id */
             template_id?: string | null;
         };
@@ -1245,6 +1350,11 @@ export interface components {
                 [key: string]: number | string;
             } | null;
         };
+        /** UpdatePlannedWorkoutRequest */
+        UpdatePlannedWorkoutRequest: {
+            /** Action */
+            action: string;
+        };
         /** UpdateWorkoutEntryRequest */
         UpdateWorkoutEntryRequest: {
             /** Action */
@@ -1297,6 +1407,22 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WeeklyPatternDayIn */
+        WeeklyPatternDayIn: {
+            /** Day Of Week */
+            day_of_week: number;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /** WeeklyPatternDayOut */
+        WeeklyPatternDayOut: {
+            /** Day Of Week */
+            day_of_week: number;
+            /** Template Id */
+            template_id: string | null;
+            /** Template Name */
+            template_name: string | null;
         };
         /**
          * WeightUnit
@@ -1797,6 +1923,106 @@ export interface operations {
             };
         };
     };
+    getPlannedWorkouts: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedWorkoutOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    planWorkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanWorkoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedWorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updatePlannedWorkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePlannedWorkoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedWorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getProfile: {
         parameters: {
             query?: never;
@@ -2110,6 +2336,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getWeeklyPattern: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyPatternDayOut"][];
+                };
+            };
+        };
+    };
+    setWeeklyPattern: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWeeklyPatternRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyPatternDayOut"][];
+                };
             };
             /** @description Validation Error */
             422: {

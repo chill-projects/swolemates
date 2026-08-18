@@ -43,6 +43,7 @@ mcp: FastMCP = FastMCP(name="Swolemates", auth=_auth_provider())
 from app.mcp import (  # noqa: E402,F401
     food_facts_tools,
     nutrition_tools,
+    planned_workouts_tools,
     profile_tools,
     tdee_tools,
     templates_tools,

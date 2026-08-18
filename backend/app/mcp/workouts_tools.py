@@ -201,18 +201,26 @@ async def get_workout_history(
 
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
-async def start_workout(exercises: list[str] | None = None, template_id: str | None = None) -> dict:
+async def start_workout(
+    exercises: list[str] | None = None,
+    template_id: str | None = None,
+    planned_id: str | None = None,
+) -> dict:
     """Begin a workout session — from a blank slate, a known list of exercise names,
-    or a saved template (planned-workout start comes in a later slice, once that
-    exists). If one's already in progress, this just resumes it rather than starting
-    a duplicate.
+    a saved template, or a planned entry (plan_workout/get_planned_workouts). If
+    one's already in progress, this just resumes it rather than starting a
+    duplicate. planned_id takes precedence over template_id, which takes precedence
+    over exercises, when more than one is given.
 
     Args:
         exercises: exercise names to start with, e.g. ["Back Squat", "Bench Press"].
-            Ignored if template_id is given.
+            Ignored if template_id or planned_id is given.
         template_id: start from a saved template (from a prior
             create_workout_template/list_workout_templates result) — copies its
             exercises, superset grouping, and target sets/reps/weight in.
+        planned_id: start from a scheduled entry (from a prior
+            plan_workout/get_planned_workouts result) — uses its template and links
+            the entry, so finishing this workout marks it done.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
@@ -221,6 +229,7 @@ async def start_workout(exercises: list[str] | None = None, template_id: str | N
             user_sub,
             exercises=exercises,
             template_id=UUID(template_id) if template_id else None,
+            planned_id=UUID(planned_id) if planned_id else None,
         )
         live = await service.get_workout_live(session, user_sub, workout)
     return _live_payload(live)

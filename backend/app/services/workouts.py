@@ -423,20 +423,33 @@ async def start_workout(
     *,
     exercises: list[str] | None = None,
     template_id: uuid.UUID | None = None,
+    planned_id: uuid.UUID | None = None,
 ) -> WorkoutOut:
     """Begin a workout session — from a blank slate, a known list of exercise names,
-    or a saved template (`planned_id` comes in a later slice, once planned workouts
-    exist). `template_id` takes precedence over `exercises` when both are given —
-    copies each exercise's order, superset grouping, and target prescription onto the
-    new session's `workout_exercises`; editing the template afterward never rewrites
-    this copy. At most one active workout per user: if one's already in progress,
-    this just returns it rather than creating a duplicate — resumability is a
-    server-side-state guarantee, not a per-call one (#3, resolved)."""
+    a saved template, or a planned entry (`plan_workout`/`get_planned_workouts`).
+    `planned_id` takes precedence over `template_id`, which takes precedence over
+    `exercises`, when more than one is given. Either template path copies each
+    exercise's order, superset grouping, and target prescription onto the new
+    session's `workout_exercises`; editing the template afterward never rewrites
+    this copy. Starting from a planned entry also links it — `finish_workout` marks
+    it done once the session completes. At most one active workout per user: if
+    one's already in progress, this just returns it rather than creating a
+    duplicate — resumability is a server-side-state guarantee, not a per-call one
+    (#3, resolved)."""
     active = await _get_active_workout(session, user_sub)
     if active is not None:
         details = await _load_workout_details(session, [active.id])
         details[0].resumed = True
         return details[0]
+
+    # Deferred imports: workout_templates.py/planned_workouts.py both import from
+    # this module at load time, so the reverse reference has to happen at call
+    # time instead, to avoid a circular import.
+    if planned_id is not None:
+        from app.services import planned_workouts
+
+        planned = await planned_workouts.get_planned_workout(session, user_sub, planned_id)
+        template_id = planned.template_id
 
     workout = Workout(
         user_id=user_sub,
@@ -448,9 +461,6 @@ async def start_workout(
     await session.flush()
 
     if template_id is not None:
-        # Deferred import: workout_templates.py imports _resolve_exercise from this
-        # module at load time, so the reverse reference has to happen at call time
-        # instead, to avoid a circular import.
         from app.services import workout_templates
 
         template = await workout_templates.get_workout_template(session, user_sub, template_id)
@@ -475,6 +485,13 @@ async def start_workout(
             )
 
     await session.flush()
+
+    if planned_id is not None:
+        from app.services import planned_workouts
+
+        await planned_workouts.link_workout(session, planned_id, workout.id)
+        await session.flush()
+
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
     return details[0]
@@ -601,6 +618,12 @@ async def finish_workout(
         workout.notes = notes
 
     await session.flush()
+
+    from app.services import planned_workouts
+
+    await planned_workouts.mark_done_if_planned(session, workout.id)
+    await session.flush()
+
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
     return details[0]

@@ -1324,6 +1324,103 @@
         "title": "NutritionLogOut",
         "type": "object"
       },
+      "PlanWorkoutRequest": {
+        "properties": {
+          "scheduled_for": {
+            "format": "date",
+            "title": "Scheduled For",
+            "type": "string"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "scheduled_for"
+        ],
+        "title": "PlanWorkoutRequest",
+        "type": "object"
+      },
+      "PlannedWorkoutOut": {
+        "properties": {
+          "exercise_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exercise Names",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "scheduled_for": {
+            "format": "date",
+            "title": "Scheduled For",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlannedWorkoutStatus"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "workout_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workout Id"
+          }
+        },
+        "required": [
+          "id",
+          "template_id",
+          "template_name",
+          "scheduled_for",
+          "status",
+          "workout_id",
+          "note",
+          "exercise_names"
+        ],
+        "title": "PlannedWorkoutOut",
+        "type": "object"
+      },
+      "PlannedWorkoutStatus": {
+        "enum": [
+          "planned",
+          "done",
+          "skipped"
+        ],
+        "title": "PlannedWorkoutStatus",
+        "type": "string"
+      },
       "ProfileOut": {
         "properties": {
           "activity_level": {
@@ -1694,6 +1791,22 @@
         "title": "SetType",
         "type": "string"
       },
+      "SetWeeklyPatternRequest": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/WeeklyPatternDayIn"
+            },
+            "title": "Days",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "title": "SetWeeklyPatternRequest",
+        "type": "object"
+      },
       "StartWorkoutRequest": {
         "properties": {
           "exercises": {
@@ -1709,6 +1822,18 @@
               }
             ],
             "title": "Exercises"
+          },
+          "planned_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Id"
           },
           "template_id": {
             "anyOf": [
@@ -2145,6 +2270,19 @@
         "title": "UpdateNutritionLogRequest",
         "type": "object"
       },
+      "UpdatePlannedWorkoutRequest": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UpdatePlannedWorkoutRequest",
+        "type": "object"
+      },
       "UpdateWorkoutEntryRequest": {
         "properties": {
           "action": {
@@ -2390,6 +2528,69 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WeeklyPatternDayIn": {
+        "properties": {
+          "day_of_week": {
+            "title": "Day Of Week",
+            "type": "integer"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "day_of_week"
+        ],
+        "title": "WeeklyPatternDayIn",
+        "type": "object"
+      },
+      "WeeklyPatternDayOut": {
+        "properties": {
+          "day_of_week": {
+            "title": "Day Of Week",
+            "type": "integer"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Name"
+          }
+        },
+        "required": [
+          "day_of_week",
+          "template_id",
+          "template_name"
+        ],
+        "title": "WeeklyPatternDayOut",
         "type": "object"
       },
       "WeightUnit": {
@@ -3231,6 +3432,169 @@
         ]
       }
     },
+    "/api/planned-workouts": {
+      "get": {
+        "operationId": "getPlannedWorkouts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlannedWorkoutOut"
+                  },
+                  "title": "Response Getplannedworkouts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planned Workouts",
+        "tags": [
+          "planned-workouts"
+        ]
+      },
+      "post": {
+        "operationId": "planWorkout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanWorkoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedWorkoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Workout",
+        "tags": [
+          "planned-workouts"
+        ]
+      }
+    },
+    "/api/planned-workouts/{planned_id}/entries": {
+      "post": {
+        "operationId": "updatePlannedWorkout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "planned_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Planned Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlannedWorkoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedWorkoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Planned Workout",
+        "tags": [
+          "planned-workouts"
+        ]
+      }
+    },
     "/api/profile": {
       "get": {
         "operationId": "getProfile",
@@ -3631,6 +3995,74 @@
         "summary": "Delete Tmpx Item",
         "tags": [
           "tmpx"
+        ]
+      }
+    },
+    "/api/weekly-pattern": {
+      "get": {
+        "operationId": "getWeeklyPattern",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeeklyPatternDayOut"
+                  },
+                  "title": "Response Getweeklypattern",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Weekly Pattern",
+        "tags": [
+          "planned-workouts"
+        ]
+      },
+      "put": {
+        "operationId": "setWeeklyPattern",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetWeeklyPatternRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeeklyPatternDayOut"
+                  },
+                  "title": "Response Setweeklypattern",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Weekly Pattern",
+        "tags": [
+          "planned-workouts"
         ]
       }
     },

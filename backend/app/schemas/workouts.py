@@ -41,6 +41,7 @@ class LogActivityRequest(BaseModel):
 class StartWorkoutRequest(BaseModel):
     exercises: list[str] | None = None
     template_id: UUID | None = None
+    planned_id: UUID | None = None
 
 
 class LogSetRequest(BaseModel):

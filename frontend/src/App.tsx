@@ -6,6 +6,7 @@ import { useWhoami } from "./api/tmpx";
 import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login } from "./auth/authkit";
 import { NutritionPage } from "./pages/NutritionPage";
+import { PlannedPage } from "./pages/PlannedPage";
 import { ProfileForm } from "./pages/ProfileForm";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { WorkoutLivePage } from "./pages/WorkoutLivePage";
@@ -89,6 +90,7 @@ function AuthenticatedApp({
   const onSettingsRoute = window.location.pathname === "/profile";
   const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
   const onTemplatesRoute = window.location.pathname === "/templates";
+  const onPlannedRoute = window.location.pathname === "/planned";
 
   if (profile.isPending) return <p className="muted">Loading your profile…</p>;
   if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
@@ -120,6 +122,10 @@ function AuthenticatedApp({
 
   if (onTemplatesRoute) {
     return <TemplatesPage me={me} />;
+  }
+
+  if (onPlannedRoute) {
+    return <PlannedPage me={me} />;
   }
 
   return <NutritionPage me={me} />;
