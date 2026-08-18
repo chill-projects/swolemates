@@ -1228,6 +1228,42 @@
         "title": "MealTemplateSummaryOut",
         "type": "object"
       },
+      "NutritionCalendarDayOut": {
+        "properties": {
+          "bars": {
+            "items": {
+              "$ref": "#/components/schemas/TrackableProgressOut"
+            },
+            "title": "Bars",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "hero": {
+            "$ref": "#/components/schemas/TrackableProgressOut"
+          },
+          "status": {
+            "enum": [
+              "hit",
+              "miss",
+              "no-data"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "hero",
+          "bars"
+        ],
+        "title": "NutritionCalendarDayOut",
+        "type": "object"
+      },
       "NutritionDayOut": {
         "properties": {
           "bars": {
@@ -2980,6 +3016,63 @@
         ]
       }
     },
+    "/api/nutrition/calendar": {
+      "get": {
+        "operationId": "getNutritionCalendar",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NutritionCalendarDayOut"
+                  },
+                  "title": "Response Getnutritioncalendar",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Nutrition Calendar",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
     "/api/nutrition/day": {
       "get": {
         "operationId": "getNutritionDay",
@@ -4334,6 +4427,27 @@
           }
         },
         "summary": "Start Workout",
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
+    "/api/workouts/streak": {
+      "get": {
+        "operationId": "getWorkoutStreak",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreakOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Workout Streak",
         "tags": [
           "workouts"
         ]

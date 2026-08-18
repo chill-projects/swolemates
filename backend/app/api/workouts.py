@@ -15,6 +15,7 @@ from app.schemas.workouts import (
     LogSetResponse,
     LogWorkoutRequest,
     StartWorkoutRequest,
+    StreakOut,
     UpdateWorkoutEntryRequest,
     WorkoutLiveOut,
     WorkoutOut,
@@ -129,6 +130,11 @@ async def finish_workout(
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return WorkoutOut.model_validate(workout)
+
+
+@router.get("/streak", response_model=StreakOut, operation_id="getWorkoutStreak")
+async def get_workout_streak(user_sub: CurrentUser, session: DbSession) -> StreakOut:
+    return StreakOut.model_validate(await service.get_streak(session, user_sub))
 
 
 @router.get("/active", response_model=WorkoutOut | None, operation_id="getActiveWorkout")

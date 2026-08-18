@@ -11,8 +11,10 @@ from app.services.errors import NotFoundError
 from app.services.nutrition.day import (
     DayLog,
     DayLogItem,
+    NutritionCalendarDay,
     NutritionDay,
     TrackableProgress,
+    get_nutrition_calendar,
     get_nutrition_day,
 )
 from app.services.nutrition.goals import get_goals, set_goals
@@ -42,6 +44,8 @@ __all__ = [
     "MealTemplateItemOut",
     "MealTemplateSummary",
     "NutritionDay",
+    "NutritionCalendarDay",
+    "get_nutrition_calendar",
     "list_trackable_types",
     "log_nutrition",
     "get_log_values",

@@ -4,16 +4,21 @@ meal templates; nothing else in the nutrition package depends on this module.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.nutrition import Log, LogValue
+from app.models.profile import GoalType
+from app.services import profile as profile_service
 from app.services.nutrition.goals import get_goals
 from app.services.nutrition.templates import MealTemplateSummary, list_meal_templates
 from app.services.nutrition.trackables import list_trackable_types
+
+DayStatus = Literal["hit", "miss", "no-data"]
 
 
 @dataclass
@@ -149,3 +154,120 @@ async def get_nutrition_day(
         logs=list(day_logs.values()),
         templates=await list_meal_templates(session, user_sub),
     )
+
+
+@dataclass
+class NutritionCalendarDay:
+    date: date
+    status: DayStatus
+    hero: TrackableProgress
+    bars: list[TrackableProgress]
+
+
+def _goal_direction(goal_type: GoalType | None) -> Literal["deficit", "surplus", "maintain"] | None:
+    """Direct port of `goalDirection()` in docs/legacy/logic/tdee.ts — never re-encoded
+    as its own stored field, derived fresh each time from the same calorie multiplier
+    `calculate_targets` uses (deferred import: `tdee` imports this package at call
+    time, so importing it back at module load would cycle)."""
+    if goal_type is None:
+        return None
+    from app.services.tdee import GOAL_PARAMS
+
+    calorie_multiplier, _ = GOAL_PARAMS[goal_type]
+    if calorie_multiplier < 1:
+        return "deficit"
+    if calorie_multiplier > 1:
+        return "surplus"
+    return "maintain"
+
+
+def _day_status(
+    *,
+    has_logs: bool,
+    consumed: Decimal,
+    target: Decimal | None,
+    direction: Literal["deficit", "surplus", "maintain"] | None,
+) -> DayStatus:
+    """Direct port of `dayStatus()` in docs/legacy/logic/tdee.ts. Grace windows are
+    direction-aware: a deficit goal never fails for eating *less*, a surplus goal
+    never fails for eating *more* — only "maintain" (or an unknown direction) uses a
+    symmetric +/-10% band."""
+    if not has_logs:
+        return "no-data"
+    if target is None:
+        return "hit"
+    if direction == "deficit":
+        return "hit" if consumed <= target * Decimal("1.05") else "miss"
+    if direction == "surplus":
+        return "hit" if consumed >= target * Decimal("0.95") else "miss"
+    return "hit" if target * Decimal("0.9") <= consumed <= target * Decimal("1.1") else "miss"
+
+
+async def get_nutrition_calendar(
+    session: AsyncSession, user_sub: str, *, start: date, end: date
+) -> list[NutritionCalendarDay]:
+    """One entry per day in `[start, end]` inclusive — the dashboard's nutrition
+    calendar. `status` mirrors legacy's `ConsistencyCalendar`, never ported until
+    now; `hero`/`bars` are the same per-day shape `get_nutrition_day` returns, so a
+    calendar cell's hover detail is exactly "what `get_nutrition_day` would show for
+    that date." Goals/targets/goal-direction are read once for the whole range
+    (matching legacy, which also had no historical-target tracking)."""
+    start_dt = datetime.combine(start, time.min, tzinfo=UTC)
+    end_dt = datetime.combine(end, time.max, tzinfo=UTC)
+
+    result = await session.execute(
+        select(Log, LogValue)
+        .outerjoin(LogValue, LogValue.log_id == Log.id)
+        .where(Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at <= end_dt)
+    )
+
+    logged_dates: set[date] = set()
+    totals_by_date: dict[date, dict[str, Decimal]] = {}
+    for log, value in result.all():
+        d = log.logged_at.date()
+        logged_dates.add(d)
+        if value is not None:
+            day_totals = totals_by_date.setdefault(d, {})
+            day_totals[value.trackable_key] = (
+                day_totals.get(value.trackable_key, Decimal(0)) + value.value
+            )
+
+    types_by_key = {t.key: t for t in await list_trackable_types(session)}
+    goals_by_key = {g.trackable_key: g for g in await get_goals(session, user_sub)}
+    profile = await profile_service.get_or_create_profile(session, user_sub)
+    direction = _goal_direction(profile.goal_type)
+    calories_target = goals_by_key["calories"].target_value if "calories" in goals_by_key else None
+
+    days: list[NutritionCalendarDay] = []
+    d = start
+    while d <= end:
+        totals = totals_by_date.get(d, {})
+        consumed_calories = totals.get("calories", Decimal(0))
+        hero = TrackableProgress(
+            trackable_key="calories",
+            label=types_by_key["calories"].label,
+            unit=types_by_key["calories"].unit,
+            consumed=consumed_calories,
+            target=calories_target,
+        )
+        bars = [
+            TrackableProgress(
+                trackable_key=key,
+                label=t.label,
+                unit=t.unit,
+                consumed=totals.get(key, Decimal(0)),
+                target=goals_by_key[key].target_value if key in goals_by_key else None,
+            )
+            for key, t in types_by_key.items()
+            if key != "calories" and t.goal_eligible and t.category == "nutrition"
+        ]
+        status = _day_status(
+            has_logs=d in logged_dates,
+            consumed=consumed_calories,
+            target=calories_target,
+            direction=direction,
+        )
+        days.append(NutritionCalendarDay(date=d, status=status, hero=hero, bars=bars))
+        d += timedelta(days=1)
+
+    return days

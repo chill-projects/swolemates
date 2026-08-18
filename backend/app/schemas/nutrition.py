@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -132,6 +133,15 @@ class NutritionDayOut(BaseModel):
     streak_key: str | None
     logs: list[DayLogOut]
     templates: list[MealTemplateSummaryOut]
+
+
+class NutritionCalendarDayOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    date: date
+    status: Literal["hit", "miss", "no-data"]
+    hero: TrackableProgressOut
+    bars: list[TrackableProgressOut]
 
 
 class SaveMealTemplateRequest(BaseModel):

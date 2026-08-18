@@ -6,6 +6,7 @@ import { SignIn } from "./auth/SignIn";
 import { completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
 import { NavBar } from "./components/NavBar";
+import { DashboardPage } from "./pages/DashboardPage";
 import { NutritionPage } from "./pages/NutritionPage";
 import { PlannedPage } from "./pages/PlannedPage";
 import { ProfileForm } from "./pages/ProfileForm";
@@ -93,6 +94,7 @@ function AuthenticatedApp({
   const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
   const onTemplatesRoute = window.location.pathname === "/templates";
   const onPlannedRoute = window.location.pathname === "/planned";
+  const onDashboardRoute = window.location.pathname === "/dashboard";
 
   if (profile.isPending) return <p className="muted">Loading your profile…</p>;
   if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
@@ -117,6 +119,8 @@ function AuthenticatedApp({
           <h2>Profile settings</h2>
           <ProfileForm profile={profile.data} />
         </>
+      ) : onDashboardRoute ? (
+        <DashboardPage />
       ) : onWorkoutsLiveRoute ? (
         <WorkoutLivePage me={me} />
       ) : onTemplatesRoute ? (

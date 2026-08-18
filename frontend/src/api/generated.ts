@@ -45,6 +45,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nutrition/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Nutrition Calendar */
+        get: operations["getNutritionCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nutrition/day": {
         parameters: {
             query?: never;
@@ -533,6 +550,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workouts/streak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workout Streak */
+        get: operations["getWorkoutStreak"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workouts/{workout_id}/entries": {
         parameters: {
             query?: never;
@@ -1003,6 +1037,22 @@ export interface components {
             totals: {
                 [key: string]: string;
             };
+        };
+        /** NutritionCalendarDayOut */
+        NutritionCalendarDayOut: {
+            /** Bars */
+            bars: components["schemas"]["TrackableProgressOut"][];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            hero: components["schemas"]["TrackableProgressOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "hit" | "miss" | "no-data";
         };
         /** NutritionDayOut */
         NutritionDayOut: {
@@ -1522,6 +1572,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FoodFactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getNutritionCalendar: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutritionCalendarDayOut"][];
                 };
             };
             /** @description Validation Error */
@@ -2510,6 +2592,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getWorkoutStreak: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreakOut"];
                 };
             };
         };

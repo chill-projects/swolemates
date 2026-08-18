@@ -14,6 +14,7 @@ from app.schemas.nutrition import (
     LogNutritionRequest,
     LogOut,
     MealTemplateSummaryOut,
+    NutritionCalendarDayOut,
     NutritionDayOut,
     NutritionLogOut,
     SaveMealTemplateRequest,
@@ -106,6 +107,16 @@ async def get_nutrition_day(
     return NutritionDayOut.model_validate(
         await service.get_nutrition_day(session, user_sub, day=day)
     )
+
+
+@router.get(
+    "/calendar", response_model=list[NutritionCalendarDayOut], operation_id="getNutritionCalendar"
+)
+async def get_nutrition_calendar(
+    user_sub: CurrentUser, session: DbSession, start: date, end: date
+) -> list[NutritionCalendarDayOut]:
+    days = await service.get_nutrition_calendar(session, user_sub, start=start, end=end)
+    return [NutritionCalendarDayOut.model_validate(d) for d in days]
 
 
 @router.get("/events", operation_id="nutritionEvents", include_in_schema=False)

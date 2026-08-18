@@ -195,3 +195,256 @@ li {
   padding: 0.5rem 0;
   border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
 }
+
+/* Dashboard (nutrition calendar + workout week widgets) */
+
+.dash-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.dash-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  max-width: 26rem;
+}
+
+.dash-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.dash-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.dash-badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dash-badge--plum {
+  background: var(--plum-pale);
+  color: var(--plum);
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.dash-dow {
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.dash-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-cell--hit {
+  background: var(--teal);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dash-cell--miss {
+  background: var(--coral-pale);
+  color: var(--red);
+}
+
+.dash-cell--no-data {
+  background: var(--sand);
+  color: var(--ink-soft);
+}
+
+.dash-cell--today {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+.dash-cell--interactive {
+  cursor: pointer;
+}
+
+.dash-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  flex-wrap: wrap;
+}
+
+.dash-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dash-swatch {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 0.15rem;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.dash-swatch--round {
+  border-radius: 50%;
+}
+
+.dash-week-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.dash-week-daycell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dash-week-dow {
+  font-size: 0.65rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.dash-week-daynum {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.dash-week-daynum--done {
+  background: var(--plum);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dash-week-daynum--skipped {
+  background: transparent;
+  border: 1px dashed var(--ink-soft);
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+.dash-week-daynum--upcoming {
+  background: var(--card);
+  border: 1px dashed var(--plum);
+  color: var(--plum);
+}
+
+.dash-week-daynum--rest {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-soft);
+}
+
+.dash-week-daynum--today {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.dash-week-detail {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.dash-week-detail strong {
+  color: var(--ink);
+}
+
+/* Position (display/position/left/top/transform/width) is set inline via JS,
+   viewport-clamped against the hovered/tapped cell's own rect — see
+   positionTooltip() in DashboardPage.tsx. Never goes off the screen edge
+   regardless of which grid column, and a day with a lot of logged content
+   scrolls internally instead of growing past the viewport. */
+.dash-tooltip {
+  background: var(--ink);
+  color: #fff;
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(18, 42, 46, 0.3);
+  z-index: 20;
+  max-height: min(50vh, 20rem);
+  overflow-y: auto;
+}
+
+.dash-tooltip-date {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.dash-tooltip-hero {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.dash-tooltip-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dash-tooltip-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  opacity: 0.9;
+}
+
+.dash-tooltip-bar-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  margin-top: 0.15rem;
+  overflow: hidden;
+}
+
+.dash-tooltip-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.dash-tooltip-workout strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.dash-tooltip-empty {
+  opacity: 0.8;
+  margin-top: 0.15rem;
+}
