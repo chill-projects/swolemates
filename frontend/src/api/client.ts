@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 
-import { clearToken, getToken } from "../auth/authkit";
+import { clearSession, getToken, refreshSession } from "../auth/authkit";
 import type { paths } from "./generated";
 
 /**
@@ -18,10 +18,16 @@ api.use({
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
     return request;
   },
-  onResponse({ response }) {
-    // An expired or rejected token should drop us back to signed-out rather than
-    // leaving a dead token in place to fail every subsequent request.
-    if (response.status === 401) clearToken();
+  async onResponse({ response }) {
+    // A 401 doesn't necessarily mean the session is over — the proactive refresh timer
+    // in authkit.ts should normally beat expiry, but a backgrounded/sleeping tab can
+    // still land here with a dead access token and a perfectly good refresh token. Try
+    // to recover before giving up on the session; only a rejected refresh means the
+    // user is actually signed out.
+    if (response.status === 401) {
+      const recovered = await refreshSession();
+      if (!recovered) clearSession();
+    }
     return response;
   },
 });

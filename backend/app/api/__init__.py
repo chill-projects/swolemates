@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api import (
@@ -12,6 +12,7 @@ from app.api import (
     workouts,
 )
 from app.deps import AppSettings, CurrentPrincipal, DbSession
+from app.services import auth as auth_service
 from app.services import profile as profile_service
 
 api_router = APIRouter()
@@ -82,3 +83,28 @@ async def auth_config(settings: AppSettings) -> AuthConfigOut:
         # rendering a bare error the user can do nothing about.
         environment=settings.environment,
     )
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
+class RefreshOut(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
+@api_router.post("/auth/refresh", tags=["auth"], operation_id="authRefresh")
+async def auth_refresh(body: RefreshIn, settings: AppSettings) -> RefreshOut:
+    """Exchange a refresh token for a new access token, server-side.
+
+    Unauthenticated by design — the caller doesn't have a live access token yet, that's
+    the point of calling this. Trust is carried by the refresh token itself, which
+    WorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA
+    treats it exactly like any other failed auth and falls back to sign-in.
+    """
+    try:
+        result = await auth_service.refresh_session(settings, body.refresh_token)
+    except auth_service.RefreshFailed as exc:
+        raise HTTPException(status_code=401, detail="Refresh token invalid or expired") from exc
+    return RefreshOut(**result)

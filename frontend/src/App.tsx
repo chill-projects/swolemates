@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRedeemInvite } from "./api/partner";
 import { useProfile } from "./api/profile";
 import { SignIn } from "./auth/SignIn";
-import { completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
+import { bootstrapSession, completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
 import { NavBar } from "./components/NavBar";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -33,11 +33,21 @@ export function App() {
   // The callback exchange must run exactly once — effect re-runs (query state changes
   // re-render constantly) and a spent OAuth code would make retries fail anyway.
   const exchangeStarted = useRef(false);
+  // Resumes a session from the stored refresh token before whoami runs, so a returning
+  // visitor with no live access token doesn't get bounced to sign-in for a tab-lifetime
+  // reason that no longer applies. Skipped on /callback — completeLogin() below handles
+  // that session directly.
+  const [sessionReady, setSessionReady] = useState(() => window.location.pathname === "/callback");
 
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["authConfig"], queryFn: fetchAuthConfig, retry: false });
-  const whoami = useWhoami();
+  const whoami = useWhoami(sessionReady);
   const redeemInvite = useRedeemInvite();
+
+  useEffect(() => {
+    if (sessionReady) return;
+    bootstrapSession().finally(() => setSessionReady(true));
+  }, [sessionReady]);
 
   useEffect(() => {
     if (!returningFromLogin || !config.data || exchangeStarted.current) return;
@@ -86,7 +96,7 @@ export function App() {
   }, [returningFromLogin, config.data, queryClient]);
 
   const onInviteRoute = window.location.pathname.startsWith("/invite/");
-  const busy = config.isPending || whoami.isPending || returningFromLogin;
+  const busy = config.isPending || !sessionReady || whoami.isPending || returningFromLogin;
 
   return (
     <main>

@@ -1881,6 +1881,37 @@
         "title": "RedeemInviteRequest",
         "type": "object"
       },
+      "RefreshIn": {
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshIn",
+        "type": "object"
+      },
+      "RefreshOut": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "RefreshOut",
+        "type": "object"
+      },
       "SaveMealTemplateRequest": {
         "properties": {
           "default_meal_type": {
@@ -3179,6 +3210,48 @@
           }
         },
         "summary": "Auth Config",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Exchange a refresh token for a new access token, server-side.\n\nUnauthenticated by design \u2014 the caller doesn't have a live access token yet, that's\nthe point of calling this. Trust is carried by the refresh token itself, which\nWorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA\ntreats it exactly like any other failed auth and falls back to sign-in.",
+        "operationId": "authRefresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Refresh",
         "tags": [
           "auth"
         ]

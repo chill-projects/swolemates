@@ -28,6 +28,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth Refresh
+         * @description Exchange a refresh token for a new access token, server-side.
+         *
+         *     Unauthenticated by design — the caller doesn't have a live access token yet, that's
+         *     the point of calling this. Trust is carried by the refresh token itself, which
+         *     WorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA
+         *     treats it exactly like any other failed auth and falls back to sign-in.
+         */
+        post: operations["authRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/food-facts/search": {
         parameters: {
             query?: never;
@@ -1328,6 +1353,18 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** RefreshIn */
+        RefreshIn: {
+            /** Refresh Token */
+            refresh_token: string;
+        };
+        /** RefreshOut */
+        RefreshOut: {
+            /** Access Token */
+            access_token: string;
+            /** Refresh Token */
+            refresh_token: string;
+        };
         /** SaveMealTemplateRequest */
         SaveMealTemplateRequest: {
             /** Default Meal Type */
@@ -1714,6 +1751,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthConfigOut"];
+                };
+            };
+        };
+    };
+    authRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
