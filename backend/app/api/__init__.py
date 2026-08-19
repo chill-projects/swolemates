@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -14,6 +16,8 @@ from app.api import (
 from app.deps import AppSettings, CurrentPrincipal, DbSession
 from app.services import auth as auth_service
 from app.services import profile as profile_service
+
+log = logging.getLogger(__name__)
 
 api_router = APIRouter()
 api_router.include_router(profile.router)
@@ -106,5 +110,8 @@ async def auth_refresh(body: RefreshIn, settings: AppSettings) -> RefreshOut:
     try:
         result = await auth_service.refresh_session(settings, body.refresh_token)
     except auth_service.RefreshFailed as exc:
+        # WorkOS's rejection body carries an error code/description, not a secret — the
+        # same reasoning app/auth.py uses for aud/iss on a rejected bearer token.
+        log.warning("refresh rejected: %s", exc)
         raise HTTPException(status_code=401, detail="Refresh token invalid or expired") from exc
     return RefreshOut(**result)
