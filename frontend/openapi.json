@@ -3020,6 +3020,29 @@
             ],
             "title": "Activity Type"
           },
+          "calories_burned": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Burned"
+          },
+          "calories_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Source"
+          },
           "celebrations": {
             "default": [],
             "items": {

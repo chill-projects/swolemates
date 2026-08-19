@@ -1647,6 +1647,10 @@ export interface components {
         WorkoutOut: {
             /** Activity Type */
             activity_type: string | null;
+            /** Calories Burned */
+            calories_burned?: string | null;
+            /** Calories Source */
+            calories_source?: string | null;
             /**
              * Celebrations
              * @default []

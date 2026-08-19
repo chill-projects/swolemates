@@ -102,7 +102,7 @@
 
       .next-time-note { width: 100%; box-sizing: border-box; margin-top: 0.4rem; }
 
-      #controls { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+      #controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
 
       #picker:not([hidden]) {
         border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.6rem;
@@ -141,6 +141,15 @@
       .chip[aria-pressed="true"] {
         background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
       }
+
+      #activity-form:not([hidden]) {
+        display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 16rem;
+        border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.6rem; margin-top: 0.2rem;
+      }
+      #activity-form input[type="text"], #activity-form input[type="number"] {
+        width: 100%; box-sizing: border-box;
+      }
+      #activity-form-controls { display: flex; gap: 0.5rem; }
     </style>
   </head>
   <body>
@@ -150,6 +159,18 @@
 
     <div id="empty" hidden>
       <button type="button" id="start-btn">Start workout</button>
+      <button type="button" id="log-activity-btn">Log an activity</button>
+      <div id="activity-form" hidden>
+        <div class="picker-chip-group-label">Activity</div>
+        <div id="activity-type-chips" class="picker-chip-row"></div>
+        <input id="activity-type-other" type="text" placeholder="Activity name…" aria-label="Activity name" hidden />
+        <input id="activity-duration" type="number" placeholder="Minutes" aria-label="Duration in minutes" />
+        <input id="activity-notes" type="text" placeholder="Notes (optional)" aria-label="Notes" />
+        <div id="activity-form-controls">
+          <button type="button" id="activity-log-btn">Log</button>
+          <button type="button" id="activity-cancel-btn">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <div id="workout" hidden>
@@ -220,6 +241,8 @@
       <div id="controls">
         <button type="button" id="add-exercise-btn">+ Add exercise</button>
         <button type="button" id="finish-btn">Finish workout</button>
+        <button type="button" id="cancel-btn" hidden>Cancel</button>
+        <button type="button" id="back-btn" hidden>Back to start</button>
       </div>
     </div>
 

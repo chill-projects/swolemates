@@ -149,6 +149,8 @@ class WorkoutOut(BaseModel):
     resumed: bool = False
     celebrations: list[CelebrationOut] = []
     streak: StreakOut | None = None
+    calories_burned: Decimal | None = None
+    calories_source: str | None = None
 
 
 class LogSetResponse(BaseModel):

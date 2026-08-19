@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
@@ -13,6 +14,7 @@ from app.models.workouts import (
     WorkoutExercise,
     WorkoutSet,
 )
+from app.services import nutrition as nutrition_service
 from app.services import workouts as service
 from tests.conftest import OTHER_USER, TEST_USER
 
@@ -64,6 +66,23 @@ async def test_log_workout_writes_exercises_and_sets(session: AsyncSession) -> N
     assert float(entry.sets[0].weight) == 185
     assert entry.sets[0].reps == 5
     assert entry.sets[1].is_warmup is True
+
+
+async def test_log_workout_never_estimates_calories(session: AsyncSession) -> None:
+    """log_workout is retroactive and never captures a real duration — inventing
+    one would be worse than no estimate. Deliberate scope boundary, not a gap."""
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Barbell Back Squat", "sets": [{"weight": 185, "reps": 5}]}],
+    )
+
+    assert workout.calories_burned is None
+    assert workout.calories_source is None
 
 
 async def test_log_workout_auto_creates_a_custom_exercise(session: AsyncSession) -> None:
@@ -133,6 +152,66 @@ async def test_log_activity_writes_a_non_strength_workout(session: AsyncSession)
 async def test_log_activity_rejects_non_positive_duration(session: AsyncSession) -> None:
     with pytest.raises(ValueError, match="greater than 0"):
         await service.log_activity(session, TEST_USER, activity_type="yoga", duration_minutes=0)
+
+
+async def test_log_activity_sets_calories_when_weight_is_on_file(session: AsyncSession) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    workout = await service.log_activity(
+        session, TEST_USER, activity_type="Hiking", duration_minutes=60
+    )
+
+    assert workout.calories_burned is not None
+    assert workout.calories_source == "estimated"
+
+
+async def test_log_activity_leaves_calories_none_without_a_logged_weight(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_activity(
+        session, TEST_USER, activity_type="Hiking", duration_minutes=60
+    )
+
+    assert workout.calories_burned is None
+    assert workout.calories_source is None
+
+
+async def test_log_activity_matches_activity_type_case_insensitively(
+    session: AsyncSession,
+) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    lower = await service.log_activity(
+        session, TEST_USER, activity_type="hiking", duration_minutes=60
+    )
+    upper = await service.log_activity(
+        session, TEST_USER, activity_type="HIKING", duration_minutes=60
+    )
+
+    assert lower.calories_burned == upper.calories_burned
+
+
+async def test_log_activity_falls_back_to_the_default_met_for_an_unrecognized_type(
+    session: AsyncSession,
+) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    known = await service.log_activity(
+        session, TEST_USER, activity_type="Pilates", duration_minutes=60
+    )
+    unrecognized = await service.log_activity(
+        session, TEST_USER, activity_type="Underwater Basket Weaving", duration_minutes=60
+    )
+
+    # Pilates (1.8 MET) and the default fallback (4.0 MET) must differ.
+    assert known.calories_burned != unrecognized.calories_burned
+    assert unrecognized.calories_burned is not None
 
 
 async def test_get_workout_history_filters_by_date_range(session: AsyncSession) -> None:
@@ -432,6 +511,47 @@ async def test_get_workout_live_muscle_coverage_translates_to_body_map_slugs(
     assert quads.level == "none"
 
 
+async def test_estimate_calories_burned_returns_none_without_a_logged_weight(
+    session: AsyncSession,
+) -> None:
+    result = await service.estimate_calories_burned(
+        session, TEST_USER, met=Decimal("6.0"), duration_minutes=60
+    )
+
+    assert result is None
+
+
+async def test_estimate_calories_burned_returns_none_for_non_positive_duration(
+    session: AsyncSession,
+) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    result = await service.estimate_calories_burned(
+        session, TEST_USER, met=Decimal("6.0"), duration_minutes=0
+    )
+
+    assert result is None
+
+
+async def test_estimate_calories_burned_matches_a_hand_worked_example(
+    session: AsyncSession,
+) -> None:
+    """MET=6.0, 180lbs (=180/2.20462=81.6466kg), 60 min: 6.0 * 81.6466 * 1.0 =
+    489.88, rounds to 490 — computed independently by hand, not by re-deriving the
+    code's own formula."""
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+
+    result = await service.estimate_calories_burned(
+        session, TEST_USER, met=Decimal("6.0"), duration_minutes=60
+    )
+
+    assert result == Decimal("490")
+
+
 async def test_start_workout_creates_a_new_one(session: AsyncSession) -> None:
     workout = await service.start_workout(session, TEST_USER)
 
@@ -576,6 +696,55 @@ async def test_finish_workout_stamps_completed_at_and_drops_unlogged_sets(
 
     assert finished.completed_at is not None
     assert finished.exercises[0].sets == []
+
+
+async def test_finish_workout_sets_calories_from_real_elapsed_duration(
+    session: AsyncSession,
+) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+    started = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+    workout_row = (
+        await session.execute(select(Workout).where(Workout.id == started.id))
+    ).scalar_one()
+    workout_row.started_at = datetime.now(UTC) - timedelta(minutes=60)
+    await session.flush()
+
+    finished = await service.finish_workout(session, TEST_USER, workout_id=started.id)
+
+    assert finished.calories_burned is not None
+    assert finished.calories_source == "estimated"
+
+
+async def test_finish_workout_live_summary_includes_kcal_when_calories_are_set(
+    session: AsyncSession,
+) -> None:
+    await nutrition_service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "weight_lbs", "value": 180}]
+    )
+    started = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+    workout_row = (
+        await session.execute(select(Workout).where(Workout.id == started.id))
+    ).scalar_one()
+    workout_row.started_at = datetime.now(UTC) - timedelta(minutes=60)
+    await session.flush()
+    finished = await service.finish_workout(session, TEST_USER, workout_id=started.id)
+
+    live = await service.get_workout_live(session, TEST_USER, finished)
+
+    assert "kcal (est.)" in live.summary
+
+
+async def test_finish_workout_live_summary_omits_kcal_without_a_logged_weight(
+    session: AsyncSession,
+) -> None:
+    started = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+
+    finished = await service.finish_workout(session, TEST_USER, workout_id=started.id)
+    live = await service.get_workout_live(session, TEST_USER, finished)
+
+    assert "kcal" not in live.summary
 
 
 async def test_finish_workout_404s_for_another_users_workout(session: AsyncSession) -> None:

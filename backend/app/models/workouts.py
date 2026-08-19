@@ -11,6 +11,7 @@ slice 4.
 
 import enum
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -105,6 +106,12 @@ class Workout(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+    # MET-formula fallback for calories burned — set only where a real duration
+    # exists (log_activity, finish_workout); "estimated" is the only value today,
+    # left as a plain string (not a DB enum) so a later Apple Watch/Health Auto
+    # Export source doesn't need an enum-alter migration (#24, deferred).
+    calories_burned: Mapped[Decimal | None] = mapped_column(Numeric)
+    calories_source: Mapped[str | None] = mapped_column(String(30))
 
     __table_args__ = (
         CheckConstraint(

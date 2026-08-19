@@ -100,6 +100,11 @@ interface CatalogExercise {
 
 const UNSPECIFIED_EQUIPMENT = "Unspecified";
 
+// Curated, not freeform: a known activity type is what lets a future calorie
+// estimate look up a MET value. "Other" still escapes to free text below.
+const ACTIVITY_TYPES = ["Hiking", "Yoga", "Pilates", "Zumba", "Running", "Cycling", "Swimming"];
+const OTHER_ACTIVITY = "Other";
+
 const $ = <T extends Element>(id: string): T => {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id}`);
@@ -112,6 +117,14 @@ const streakLineEl = $<HTMLParagraphElement>("streak-line");
 const muscleMapEl = $<HTMLDivElement>("muscle-map");
 const emptyEl = $<HTMLDivElement>("empty");
 const startBtn = $<HTMLButtonElement>("start-btn");
+const logActivityBtn = $<HTMLButtonElement>("log-activity-btn");
+const activityFormEl = $<HTMLDivElement>("activity-form");
+const activityTypeChipsEl = $<HTMLDivElement>("activity-type-chips");
+const activityTypeOtherEl = $<HTMLInputElement>("activity-type-other");
+const activityDurationEl = $<HTMLInputElement>("activity-duration");
+const activityNotesEl = $<HTMLInputElement>("activity-notes");
+const activityLogBtn = $<HTMLButtonElement>("activity-log-btn");
+const activityCancelBtn = $<HTMLButtonElement>("activity-cancel-btn");
 const workoutEl = $<HTMLDivElement>("workout");
 const groupsEl = $<HTMLDivElement>("groups");
 const pickerEl = $<HTMLDivElement>("picker");
@@ -125,6 +138,8 @@ const pickerListEl = $<HTMLUListElement>("picker-list");
 const pickerCancelEl = $<HTMLButtonElement>("picker-cancel");
 const addExerciseBtn = $<HTMLButtonElement>("add-exercise-btn");
 const finishBtn = $<HTMLButtonElement>("finish-btn");
+const cancelBtn = $<HTMLButtonElement>("cancel-btn");
+const backBtn = $<HTMLButtonElement>("back-btn");
 
 // Open/collapsed accordion state and the exercise catalog cache both live outside
 // render() so they survive the re-renders every tool call triggers.
@@ -141,6 +156,7 @@ let pickerSupersetWith: string | null = null;
 // exercises in a row.
 let selectedCategory: string | null = null;
 let selectedEquipment: string | null = null;
+let selectedActivityType: string | null = null;
 
 const app = new App({ name: "Swolemates Workouts", version: "1.0.0" });
 
@@ -439,10 +455,15 @@ function render(payload: LivePayload): void {
   closePicker();
 
   const finished = payload.completed_at != null;
+  const groups = payload.groups ?? [];
   finishBtn.hidden = finished;
   addExerciseBtn.hidden = finished;
+  // Cancel only offers to back out before anything's actually logged — once real
+  // exercises are added, backing out goes through Finish (which keeps the data),
+  // not a silent discard.
+  cancelBtn.hidden = finished || groups.length > 0;
+  backBtn.hidden = !finished;
 
-  const groups = payload.groups ?? [];
   const firstGroup = groups[0];
   if (!hasSetDefaultOpenGroup && firstGroup) {
     openGroups.add(groupKey(firstGroup));
@@ -609,7 +630,78 @@ async function callAndRender(name: string, args: Record<string, unknown>): Promi
   }
 }
 
+function refreshActivityChips(): void {
+  for (const btn of Array.from(activityTypeChipsEl.children) as HTMLButtonElement[]) {
+    btn.setAttribute("aria-pressed", String(btn.textContent === selectedActivityType));
+  }
+  activityTypeOtherEl.hidden = selectedActivityType !== OTHER_ACTIVITY;
+  if (selectedActivityType !== OTHER_ACTIVITY) activityTypeOtherEl.value = "";
+}
+
+function buildActivityTypeChips(): void {
+  const chips = [...ACTIVITY_TYPES, OTHER_ACTIVITY].map((type) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = type;
+    btn.onclick = () => {
+      selectedActivityType = selectedActivityType === type ? null : type;
+      refreshActivityChips();
+    };
+    return btn;
+  });
+  activityTypeChipsEl.replaceChildren(...chips);
+}
+buildActivityTypeChips();
+
+function resetActivityForm(): void {
+  selectedActivityType = null;
+  activityDurationEl.value = "";
+  activityNotesEl.value = "";
+  activityTypeOtherEl.value = "";
+  refreshActivityChips();
+}
+
+function openActivityForm(): void {
+  resetActivityForm();
+  activityFormEl.hidden = false;
+}
+
+function closeActivityForm(): void {
+  activityFormEl.hidden = true;
+  resetActivityForm();
+}
+
 startBtn.onclick = () => void callAndRender("start_workout", {});
+logActivityBtn.onclick = () => {
+  if (activityFormEl.hidden) openActivityForm();
+  else closeActivityForm();
+};
+activityCancelBtn.onclick = () => closeActivityForm();
+activityLogBtn.onclick = () => {
+  const activityType =
+    selectedActivityType === OTHER_ACTIVITY
+      ? activityTypeOtherEl.value.trim()
+      : selectedActivityType;
+  const durationMinutes = Number(activityDurationEl.value);
+  if (!activityType) {
+    statusEl.textContent = "Pick an activity (or enter one under Other).";
+    statusEl.className = "error";
+    return;
+  }
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    statusEl.textContent = "Enter how many minutes.";
+    statusEl.className = "error";
+    return;
+  }
+  const notes = activityNotesEl.value.trim();
+  closeActivityForm();
+  void callAndRender("log_activity", {
+    activity_type: activityType,
+    duration_minutes: durationMinutes,
+    ...(notes ? { notes } : {}),
+  });
+};
 addExerciseBtn.onclick = () => openPicker(null);
 pickerFilterEl.oninput = () => renderPickerList();
 pickerFilterToggleEl.onclick = () => {
@@ -621,6 +713,25 @@ finishBtn.onclick = () => {
   if (!currentPayload?.id) return;
   void callAndRender("finish_workout", { workout_id: currentPayload.id });
 };
+// There's no "discard" tool on the server — finishing with zero logged sets is
+// the sanctioned way to end a session nothing was ever added to (the backend
+// docstring says as much). What makes this feel like a true cancel rather than
+// "workout logged" is skipping the completed-summary view: reset straight back
+// to empty instead of rendering finish_workout's own (accurate, but unwanted
+// here) "Workout complete — 0 sets logged" result.
+cancelBtn.onclick = async () => {
+  if (!currentPayload?.id) return;
+  try {
+    await app.callServerTool({
+      name: "finish_workout",
+      arguments: { workout_id: currentPayload.id },
+    });
+  } catch (err) {
+    console.error(err);
+  }
+  render({ active: false, summary: "No active workout." });
+};
+backBtn.onclick = () => render({ active: false, summary: "No active workout." });
 
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
 // one (a chat widget) at least get freshness whenever the user returns to the tab.

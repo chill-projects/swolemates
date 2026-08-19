@@ -50,7 +50,10 @@ def _format_workout(w: service.WorkoutOut) -> str:
     # (log_workout/log_activity/get_workout_history/update_workout itself) never
     # otherwise expose the id chat could target for a correction.
     extra = (
-        f" (workout_id: {w.id})" + _format_celebrations(w.celebrations) + _format_streak(w.streak)
+        f" (workout_id: {w.id})"
+        + _format_celebrations(w.celebrations)
+        + _format_streak(w.streak)
+        + _format_calories(w.calories_burned)
     )
     return base + extra
 
@@ -72,6 +75,12 @@ def _format_streak(streak: service.StreakOut | None) -> str:
     if streak is None:
         return ""
     return f" — {streak.weeks}-week streak, {streak.this_week}/{streak.target} this week"
+
+
+def _format_calories(calories_burned: Decimal | None) -> str:
+    if calories_burned is None:
+        return ""
+    return f" — ~{calories_burned} kcal (est.)"
 
 
 def _last_time_payload(lt: service.LastTimeOut | None) -> dict | None:

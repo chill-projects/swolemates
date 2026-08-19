@@ -106,6 +106,24 @@ export function WorkoutLivePage({ me }: { me: Me }) {
         return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
       }
 
+      if (name === "log_activity") {
+        const { data, error } = await api.POST("/api/workouts/log-activity", {
+          body: {
+            activity_type: String(args.activity_type ?? ""),
+            duration_minutes: Number(args.duration_minutes ?? 0),
+            notes: (args.notes as string | null | undefined) ?? null,
+          },
+        });
+        if (error || !data) throw new Error("log activity failed");
+        const streak = data.streak
+          ? ` — ${data.streak.weeks}-week streak, ${data.streak.this_week}/${data.streak.target} this week`
+          : "";
+        const calories = numeric(data.calories_burned);
+        const kcal = calories != null ? ` — ~${calories} kcal (est.)` : "";
+        const text = `Logged: ${data.activity_type} — ${data.duration_minutes} min${kcal}${streak}`;
+        return { content: [{ type: "text", text }] };
+      }
+
       // `/live` (fetched below, for the grouped accordion shape) is a plain re-read
       // of current state — it has no memory of what a specific mutation just earned.
       // celebrations/streak only ever appear on the response of the exact call that

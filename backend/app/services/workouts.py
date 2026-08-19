@@ -35,6 +35,44 @@ from app.services.errors import NotFoundError
 # question asked; past it, Claude asks rather than guesses (#3/#6, resolved).
 CONTINUATION_WINDOW = timedelta(minutes=90)
 
+# MET-formula fallback for calories burned (#24's deferred Apple Watch sync is the
+# real-reading path; this is what fills in when there isn't one). Values live-
+# verified against the 2024 Adult Compendium of Physical Activities (2026-08-18),
+# not recalled from training data. One representative value per activity — pace/
+# intensity aren't captured, so precision beyond "reasonable estimate" isn't real.
+_ACTIVITY_MET: dict[str, Decimal] = {
+    "hiking": Decimal("6.0"),  # cross-country/general
+    "yoga": Decimal("2.3"),  # hatha/general
+    "pilates": Decimal("1.8"),  # mat/traditional, compendium code 02103
+    "zumba": Decimal("6.5"),  # group class
+    "running": Decimal("8.5"),  # moderate/~5mph pace assumption
+    "cycling": Decimal("6.8"),  # moderate effort
+    "swimming": Decimal("6.0"),  # leisure
+}
+_DEFAULT_ACTIVITY_MET = Decimal("4.0")  # unrecognized/"Other" freeform activity type
+_STRENGTH_MET = Decimal("5.0")  # moderate resistance training / compound lifts
+_LBS_PER_KG = Decimal("2.20462")
+
+
+async def estimate_calories_burned(
+    session: AsyncSession, user_sub: str, *, met: Decimal, duration_minutes: int
+) -> Decimal | None:
+    """None if bodyweight was never logged — an estimate needs a real weight, not a
+    guessed default — or if there's no real duration to work with. Weight is the
+    most recent `weight_lbs` trackable, always canonical lbs regardless of the
+    user's display preference (UserProfile's own docstring, app/models/profile.py).
+    """
+    from app.services.nutrition.logs import get_latest_trackable_value
+
+    if duration_minutes <= 0:
+        return None
+    weight_lbs = await get_latest_trackable_value(session, user_sub, "weight_lbs")
+    if weight_lbs is None:
+        return None
+    weight_kg = weight_lbs / _LBS_PER_KG
+    hours = Decimal(duration_minutes) / Decimal(60)
+    return (met * weight_kg * hours).quantize(Decimal("1"))
+
 
 async def list_exercises(session: AsyncSession, user_sub: str) -> list[Exercise]:
     """Catalog + this user's own custom exercises (port of the legacy RLS policy:
@@ -289,6 +327,12 @@ class WorkoutOut:
     # Populated only where a workout just completed (finish_workout, log_activity,
     # log_workout) — streak only depends on completed_at. None everywhere else.
     streak: StreakOut | None = None
+    # MET-formula estimate (#24's deferred Apple Watch sync is the real-reading
+    # path). Set by log_activity/finish_workout, where a real duration exists;
+    # log_workout never captures one, so it stays None there — a deliberate scope
+    # boundary, not a gap.
+    calories_burned: Decimal | None = None
+    calories_source: str | None = None
 
 
 @dataclass
@@ -336,6 +380,8 @@ async def _load_workout_details(
                 notes=workout.notes,
                 started_at=workout.started_at,
                 completed_at=workout.completed_at,
+                calories_burned=workout.calories_burned,
+                calories_source=workout.calories_source,
             )
             workouts_by_id[workout.id] = out
         if we is None:
@@ -534,6 +580,10 @@ async def log_activity(
         raise ValueError("duration_minutes must be greater than 0.")
 
     when = logged_at or datetime.now(UTC)
+    met = _ACTIVITY_MET.get(activity_type.strip().lower(), _DEFAULT_ACTIVITY_MET)
+    calories = await estimate_calories_burned(
+        session, user_sub, met=met, duration_minutes=duration_minutes
+    )
     workout = Workout(
         user_id=user_sub,
         workout_type=WorkoutType.activity,
@@ -543,6 +593,8 @@ async def log_activity(
         notes=notes,
         started_at=when,
         completed_at=when,
+        calories_burned=calories,
+        calories_source="estimated" if calories is not None else None,
     )
     session.add(workout)
     await session.flush()
@@ -837,6 +889,13 @@ async def finish_workout(
     if notes is not None:
         workout.notes = notes
 
+    elapsed_minutes = int((workout.completed_at - workout.started_at).total_seconds() // 60)
+    calories = await estimate_calories_burned(
+        session, user_sub, met=_STRENGTH_MET, duration_minutes=elapsed_minutes
+    )
+    workout.calories_burned = calories
+    workout.calories_source = "estimated" if calories is not None else None
+
     await session.flush()
 
     from app.services import planned_workouts
@@ -1038,7 +1097,10 @@ def _group_exercises(exercises: list[ExerciseEntryOut]) -> list[GroupOut]:
 def _live_summary(workout: WorkoutOut, groups: list[GroupOut]) -> str:
     total_sets = sum(len(e.sets) for g in groups for e in g.exercises)
     if workout.completed_at is not None:
-        return f"Workout complete — {len(groups)} exercise group(s), {total_sets} sets logged."
+        kcal = f", ~{workout.calories_burned} kcal (est.)" if workout.calories_burned else ""
+        return (
+            f"Workout complete — {len(groups)} exercise group(s), {total_sets} sets logged{kcal}."
+        )
     if not groups:
         return "No exercises yet."
     return f"{len(groups)} exercise group(s) so far, {total_sets} sets logged."
