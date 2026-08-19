@@ -75,6 +75,11 @@ interface Streak {
   target: number;
 }
 
+interface MuscleCoverage {
+  muscle: string;
+  level: "none" | "light" | "moderate" | "heavy";
+}
+
 interface LivePayload {
   active: boolean;
   id?: string;
@@ -83,6 +88,7 @@ interface LivePayload {
   summary: string;
   celebrations?: Celebration[];
   streak?: Streak | null;
+  muscle_coverage?: MuscleCoverage[];
 }
 
 interface CatalogExercise {
@@ -100,6 +106,7 @@ const $ = <T extends Element>(id: string): T => {
 const statusEl = $<HTMLParagraphElement>("status");
 const celebrationsEl = $<HTMLDivElement>("celebrations");
 const streakLineEl = $<HTMLParagraphElement>("streak-line");
+const muscleMapEl = $<HTMLDivElement>("muscle-map");
 const emptyEl = $<HTMLDivElement>("empty");
 const startBtn = $<HTMLButtonElement>("start-btn");
 const workoutEl = $<HTMLDivElement>("workout");
@@ -387,12 +394,27 @@ function renderStreak(streak: Streak | null | undefined): void {
   streakLineEl.textContent = `${streak.weeks}-week streak — ${streak.this_week}/${streak.target} this week`;
 }
 
+function renderMuscleMap(coverage: MuscleCoverage[] | undefined): void {
+  const byMuscle = new Map((coverage ?? []).map((c) => [c.muscle, c.level]));
+  // The backend's vocabulary has no "obliques" (free-exercise-db doesn't track it
+  // separately from abdominals) — alias it to abs's level so the region reflects ab
+  // work instead of sitting permanently at "none".
+  const absLevel = byMuscle.get("abs");
+  if (absLevel) byMuscle.set("obliques", absLevel);
+
+  muscleMapEl.querySelectorAll<SVGGElement>("[data-muscle]").forEach((g) => {
+    const muscle = g.dataset.muscle;
+    g.dataset.level = (muscle && byMuscle.get(muscle)) || "none";
+  });
+}
+
 function render(payload: LivePayload): void {
   currentPayload = payload;
   statusEl.textContent = payload.summary;
   statusEl.className = "muted";
   renderCelebrations(payload.celebrations);
   renderStreak(payload.streak);
+  renderMuscleMap(payload.muscle_coverage);
 
   if (!payload.active) {
     emptyEl.hidden = false;

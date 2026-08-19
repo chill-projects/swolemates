@@ -135,6 +135,14 @@ def _streak_payload(s: service.StreakOut | None) -> dict | None:
     return {"weeks": s.weeks, "this_week": s.this_week, "target": s.target}
 
 
+def _muscle_coverage_payload(coverage: list[service.MuscleCoverageOut]) -> list[dict]:
+    """`get_workout_live` (app/services/workouts.py) already translates+collapses
+    into body-highlighter slugs and fills in "none" for the full vocabulary — shared
+    with the REST transport, which renders the same ui://workout-live.html component
+    from the same service call. This is just JSON shaping."""
+    return [{"muscle": c.muscle, "level": c.level} for c in coverage]
+
+
 def _live_payload(live: service.WorkoutLiveOut) -> dict:
     return {
         "active": True,
@@ -153,6 +161,7 @@ def _live_payload(live: service.WorkoutLiveOut) -> dict:
         "summary": live.summary,
         "celebrations": [_celebration_payload(c) for c in live.celebrations],
         "streak": _streak_payload(live.streak),
+        "muscle_coverage": _muscle_coverage_payload(live.muscle_coverage),
     }
 
 

@@ -54,8 +54,18 @@ class PersonalRecordKind(enum.StrEnum):
 
 
 class Exercise(Base, TimestampMixin):
-    """Catalog (seeded from the 41 legacy starters; free-exercise-db's full 873-
-    exercise vendoring is a separate follow-up) + user custom exercises.
+    """Catalog: the 41 legacy starters plus free-exercise-db's full 873-exercise
+    vendor (metadata only — names + muscles, no photos; `app/data/exercise_muscles.json`,
+    matched via the migration that added `primary_muscles`/`secondary_muscles`), plus
+    user custom exercises.
+
+    `muscle_group` (the coarse 6-bucket legacy taxonomy) stays the source of truth for
+    anything written before this vendor and for custom exercises (which get no
+    primary/secondary muscle data — `_resolve_exercise`'s auto-create path only ever
+    sets `muscle_group`). `primary_muscles`/`secondary_muscles` (free-exercise-db's
+    17-muscle taxonomy) are additive and only populated for vendored/starter rows —
+    the live-workout muscle map reads these, falling back to nothing for custom
+    exercises rather than guessing.
 
     Read rule in the service layer: `is_custom == False OR created_by == user_sub`
     (port of the legacy RLS policy).
@@ -70,6 +80,8 @@ class Exercise(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text)
     image_paths: Mapped[list | None] = mapped_column(JSONB)
     source_id: Mapped[str | None] = mapped_column(String(100), unique=True)
+    primary_muscles: Mapped[list | None] = mapped_column(JSONB)
+    secondary_muscles: Mapped[list | None] = mapped_column(JSONB)
     is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by: Mapped[str | None] = mapped_column(String(255))
 

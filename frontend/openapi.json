@@ -1253,6 +1253,29 @@
         "title": "MealTemplateSummaryOut",
         "type": "object"
       },
+      "MuscleCoverageOut": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "muscle": {
+            "title": "Muscle",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "muscle",
+          "score",
+          "level"
+        ],
+        "title": "MuscleCoverageOut",
+        "type": "object"
+      },
       "NutritionCalendarDayOut": {
         "properties": {
           "bars": {
@@ -2922,6 +2945,14 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "muscle_coverage": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MuscleCoverageOut"
+            },
+            "title": "Muscle Coverage",
+            "type": "array"
           },
           "notes": {
             "anyOf": [

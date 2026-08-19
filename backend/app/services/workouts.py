@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,6 +173,96 @@ class ExerciseEntryOut:
     # be an extra query per exercise on every past workout returned.
     last_time: LastTimeOut | None = None
     target: TargetOut | None = None
+    # free-exercise-db's 17-muscle taxonomy (live-workout muscle map) — empty for
+    # custom exercises, which only ever get the coarse `muscle_group` (#15's vendor
+    # never covers user-added exercises).
+    primary_muscles: list[str] = field(default_factory=list)
+    secondary_muscles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MuscleCoverageOut:
+    muscle: str
+    score: float
+    level: Literal["none", "light", "moderate", "heavy"]
+
+
+def coverage_level(score: float) -> Literal["none", "light", "moderate", "heavy"]:
+    if score <= 0:
+        return "none"
+    if score <= 1:
+        return "light"
+    if score <= 2:
+        return "moderate"
+    return "heavy"
+
+
+def compute_muscle_coverage(exercises: list[ExerciseEntryOut]) -> list[MuscleCoverageOut]:
+    """Live-workout muscle map (Peloton-style "body activity", scoped to the in-
+    progress session): 1.0 per exercise that names a muscle as primary, 0.5 as
+    secondary, summed — a exercise touching the same muscle twice (unlikely, but
+    superset entries share this list) counts once per exercise, not per set, since
+    coverage is about which muscles the *session* targets, not per-rep volume.
+    Only muscles that appear at least once are returned; the caller (the MCP layer)
+    is responsible for filling in "none" for the full fixed vocabulary it renders.
+    """
+    scores: dict[str, float] = {}
+    for entry in exercises:
+        for muscle in entry.primary_muscles:
+            scores[muscle] = scores.get(muscle, 0.0) + 1.0
+        for muscle in entry.secondary_muscles:
+            scores[muscle] = scores.get(muscle, 0.0) + 0.5
+    return [
+        MuscleCoverageOut(muscle=muscle, score=score, level=coverage_level(score))
+        for muscle, score in scores.items()
+    ]
+
+
+# free-exercise-db's 17-muscle taxonomy -> react-native-body-highlighter's SVG slugs
+# (see frontend/src/mcp-apps/workout-live/NOTICE-body-highlighter.md). "lats" and
+# "middle back" both collapse onto "upper-back" — body-highlighter has no separate
+# lats region — and "abductors" folds into "gluteal", which has no dedicated region
+# either (a minor muscle: 8/873 exercises). Lives here, not per-transport: REST and
+# MCP both render the same ui://workout-live.html component from `get_workout_live`,
+# so the translation has to be shared, not duplicated (or, as happened once, present
+# in only one of the two transports — #3/#6, "routers/tools contain no logic").
+_MUSCLE_TO_SLUG = {
+    "abdominals": "abs",
+    "abductors": "gluteal",
+    "adductors": "adductors",
+    "biceps": "biceps",
+    "calves": "calves",
+    "chest": "chest",
+    "forearms": "forearm",
+    "glutes": "gluteal",
+    "hamstrings": "hamstring",
+    "lats": "upper-back",
+    "lower back": "lower-back",
+    "middle back": "upper-back",
+    "neck": "neck",
+    "quadriceps": "quadriceps",
+    "shoulders": "deltoids",
+    "traps": "trapezius",
+    "triceps": "triceps",
+}
+_ALL_SLUGS = sorted(set(_MUSCLE_TO_SLUG.values()))
+
+
+def _to_body_map_slugs(coverage: list[MuscleCoverageOut]) -> list[MuscleCoverageOut]:
+    """Translates+collapses `compute_muscle_coverage`'s raw taxonomy into body-
+    highlighter slugs, then fills in "none" for every slug this workout doesn't
+    touch — the component needs every region represented on every render, since
+    there's no diffing; each render is a fresh snapshot (the tmpx/nutrition-day
+    pattern), so a previously-lit muscle has to explicitly reset to "none"."""
+    scores: dict[str, float] = dict.fromkeys(_ALL_SLUGS, 0.0)
+    for c in coverage:
+        slug = _MUSCLE_TO_SLUG.get(c.muscle)
+        if slug is not None:
+            scores[slug] += c.score
+    return [
+        MuscleCoverageOut(muscle=slug, score=score, level=coverage_level(score))
+        for slug, score in scores.items()
+    ]
 
 
 @dataclass
@@ -216,7 +307,14 @@ async def _load_workout_details(
     if not workout_ids:
         return []
     result = await session.execute(
-        select(Workout, WorkoutExercise, WorkoutSet, Exercise.name)
+        select(
+            Workout,
+            WorkoutExercise,
+            WorkoutSet,
+            Exercise.name,
+            Exercise.primary_muscles,
+            Exercise.secondary_muscles,
+        )
         .outerjoin(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
         .outerjoin(WorkoutSet, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
         .outerjoin(Exercise, Exercise.id == WorkoutExercise.exercise_id)
@@ -226,7 +324,7 @@ async def _load_workout_details(
 
     workouts_by_id: dict[uuid.UUID, WorkoutOut] = {}
     entries_by_we_id: dict[uuid.UUID, ExerciseEntryOut] = {}
-    for workout, we, ws, exercise_name in result.all():
+    for workout, we, ws, exercise_name, primary_muscles, secondary_muscles in result.all():
         out = workouts_by_id.get(workout.id)
         if out is None:
             out = WorkoutOut(
@@ -262,6 +360,8 @@ async def _load_workout_details(
                 next_time_note=we.next_time_note,
                 superset_group=we.superset_group,
                 target=target,
+                primary_muscles=primary_muscles or [],
+                secondary_muscles=secondary_muscles or [],
             )
             entries_by_we_id[we.id] = entry
             out.exercises.append(entry)
@@ -877,6 +977,7 @@ class WorkoutLiveOut:
     summary: str
     celebrations: list[CelebrationOut] = field(default_factory=list)
     streak: StreakOut | None = None
+    muscle_coverage: list[MuscleCoverageOut] = field(default_factory=list)
 
 
 async def _get_last_time(
@@ -963,6 +1064,7 @@ async def get_workout_live(
         summary=_live_summary(workout, groups),
         celebrations=workout.celebrations,
         streak=workout.streak,
+        muscle_coverage=_to_body_map_slugs(compute_muscle_coverage(workout.exercises)),
     )
 
 

@@ -79,6 +79,7 @@ function toLivePayload(
       previous: numeric(c.previous),
     })),
     streak: streak ? { weeks: streak.weeks, this_week: streak.this_week, target: streak.target } : null,
+    muscle_coverage: live.muscle_coverage.map((c) => ({ muscle: c.muscle, level: c.level })),
   };
   return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
 }

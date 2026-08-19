@@ -2,10 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import (
+    Exercise,
     PersonalRecord,
     PersonalRecordKind,
     Workout,
@@ -33,7 +34,9 @@ async def test_starter_exercises_are_seeded(session: AsyncSession) -> None:
 
     assert "Barbell Back Squat" in names
     assert "Deadlift" in names
-    assert len(names) == 41
+    # 41 legacy starters plus the free-exercise-db vendor (873 total) — not a fixed
+    # count assertion since it'd break every time the vendored dataset is refreshed.
+    assert len(names) >= 873
     assert all(not e.is_custom for e in exercises)
 
 
@@ -182,6 +185,44 @@ async def test_get_workout_history_filters_by_exercise_and_is_scoped_to_owner(
     assert float(history[0].exercises[0].sets[0].weight) == 300
 
 
+async def test_exercise_vendor_backfilled_every_row_with_a_muscle_group(
+    session: AsyncSession,
+) -> None:
+    null_count = (
+        await session.execute(
+            select(func.count(Exercise.id)).where(Exercise.muscle_group.is_(None))
+        )
+    ).scalar_one()
+
+    assert null_count == 0
+
+
+async def test_log_workout_returns_the_exercises_vendored_muscle_data(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}]}],
+    )
+
+    entry = workout.exercises[0]
+    assert entry.primary_muscles == ["quadriceps"]
+    assert set(entry.secondary_muscles) == {"calves", "glutes", "hamstrings", "lower back"}
+
+
+async def test_log_workout_custom_exercise_has_no_muscle_data(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Some Made Up Cable Thing", "sets": [{"weight": 40, "reps": 12}]}],
+    )
+
+    entry = workout.exercises[0]
+    assert entry.primary_muscles == []
+    assert entry.secondary_muscles == []
+
+
 async def test_get_exercise_history_unknown_exercise_returns_empty(
     session: AsyncSession,
 ) -> None:
@@ -256,6 +297,112 @@ async def test_get_exercise_history_latest_next_time_note_walks_back_to_most_rec
     history = await service.get_exercise_history(session, TEST_USER, exercise="Deadlift")
 
     assert history.latest_next_time_note == "try 305 next time"
+
+
+async def test_compute_muscle_coverage_single_primary_hit_is_light(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}]}],
+    )
+
+    coverage = service.compute_muscle_coverage(workout.exercises)
+
+    quads = next(c for c in coverage if c.muscle == "quadriceps")
+    assert quads.score == 1.0
+    assert quads.level == "light"
+
+
+async def test_compute_muscle_coverage_combines_primary_and_secondary_hits(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}]},
+            {"exercise": "Deadlift", "sets": [{"weight": 315, "reps": 3}]},
+        ],
+    )
+
+    coverage = service.compute_muscle_coverage(workout.exercises)
+
+    quads = next(c for c in coverage if c.muscle == "quadriceps")
+    assert quads.score == 1.5
+    assert quads.level == "moderate"
+
+
+async def test_compute_muscle_coverage_crosses_into_heavy_past_a_score_of_two(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}]},
+            {"exercise": "Front Squat", "sets": [{"weight": 185, "reps": 5}]},
+            {"exercise": "Leg Press", "sets": [{"weight": 400, "reps": 10}]},
+        ],
+    )
+
+    coverage = service.compute_muscle_coverage(workout.exercises)
+
+    quads = next(c for c in coverage if c.muscle == "quadriceps")
+    assert quads.score == 3.0
+    assert quads.level == "heavy"
+
+
+async def test_compute_muscle_coverage_ignores_exercises_with_no_muscle_data(
+    session: AsyncSession,
+) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Some Made Up Cable Thing", "sets": [{"weight": 40, "reps": 12}]}],
+    )
+
+    coverage = service.compute_muscle_coverage(workout.exercises)
+
+    assert coverage == []
+
+
+async def test_get_workout_live_includes_muscle_coverage(session: AsyncSession) -> None:
+    started = await service.start_workout(session, TEST_USER, exercises=["Barbell Back Squat"])
+
+    live = await service.get_workout_live(session, TEST_USER, started)
+
+    quads = next(c for c in live.muscle_coverage if c.muscle == "quadriceps")
+    assert quads.level == "light"
+
+
+async def test_get_workout_live_muscle_coverage_translates_to_body_map_slugs(
+    session: AsyncSession,
+) -> None:
+    """The `ui://workout-live.html` component keys its SVG regions by body-
+    highlighter's slug vocabulary, not free-exercise-db's raw muscle names — both
+    transports (REST + MCP) render this same component from `get_workout_live`, so
+    the translation has to happen here, not per-transport (#3/#6: routers/tools
+    contain no logic)."""
+    started = await service.start_workout(session, TEST_USER, exercises=["Barbell Row"])
+
+    live = await service.get_workout_live(session, TEST_USER, started)
+
+    # "Barbell Row"'s primary muscle is "middle back" (score 1.0) and its secondary
+    # muscles include "lats" (score 0.5) — body-highlighter has no separate lats
+    # region, so both collapse onto "upper-back" for a combined 1.5.
+    by_muscle = {c.muscle for c in live.muscle_coverage}
+    assert "middle back" not in by_muscle
+    assert "lats" not in by_muscle
+    upper_back = next(c for c in live.muscle_coverage if c.muscle == "upper-back")
+    assert upper_back.score == 1.5
+    assert upper_back.level == "moderate"
+
+    # Every trackable slug is present, even ones this workout never touches — the
+    # component needs a "none" entry to reset a previously-lit region.
+    quads = next(c for c in live.muscle_coverage if c.muscle == "quadriceps")
+    assert quads.level == "none"
 
 
 async def test_start_workout_creates_a_new_one(session: AsyncSession) -> None:

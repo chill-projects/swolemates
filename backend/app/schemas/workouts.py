@@ -126,6 +126,14 @@ class StreakOut(BaseModel):
     target: int
 
 
+class MuscleCoverageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    muscle: str
+    score: float
+    level: str
+
+
 class WorkoutOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -167,6 +175,7 @@ class WorkoutLiveOut(BaseModel):
     summary: str
     celebrations: list[CelebrationOut] = []
     streak: StreakOut | None = None
+    muscle_coverage: list[MuscleCoverageOut] = []
 
 
 class UpdateWorkoutEntryRequest(BaseModel):

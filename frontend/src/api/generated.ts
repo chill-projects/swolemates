@@ -1122,6 +1122,15 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** MuscleCoverageOut */
+        MuscleCoverageOut: {
+            /** Level */
+            level: string;
+            /** Muscle */
+            muscle: string;
+            /** Score */
+            score: number;
+        };
         /** NutritionCalendarDayOut */
         NutritionCalendarDayOut: {
             /** Bars */
@@ -1616,6 +1625,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Muscle Coverage
+             * @default []
+             */
+            muscle_coverage: components["schemas"]["MuscleCoverageOut"][];
             /** Notes */
             notes: string | null;
             /**
