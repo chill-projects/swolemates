@@ -92,7 +92,9 @@ export function App() {
     <main>
       <IOSInstallBanner />
       <header>
-        <h1>Swolemates</h1>
+        <h1>
+          <a href="/">Swolemates</a>
+        </h1>
       </header>
 
       {onInviteRoute ? (
@@ -130,8 +132,8 @@ function AuthenticatedApp({
   const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
   const onTemplatesRoute = window.location.pathname === "/templates";
   const onPlannedRoute = window.location.pathname === "/planned";
-  const onDashboardRoute = window.location.pathname === "/dashboard";
   const onPartnerRoute = window.location.pathname === "/partner";
+  const onNutritionRoute = window.location.pathname === "/nutrition";
 
   if (profile.isPending) return <p className="muted">Loading your profile…</p>;
   if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
@@ -156,8 +158,6 @@ function AuthenticatedApp({
           <h2>Profile settings</h2>
           <ProfileForm profile={profile.data} />
         </>
-      ) : onDashboardRoute ? (
-        <DashboardPage />
       ) : onPartnerRoute ? (
         <PartnerPage />
       ) : onWorkoutsLiveRoute ? (
@@ -166,8 +166,12 @@ function AuthenticatedApp({
         <TemplatesPage me={me} />
       ) : onPlannedRoute ? (
         <PlannedPage me={me} />
-      ) : (
+      ) : onNutritionRoute ? (
         <NutritionPage me={me} />
+      ) : (
+        // Home ("/", and anything unrecognized) — the dashboard, per the user's
+        // request that "Swolemates" in the header link somewhere real.
+        <DashboardPage />
       )}
     </>
   );

@@ -1,17 +1,29 @@
+import type { ReactNode } from "react";
+
+import {
+  CalendarIcon,
+  DumbbellIcon,
+  HeartHandshakeIcon,
+  LayoutTemplateIcon,
+  SettingsIcon,
+  UtensilsIcon,
+} from "./icons";
+
 interface NavItem {
   href: string;
   label: string;
-  icon: string;
+  Icon: (props: { className?: string }) => ReactNode;
 }
 
+// No Dashboard entry: it's the home page now (the "Swolemates" wordmark links
+// there), not a nav-bar destination.
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Nutrition", icon: "🍽️" },
-  { href: "/workouts/live", label: "Workout", icon: "🏋️" },
-  { href: "/templates", label: "Templates", icon: "📋" },
-  { href: "/planned", label: "Planned", icon: "🗓️" },
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/partner", label: "Partner", icon: "🤝" },
-  { href: "/profile", label: "Profile", icon: "⚙️" },
+  { href: "/nutrition", label: "Nutrition", Icon: UtensilsIcon },
+  { href: "/workouts/live", label: "Workout", Icon: DumbbellIcon },
+  { href: "/templates", label: "Templates", Icon: LayoutTemplateIcon },
+  { href: "/planned", label: "Planned", Icon: CalendarIcon },
+  { href: "/partner", label: "Partner", Icon: HeartHandshakeIcon },
+  { href: "/profile", label: "Profile", Icon: SettingsIcon },
 ];
 
 /** Plain anchors, not client-side routing — App.tsx reads `window.location.pathname`
@@ -30,9 +42,7 @@ export function NavBar() {
             className={active ? "nav-bar-item active" : "nav-bar-item"}
             aria-current={active ? "page" : undefined}
           >
-            <span className="nav-bar-icon" aria-hidden="true">
-              {item.icon}
-            </span>
+            <item.Icon className="nav-bar-icon" />
             <span>{item.label}</span>
           </a>
         );
