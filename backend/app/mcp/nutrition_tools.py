@@ -137,6 +137,9 @@ async def log_nutrition(
     entries: list[dict], name: str | None = None, meal_type: str | None = None
 ) -> dict:
     """Record one or more trackable entries — a meal, a glass of water, creatine — in one call.
+    Briefly compare today to last time if notable — how close today is to target, or
+    that this extends/breaks a logging or goal-adherence streak — without making them
+    ask.
 
     Args:
         entries: [{"trackable_key": "calories", "value": 450}, ...]. Valid keys today:

@@ -482,6 +482,52 @@ async def get_workout_history(
     return await _load_workout_details(session, workout_ids)
 
 
+@dataclass
+class ExerciseSessionOut:
+    date: datetime
+    sets: list[SetOut]
+    notes: str | None
+
+
+@dataclass
+class ExerciseHistoryOut:
+    exercise_name: str
+    sessions: list[ExerciseSessionOut] = field(default_factory=list)
+    latest_next_time_note: str | None = None
+
+
+async def get_exercise_history(
+    session: AsyncSession, user_sub: str, *, exercise: str, limit: int = 5
+) -> ExerciseHistoryOut:
+    """Deep per-exercise history — the progressive-overload substrate for the coach
+    prompt. Reuses `get_workout_history`'s exercise filter, then reshapes each
+    matching workout down to just the one `ExerciseEntryOut` for `exercise` (a
+    workout can include other exercises too). `latest_next_time_note` walks back
+    from most-recent until it finds a session that actually set one, since the
+    single latest session might not have (#6, resolved: "notes_for_next_time").
+    """
+    history = await get_workout_history(session, user_sub, exercise=exercise)
+    normalized = exercise.strip().lower()
+
+    sessions: list[ExerciseSessionOut] = []
+    latest_next_time_note: str | None = None
+    for workout in history[:limit]:
+        entry = next(
+            (e for e in workout.exercises if (e.exercise_name or "").lower() == normalized), None
+        )
+        if entry is None:
+            continue
+        sessions.append(
+            ExerciseSessionOut(date=workout.started_at, sets=entry.sets, notes=entry.notes)
+        )
+        if latest_next_time_note is None and entry.next_time_note is not None:
+            latest_next_time_note = entry.next_time_note
+
+    return ExerciseHistoryOut(
+        exercise_name=exercise, sessions=sessions, latest_next_time_note=latest_next_time_note
+    )
+
+
 async def start_workout(
     session: AsyncSession,
     user_sub: str,

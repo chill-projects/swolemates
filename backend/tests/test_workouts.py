@@ -182,6 +182,82 @@ async def test_get_workout_history_filters_by_exercise_and_is_scoped_to_owner(
     assert float(history[0].exercises[0].sets[0].weight) == 300
 
 
+async def test_get_exercise_history_unknown_exercise_returns_empty(
+    session: AsyncSession,
+) -> None:
+    history = await service.get_exercise_history(session, TEST_USER, exercise="Nonexistent Lift")
+
+    assert history.exercise_name == "Nonexistent Lift"
+    assert history.sessions == []
+    assert history.latest_next_time_note is None
+
+
+async def test_get_exercise_history_returns_sessions_most_recent_first_capped_at_limit(
+    session: AsyncSession,
+) -> None:
+    for i, weight in enumerate([300, 305, 310, 315]):
+        await service.log_workout(
+            session,
+            TEST_USER,
+            exercises=[{"exercise": "Deadlift", "sets": [{"weight": weight, "reps": 3}]}],
+            logged_at=datetime(2026, 8, 1 + i, tzinfo=UTC),
+        )
+
+    history = await service.get_exercise_history(session, TEST_USER, exercise="Deadlift", limit=2)
+
+    assert history.exercise_name == "Deadlift"
+    assert len(history.sessions) == 2
+    assert float(history.sessions[0].sets[0].weight) == 315
+    assert float(history.sessions[1].sets[0].weight) == 310
+
+
+async def test_get_exercise_history_only_returns_the_requested_exercise(
+    session: AsyncSession,
+) -> None:
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {"exercise": "Deadlift", "sets": [{"weight": 300, "reps": 3}], "notes": "felt heavy"},
+            {"exercise": "Barbell Bench Press", "sets": [{"weight": 185, "reps": 5}]},
+        ],
+    )
+
+    history = await service.get_exercise_history(session, TEST_USER, exercise="Deadlift")
+
+    assert len(history.sessions) == 1
+    assert len(history.sessions[0].sets) == 1
+    assert float(history.sessions[0].sets[0].weight) == 300
+    assert history.sessions[0].notes == "felt heavy"
+
+
+async def test_get_exercise_history_latest_next_time_note_walks_back_to_most_recent_set_one(
+    session: AsyncSession,
+) -> None:
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {
+                "exercise": "Deadlift",
+                "sets": [{"weight": 300, "reps": 3}],
+                "next_time_note": "try 305 next time",
+            }
+        ],
+        logged_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Deadlift", "sets": [{"weight": 305, "reps": 3}]}],
+        logged_at=datetime(2026, 8, 8, tzinfo=UTC),
+    )
+
+    history = await service.get_exercise_history(session, TEST_USER, exercise="Deadlift")
+
+    assert history.latest_next_time_note == "try 305 next time"
+
+
 async def test_start_workout_creates_a_new_one(session: AsyncSession) -> None:
     workout = await service.start_workout(session, TEST_USER)
 

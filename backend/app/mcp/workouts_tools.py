@@ -162,7 +162,10 @@ async def log_workout(
     exercises: list[dict], title: str | None = None, date: str | None = None
 ) -> str:
     """Record an already-completed strength workout in one call — the retroactive
-    path ("I did 5x5 squats at 225lbs yesterday"), not the live in-gym flow.
+    path ("I did 5x5 squats at 225lbs yesterday"), not the live in-gym flow. If this
+    repeats a recent exercise or continues a streak, briefly compare it to last time
+    and mention anything notable — a near-PR, a stalled lift, a broken or extended
+    streak.
 
     Args:
         exercises: [{"exercise": "Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
@@ -366,7 +369,9 @@ async def log_set(
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))
 @catches_service_errors
 async def finish_workout(workout_id: str, notes: str | None = None) -> dict:
-    """Finish an in-progress workout — stamps it complete.
+    """Finish an in-progress workout — stamps it complete. If any exercise in it
+    repeats a recent one or continues a streak, briefly compare it to last time and
+    mention anything notable — a near-PR, a stalled lift, a broken or extended streak.
 
     Args:
         workout_id: from a prior start_workout/log_set/get_active_workout result.
