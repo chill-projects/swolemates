@@ -63,7 +63,12 @@ export function TemplatesPage({ me }: { me: Me }) {
         const { data, error } = await api.GET("/api/workouts/exercises");
         if (error || !data) throw new Error("exercises fetch failed");
         const payload = {
-          exercises: data.map((e) => ({ id: e.id, name: e.name, muscle_group: e.muscle_group })),
+          exercises: data.map((e) => ({
+            id: e.id,
+            name: e.name,
+            muscle_group: e.muscle_group,
+            equipment: e.equipment,
+          })),
         };
         return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
       }

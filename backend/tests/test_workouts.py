@@ -197,6 +197,33 @@ async def test_exercise_vendor_backfilled_every_row_with_a_muscle_group(
     assert null_count == 0
 
 
+async def test_exercise_equipment_backfill_normalizes_and_corrects_starters(
+    session: AsyncSession,
+) -> None:
+    # 77 vendored rows have no equipment — free-exercise-db itself never tags them
+    # (e.g. some stretches) — not "some", an exact known count so a regression in
+    # the source data or the backfill logic is caught.
+    null_count = (
+        await session.execute(select(func.count(Exercise.id)).where(Exercise.equipment.is_(None)))
+    ).scalar_one()
+    assert null_count == 77
+
+    total = (await session.execute(select(func.count(Exercise.id)))).scalar_one()
+    assert total >= 873
+
+    # Normalized from the legacy "bodyweight" to free-exercise-db's "body only".
+    pushup = (
+        await session.execute(select(Exercise.equipment).where(Exercise.name == "Push-up"))
+    ).scalar_one()
+    assert pushup == "body only"
+
+    # Corrected from the legacy hand-tagged "machine" to free-exercise-db's "cable".
+    row = (
+        await session.execute(select(Exercise.equipment).where(Exercise.name == "Seated Cable Row"))
+    ).scalar_one()
+    assert row == "cable"
+
+
 async def test_log_workout_returns_the_exercises_vendored_muscle_data(
     session: AsyncSession,
 ) -> None:

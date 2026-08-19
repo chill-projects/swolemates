@@ -193,3 +193,4 @@ class ExerciseOut(BaseModel):
     id: UUID
     name: str
     muscle_group: str
+    equipment: str | None = None

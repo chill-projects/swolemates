@@ -898,6 +898,8 @@ export interface components {
         };
         /** ExerciseOut */
         ExerciseOut: {
+            /** Equipment */
+            equipment?: string | null;
             /**
              * Id
              * Format: uuid

@@ -45,7 +45,10 @@ interface CatalogExercise {
   id: string;
   name: string;
   muscle_group: string;
+  equipment: string | null;
 }
+
+const UNSPECIFIED_EQUIPMENT = "Unspecified";
 
 const $ = <T extends Element>(id: string): T => {
   const el = document.getElementById(id);
@@ -59,6 +62,11 @@ const nameInputEl = $<HTMLInputElement>("name-input");
 const groupsEl = $<HTMLDivElement>("groups");
 const pickerEl = $<HTMLDivElement>("picker");
 const pickerFilterEl = $<HTMLInputElement>("picker-filter");
+const pickerFilterToggleEl = $<HTMLButtonElement>("picker-filter-toggle");
+const pickerFilterBadgeEl = $<HTMLSpanElement>("picker-filter-badge");
+const pickerDrawerEl = $<HTMLDivElement>("picker-drawer");
+const pickerCategoryChipsEl = $<HTMLDivElement>("picker-category-chips");
+const pickerEquipmentChipsEl = $<HTMLDivElement>("picker-equipment-chips");
 const pickerListEl = $<HTMLUListElement>("picker-list");
 const pickerCancelEl = $<HTMLButtonElement>("picker-cancel");
 const addExerciseBtn = $<HTMLButtonElement>("add-exercise-btn");
@@ -72,6 +80,11 @@ let hasSetDefaultOpenGroup = false;
 let currentPayload: TemplatePayload | null = null;
 let exerciseCatalog: CatalogExercise[] | null = null;
 let pickerSupersetWith: string | null = null;
+// null means "All" for both — persist across picker close/reopen (and across
+// catalog reloads) so filtering to e.g. legs+dumbbell survives adding several
+// exercises in a row.
+let selectedCategory: string | null = null;
+let selectedEquipment: string | null = null;
 
 const app = new App({ name: "Swolemates Templates", version: "1.0.0" });
 
@@ -304,44 +317,125 @@ async function loadCatalog(): Promise<void> {
   const result = await app.callServerTool({ name: "list_exercise_catalog", arguments: {} });
   const structured = result.structuredContent as { exercises: CatalogExercise[] } | undefined;
   exerciseCatalog = structured?.exercises ?? [];
+  buildFilterChips();
 }
 
-function renderPickerList(filter: string): void {
-  const q = filter.trim().toLowerCase();
-  const matches = (exerciseCatalog ?? []).filter((ex) => ex.name.toLowerCase().includes(q));
-  const byGroup = new Map<string, CatalogExercise[]>();
-  for (const ex of matches) {
-    const list = byGroup.get(ex.muscle_group) ?? [];
-    list.push(ex);
-    byGroup.set(ex.muscle_group, list);
+/** One chip group (Category or Equipment): an "All" chip plus one chip per
+ *  distinct value actually present in the catalog. Clicking the active chip (or
+ *  "All") clears that group's filter back to "All". */
+function buildChipGroup(
+  container: HTMLElement,
+  options: string[],
+  get: () => string | null,
+  set: (value: string | null) => void,
+): void {
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = "chip";
+  allBtn.textContent = "All";
+  allBtn.onclick = () => {
+    set(null);
+    refreshFilterUI();
+  };
+  const chips = [allBtn];
+  for (const opt of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = opt;
+    btn.onclick = () => {
+      set(get() === opt ? null : opt);
+      refreshFilterUI();
+    };
+    chips.push(btn);
   }
+  container.replaceChildren(...chips);
+}
+
+function buildFilterChips(): void {
+  const catalog = exerciseCatalog ?? [];
+  const categories = [...new Set(catalog.map((ex) => ex.muscle_group))].sort();
+  const equipment = [
+    ...new Set(catalog.map((ex) => ex.equipment ?? UNSPECIFIED_EQUIPMENT)),
+  ].sort();
+  buildChipGroup(
+    pickerCategoryChipsEl,
+    categories,
+    () => selectedCategory,
+    (v) => (selectedCategory = v),
+  );
+  buildChipGroup(
+    pickerEquipmentChipsEl,
+    equipment,
+    () => selectedEquipment,
+    (v) => (selectedEquipment = v),
+  );
+  refreshFilterUI();
+}
+
+function refreshFilterUI(): void {
+  for (const btn of Array.from(pickerCategoryChipsEl.children) as HTMLButtonElement[]) {
+    const active = btn.textContent === "All" ? selectedCategory === null : btn.textContent === selectedCategory;
+    btn.setAttribute("aria-pressed", String(active));
+  }
+  for (const btn of Array.from(pickerEquipmentChipsEl.children) as HTMLButtonElement[]) {
+    const active = btn.textContent === "All" ? selectedEquipment === null : btn.textContent === selectedEquipment;
+    btn.setAttribute("aria-pressed", String(active));
+  }
+  const activeCount = (selectedCategory !== null ? 1 : 0) + (selectedEquipment !== null ? 1 : 0);
+  pickerFilterBadgeEl.hidden = activeCount === 0;
+  pickerFilterBadgeEl.textContent = String(activeCount);
+  renderPickerList();
+}
+
+function matchesFilters(ex: CatalogExercise, query: string): boolean {
+  if (!ex.name.toLowerCase().includes(query)) return false;
+  if (selectedCategory !== null && ex.muscle_group !== selectedCategory) return false;
+  if (selectedEquipment !== null) {
+    const equipmentMatches =
+      selectedEquipment === UNSPECIFIED_EQUIPMENT
+        ? ex.equipment === null
+        : ex.equipment === selectedEquipment;
+    if (!equipmentMatches) return false;
+  }
+  return true;
+}
+
+function renderPickerList(): void {
+  const q = pickerFilterEl.value.trim().toLowerCase();
+  const matches = (exerciseCatalog ?? []).filter((ex) => matchesFilters(ex, q));
+  // Grouping by category header is redundant once a category chip narrows the
+  // list to one category already.
+  const grouped = selectedCategory === null;
 
   const items: HTMLElement[] = [];
-  for (const [group, exs] of byGroup) {
-    const label = document.createElement("li");
-    label.className = "picker-group-label";
-    label.textContent = group;
-    items.push(label);
-    for (const ex of exs) {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = ex.name;
-      btn.onclick = () => {
-        const supersetWith = pickerSupersetWith;
-        closePicker();
-        void callAndRender("update_workout_template", {
-          template_id: currentPayload?.id,
-          action: "add_exercise",
-          exercise: ex.name,
-          sets: 3,
-          reps: 10,
-          ...(supersetWith ? { superset_with: supersetWith } : {}),
-        });
-      };
-      li.appendChild(btn);
-      items.push(li);
+  let lastGroup: string | null = null;
+  for (const ex of matches) {
+    if (grouped && ex.muscle_group !== lastGroup) {
+      const label = document.createElement("li");
+      label.className = "picker-group-label";
+      label.textContent = ex.muscle_group;
+      items.push(label);
+      lastGroup = ex.muscle_group;
     }
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = ex.name;
+    btn.onclick = () => {
+      const supersetWith = pickerSupersetWith;
+      closePicker();
+      void callAndRender("update_workout_template", {
+        template_id: currentPayload?.id,
+        action: "add_exercise",
+        exercise: ex.name,
+        sets: 3,
+        reps: 10,
+        ...(supersetWith ? { superset_with: supersetWith } : {}),
+      });
+    };
+    li.appendChild(btn);
+    items.push(li);
   }
   pickerListEl.replaceChildren(...items);
 }
@@ -350,12 +444,14 @@ function openPicker(supersetWith: string | null): void {
   pickerSupersetWith = supersetWith;
   pickerEl.hidden = false;
   pickerFilterEl.value = "";
-  if (exerciseCatalog) renderPickerList("");
-  else void loadCatalog().then(() => renderPickerList(""));
+  if (exerciseCatalog) renderPickerList();
+  else void loadCatalog().then(() => renderPickerList());
 }
 
 function closePicker(): void {
   pickerEl.hidden = true;
+  pickerDrawerEl.hidden = true;
+  pickerFilterToggleEl.setAttribute("aria-expanded", "false");
   pickerSupersetWith = null;
 }
 
@@ -385,7 +481,11 @@ nameInputEl.onblur = () => {
   });
 };
 addExerciseBtn.onclick = () => openPicker(null);
-pickerFilterEl.oninput = () => renderPickerList(pickerFilterEl.value);
+pickerFilterEl.oninput = () => renderPickerList();
+pickerFilterToggleEl.onclick = () => {
+  pickerDrawerEl.hidden = !pickerDrawerEl.hidden;
+  pickerFilterToggleEl.setAttribute("aria-expanded", String(!pickerDrawerEl.hidden));
+};
 pickerCancelEl.onclick = () => closePicker();
 archiveBtn.onclick = () => {
   if (!currentPayload) return;

@@ -181,7 +181,13 @@ async def list_exercise_catalog() -> dict:
         exercises = await workouts_service.list_exercises(session, user_sub)
     return {
         "exercises": [
-            {"id": str(e.id), "name": e.name, "muscle_group": e.muscle_group} for e in exercises
+            {
+                "id": str(e.id),
+                "name": e.name,
+                "muscle_group": e.muscle_group,
+                "equipment": e.equipment,
+            }
+            for e in exercises
         ]
     }
 

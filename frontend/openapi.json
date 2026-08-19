@@ -502,6 +502,17 @@
       },
       "ExerciseOut": {
         "properties": {
+          "equipment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipment"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
