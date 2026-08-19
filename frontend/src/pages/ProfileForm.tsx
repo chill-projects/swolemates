@@ -170,6 +170,8 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
       <button type="submit" disabled={updateProfile.isPending}>
         Save
       </button>
+      {updateProfile.isSuccess && <p className="muted">Saved.</p>}
+      {updateProfile.isError && <p className="error">{updateProfile.error.message}</p>}
 
       <div className="calculate-targets">
         <button
