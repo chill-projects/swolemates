@@ -14,35 +14,39 @@ export function SignIn({ config }: { config: AuthConfig }) {
 
   if (!config.configured) {
     return (
-      <section>
-        <h2>Sign-in isn’t set up yet</h2>
-        <p className="muted">
-          This deployment is running with <code>ENVIRONMENT={config.environment}</code> and
-          no WorkOS AuthKit credentials, so there’s no way to sign in and the API rejects
-          every request.
-        </p>
-        <p className="muted">
-          Set <code>AUTHKIT_DOMAIN</code> and <code>WORKOS_CLIENT_ID</code> on the service,
-          then switch <code>ENVIRONMENT</code> to <code>production</code>. See{" "}
-          <code>SETUP.md</code> §2.
-        </p>
-      </section>
+      <div className="signin-screen">
+        <section className="dash-card signin-card">
+          <h2>Sign-in isn’t set up yet</h2>
+          <p className="muted">
+            This deployment is running with <code>ENVIRONMENT={config.environment}</code> and
+            no WorkOS AuthKit credentials, so there’s no way to sign in and the API rejects
+            every request.
+          </p>
+          <p className="muted">
+            Set <code>AUTHKIT_DOMAIN</code> and <code>WORKOS_CLIENT_ID</code> on the service,
+            then switch <code>ENVIRONMENT</code> to <code>production</code>. See{" "}
+            <code>SETUP.md</code> §2.
+          </p>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section>
-      <h2>Sign in</h2>
-      <p className="muted">You’ll be sent to WorkOS and returned here.</p>
-      {error && <p className="error">{error}</p>}
-      <button
-        type="button"
-        onClick={() => {
-          login(config).catch(() => setError("Couldn’t start the login flow."));
-        }}
-      >
-        Sign in
-      </button>
-    </section>
+    <div className="signin-screen">
+      <section className="dash-card signin-card">
+        <h2>Sign in</h2>
+        <p className="muted">You’ll be sent to WorkOS and returned here.</p>
+        {error && <p className="error">{error}</p>}
+        <button
+          type="button"
+          onClick={() => {
+            login(config).catch(() => setError("Couldn’t start the login flow."));
+          }}
+        >
+          Sign in
+        </button>
+      </section>
+    </div>
   );
 }

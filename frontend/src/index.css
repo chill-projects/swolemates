@@ -381,6 +381,31 @@ li {
   gap: 1.25rem;
 }
 
+/* SignIn — a centered card rather than plain left-flowing text, since it has no other
+   full-width element (nav bar, cards) to visually confirm the page is centered. */
+.signin-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.signin-card {
+  width: 100%;
+}
+
+/* Center the title and action; leave paragraph text left-aligned — multi-line
+   explanatory text (the unconfigured-deployment message) reads worse centered. */
+.signin-card h2 {
+  text-align: center;
+}
+
+.signin-card button {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+}
+
 .dash-card {
   background: var(--card);
   border: 1px solid var(--line);
