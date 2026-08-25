@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useGenerateInvite, usePartnerSummary } from "../api/partner";
 import type { components } from "../api/generated";
+import { PartnerInviteInfo } from "../components/PartnerInviteInfo";
 import { takeInviteRedeemError } from "./InvitePreviewPage";
 
 type PartnerSummary = components["schemas"]["PartnerSummaryOut"];
@@ -17,7 +18,9 @@ export function PartnerPage() {
 
   return (
     <div className="dash-stack">
-      <h2>Partner</h2>
+      <h2>
+        Partner <PartnerInviteInfo />
+      </h2>
       {redeemError && <p className="error">{redeemError}</p>}
       {summary.isPending && <p className="muted">Loading…</p>}
       {summary.isError && <p className="error">Couldn’t load your partner.</p>}

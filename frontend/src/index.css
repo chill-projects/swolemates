@@ -111,16 +111,16 @@ h1 a {
   color: var(--red);
 }
 
-/* McpConnectInfo — info icon next to a page heading (currently Profile settings) that
-   reveals how to connect Claude Desktop to the Swolemates MCP server. */
-.mcp-info {
+/* InfoPopover — info icon next to a page heading (Profile settings, Partner) that
+   reveals more detail on click. McpConnectInfo and PartnerInviteInfo supply content. */
+.info-popover {
   position: relative;
   display: inline-block;
   margin-left: 0.35rem;
   vertical-align: middle;
 }
 
-.mcp-info-trigger {
+.info-popover-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -131,17 +131,17 @@ h1 a {
   border-radius: 999px;
 }
 
-.mcp-info-trigger:hover {
+.info-popover-trigger:hover {
   color: var(--teal);
   background: var(--teal-pale);
 }
 
-.mcp-info-icon {
+.info-popover-icon {
   width: 1.15rem;
   height: 1.15rem;
 }
 
-.mcp-info-popover {
+.info-popover-content {
   position: absolute;
   top: calc(100% + 0.6rem);
   left: 0;
@@ -155,7 +155,7 @@ h1 a {
   box-shadow: 0 8px 24px rgba(18, 42, 46, 0.18);
 }
 
-.mcp-info-arrow {
+.info-popover-arrow {
   position: absolute;
   top: -0.4rem;
   left: 0.6rem;
@@ -167,13 +167,13 @@ h1 a {
   transform: rotate(45deg);
 }
 
-.mcp-info-title {
+.info-popover-title {
   font-family: var(--font-display);
   font-weight: 600;
   margin: 0 0 0.5rem;
 }
 
-.mcp-info-steps {
+.info-popover-steps {
   margin: 0 0 0.6rem;
   padding-left: 1.1rem;
   font-size: 0.85rem;
@@ -185,14 +185,14 @@ h1 a {
 /* The global `li` rule above (flex + justify-content: space-between, for the partner/
    invite rows) otherwise bleeds into any plain ol/ul — flex display on li also suppresses
    its marker per spec, so numbers vanish. Reset both back to normal list rendering here. */
-.mcp-info-steps li {
+.info-popover-steps li {
   display: list-item;
   justify-content: normal;
   padding: 0;
   border-bottom: none;
 }
 
-.mcp-info-url-row {
+.info-popover-url-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -203,7 +203,7 @@ h1 a {
   background: var(--sand);
 }
 
-.mcp-info-url-row code {
+.info-popover-url-row code {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -211,13 +211,13 @@ h1 a {
   font-size: 0.75rem;
 }
 
-.mcp-info-url-row button {
+.info-popover-url-row button {
   padding: 0.25rem 0.6rem;
   font-size: 0.75rem;
   flex-shrink: 0;
 }
 
-.mcp-info-unlocks {
+.info-popover-footer {
   margin: 0;
   font-size: 0.78rem;
 }
@@ -387,6 +387,12 @@ li {
   border-radius: 0.75rem;
   padding: 1rem;
   max-width: 26rem;
+  /* Narrower than .dash-stack's full width — without this it sits flush left
+     instead of centered, since a flex item capped by max-width still defaults
+     to align-items: stretch's flex-start-like cross-axis position. Headings and
+     other full-width siblings in .dash-stack are untouched (align-self, not
+     align-items on the parent). */
+  align-self: center;
 }
 
 .dash-card-header {
