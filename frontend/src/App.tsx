@@ -6,6 +6,7 @@ import { useProfile } from "./api/profile";
 import { SignIn } from "./auth/SignIn";
 import { bootstrapSession, completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
+import { McpConnectInfo } from "./components/McpConnectInfo";
 import { NavBar } from "./components/NavBar";
 import { DashboardPage } from "./pages/DashboardPage";
 import {
@@ -165,7 +166,9 @@ function AuthenticatedApp({
       <NavBar />
       {onSettingsRoute ? (
         <>
-          <h2>Profile settings</h2>
+          <h2>
+            Profile settings <McpConnectInfo />
+          </h2>
           <ProfileForm profile={profile.data} />
         </>
       ) : onPartnerRoute ? (

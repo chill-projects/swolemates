@@ -61,7 +61,7 @@
 }
 
 body {
-  margin: 0;
+  margin: 0 auto;
   padding: 1.5rem;
   max-width: 40rem;
   background: var(--sand);
@@ -109,6 +109,117 @@ h1 a {
 
 .error {
   color: var(--red);
+}
+
+/* McpConnectInfo — info icon next to a page heading (currently Profile settings) that
+   reveals how to connect Claude Desktop to the Swolemates MCP server. */
+.mcp-info {
+  position: relative;
+  display: inline-block;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+.mcp-info-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: 999px;
+}
+
+.mcp-info-trigger:hover {
+  color: var(--teal);
+  background: var(--teal-pale);
+}
+
+.mcp-info-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.mcp-info-popover {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  left: 0;
+  z-index: 30;
+  width: 19rem;
+  max-width: 80vw;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.85rem;
+  box-shadow: 0 8px 24px rgba(18, 42, 46, 0.18);
+}
+
+.mcp-info-arrow {
+  position: absolute;
+  top: -0.4rem;
+  left: 0.6rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--card);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+
+.mcp-info-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.mcp-info-steps {
+  margin: 0 0 0.6rem;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* The global `li` rule above (flex + justify-content: space-between, for the partner/
+   invite rows) otherwise bleeds into any plain ol/ul — flex display on li also suppresses
+   its marker per spec, so numbers vanish. Reset both back to normal list rendering here. */
+.mcp-info-steps li {
+  display: list-item;
+  justify-content: normal;
+  padding: 0;
+  border-bottom: none;
+}
+
+.mcp-info-url-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--sand);
+}
+
+.mcp-info-url-row code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+.mcp-info-url-row button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.mcp-info-unlocks {
+  margin: 0;
+  font-size: 0.78rem;
 }
 
 .nav-bar {
