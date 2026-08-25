@@ -1,6 +1,11 @@
 import { type FormEvent, useState } from "react";
 
+import { useLogWeight } from "../api/nutrition";
 import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
+
+// weight_lbs is always stored in pounds regardless of the user's display unit — matches
+// app/services/workouts.py's MET-calorie estimate, which reads it back the same way.
+const LBS_PER_KG = 2.20462;
 
 type WeightUnit = "lbs" | "kg";
 type BiologicalSex = "male" | "female";
@@ -51,6 +56,16 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
   const updateProfile = useUpdateProfile();
   const completeOnboarding = useCompleteOnboarding();
   const calculateTargets = useCalculateTargets();
+
+  const [weightInput, setWeightInput] = useState("");
+  const logWeight = useLogWeight();
+
+  function handleLogWeight() {
+    const value = Number(weightInput);
+    if (!value) return;
+    const weightLbs = weightUnit === "kg" ? value * LBS_PER_KG : value;
+    logWeight.mutate(weightLbs, { onSuccess: () => setWeightInput("") });
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -105,6 +120,27 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
           Used only to estimate a starting point for your calorie/macro targets via the
           "Calculate targets" button below — nothing here is required to use the app.
         </p>
+        <label>
+          Current weight ({weightUnit})
+          <input
+            type="number"
+            inputMode="decimal"
+            value={weightInput}
+            onChange={(e) => setWeightInput(e.target.value)}
+            placeholder={weightUnit === "kg" ? "e.g. 68" : "e.g. 150"}
+          />
+        </label>
+        <div className="calculate-targets">
+          <button
+            type="button"
+            onClick={handleLogWeight}
+            disabled={!weightInput || logWeight.isPending}
+          >
+            Log weight
+          </button>
+          {logWeight.isSuccess && <p className="muted">Logged.</p>}
+          {logWeight.isError && <p className="error">{logWeight.error.message}</p>}
+        </div>
         <label>
           Sex
           <select value={sex} onChange={(e) => setSex(e.target.value as BiologicalSex)}>

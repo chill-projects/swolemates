@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useLogWeight } from "../api/nutrition";
 import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
 import { ProfileForm } from "./ProfileForm";
 
@@ -11,9 +12,14 @@ vi.mock("../api/profile", () => ({
   useCalculateTargets: vi.fn(),
 }));
 
+vi.mock("../api/nutrition", () => ({
+  useLogWeight: vi.fn(),
+}));
+
 const mutateUpdate = vi.fn();
 const mutateComplete = vi.fn();
 const mutateCalculate = vi.fn();
+const mutateLogWeight = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -31,6 +37,12 @@ beforeEach(() => {
     isSuccess: false,
     isError: false,
   } as unknown as ReturnType<typeof useCalculateTargets>);
+  vi.mocked(useLogWeight).mockReturnValue({
+    mutate: mutateLogWeight,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  } as unknown as ReturnType<typeof useLogWeight>);
 });
 
 describe("ProfileForm", () => {

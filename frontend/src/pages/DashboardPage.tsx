@@ -256,17 +256,19 @@ function NutritionCalendarCard({
                       <span>{bar.label}</span>
                       <span>{formatMacro(bar.consumed, bar.target, bar.unit)}</span>
                     </div>
-                    {bar.target !== null && (
-                      <div className="dash-tooltip-bar-track">
-                        <div
-                          className="dash-tooltip-bar-fill"
-                          style={{
-                            width: `${macroPercent(bar.consumed, bar.target)}%`,
-                            background: MACRO_COLORS[bar.trackable_key] ?? "var(--ink-soft)",
-                          }}
-                        />
-                      </div>
-                    )}
+                    {/* Always rendered, even with no target (0% fill) — matches
+                        nutrition-day.html's bar-track, which never hides the track
+                        either. Hiding it here made an unset goal look like a rendering
+                        bug rather than "no goal set yet". */}
+                    <div className="dash-tooltip-bar-track">
+                      <div
+                        className="dash-tooltip-bar-fill"
+                        style={{
+                          width: `${macroPercent(bar.consumed, bar.target)}%`,
+                          background: MACRO_COLORS[bar.trackable_key] ?? "var(--ink-soft)",
+                        }}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

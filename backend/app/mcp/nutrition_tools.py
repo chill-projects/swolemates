@@ -136,18 +136,22 @@ async def get_nutrition_day() -> dict:
 async def log_nutrition(
     entries: list[dict], name: str | None = None, meal_type: str | None = None
 ) -> dict:
-    """Record one or more trackable entries — a meal, a glass of water, creatine — in one call.
-    Briefly compare today to last time if notable — how close today is to target, or
-    that this extends/breaks a logging or goal-adherence streak — without making them
-    ask.
+    """Record one or more trackable entries — a meal, a glass of water, creatine, today's
+    body weight — in one call. Briefly compare today to last time if notable — how close
+    today is to target, or that this extends/breaks a logging or goal-adherence streak —
+    without making them ask.
 
     Args:
         entries: [{"trackable_key": "calories", "value": 450}, ...]. Valid keys today:
-            calories, protein_g, carbs_g, fat_g, fiber_g. If this food came from
-            search_food_facts, include every non-null macro that match reported, not
-            just calories/protein — the day view shows all of them.
-        name: What was logged, e.g. "chicken and rice".
-        meal_type: breakfast/lunch/dinner/snack, if applicable.
+            calories, protein_g, carbs_g, fat_g, fiber_g, weight_lbs. If this food came
+            from search_food_facts, include every non-null macro that match reported,
+            not just calories/protein — the day view shows all of them. weight_lbs is
+            always pounds regardless of the user's display unit preference — convert
+            before calling if they gave you kg (lbs = kg * 2.20462) — and stands alone
+            (its own entry, not mixed into a food entry's macros); it also unlocks
+            calculate_targets, which needs a logged weight to run.
+        name: What was logged, e.g. "chicken and rice". Use "Weight" for a weight-only entry.
+        meal_type: breakfast/lunch/dinner/snack, if applicable — omit for a weight entry.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
