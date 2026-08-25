@@ -91,7 +91,6 @@ h1 {
 .dash-tooltip-date,
 .dash-tooltip-bar-label,
 .partner-stat span,
-.partner-invite-row code,
 code {
   font-family: var(--font-mono);
 }
@@ -659,26 +658,8 @@ li {
   margin-top: 0.15rem;
 }
 
-/* Partner (invite + linked summary — reuses .dash-card/.dash-badge as its base) */
-
-.partner-invite-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.5rem;
-  background: var(--sand);
-}
-
-.partner-invite-row code {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  white-space: nowrap;
-  font-size: 0.8rem;
-}
+/* Partner (linked summary — reuses .dash-card/.dash-badge as its base; the invite
+   link itself lives in PartnerInviteInfo's popover, not a page-level card) */
 
 .partner-stat-row {
   display: flex;

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
-import { useGenerateInvite, usePartnerSummary } from "../api/partner";
+import { usePartnerSummary } from "../api/partner";
 import type { components } from "../api/generated";
 import { PartnerInviteInfo } from "../components/PartnerInviteInfo";
 import { takeInviteRedeemError } from "./InvitePreviewPage";
@@ -8,18 +8,19 @@ import { takeInviteRedeemError } from "./InvitePreviewPage";
 type PartnerSummary = components["schemas"]["PartnerSummaryOut"];
 
 /** Partner v1 (#5/#12, resolved): one accountability partner, linked via invite
- * code. Unlinked shows a share link (auto-generated on mount — generateInvite is
- * idempotent server-side, returns the same pending invite on repeat visits rather
- * than minting a new code). Linked shows the partner-safe aggregate summary — never
- * food logs or weight, per the privacy boundary in PartnerSummaryOut itself. */
+ * code. Unlinked shows a "no partner" status with the invite link tucked behind the
+ * heading's info icon (PartnerInviteInfo) rather than an always-visible card. Linked
+ * shows the partner-safe aggregate summary — never food logs or weight, per the
+ * privacy boundary in PartnerSummaryOut itself. */
 export function PartnerPage() {
   const summary = usePartnerSummary();
   const [redeemError] = useState(() => takeInviteRedeemError());
+  const unlinked = summary.data !== undefined && !summary.data;
 
   return (
     <div className="dash-stack">
       <h2>
-        Partner <PartnerInviteInfo />
+        Partner {unlinked && <PartnerInviteInfo />}
       </h2>
       {redeemError && <p className="error">{redeemError}</p>}
       {summary.isPending && <p className="muted">Loading…</p>}
@@ -31,48 +32,9 @@ export function PartnerPage() {
 }
 
 function InviteView() {
-  const generate = useGenerateInvite();
-  const triggered = useRef(false);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (triggered.current) return;
-    triggered.current = true;
-    generate.mutate();
-  }, [generate]);
-
-  if (generate.isError) return <p className="error">{generate.error.message}</p>;
-  if (!generate.data) return <p className="muted">Setting up your invite link…</p>;
-
-  const url = `${window.location.origin}/invite/${generate.data.code}`;
-
   return (
     <div className="dash-card">
-      <div className="dash-card-header">
-        <span className="dash-card-title">Invite a partner</span>
-      </div>
-      <p className="muted">
-        Share this link — whoever signs up through it becomes your accountability partner.
-        They’ll see your workout streak, frequency, PRs, and nutrition streak — never your
-        food logs or weight.
-      </p>
-      <div className="partner-invite-row">
-        <code>{url}</code>
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard.writeText(url).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            });
-          }}
-        >
-          {copied ? "Copied!" : "Copy"}
-        </button>
-      </div>
-      <p className="muted">
-        Expires {new Date(generate.data.expires_at).toLocaleDateString()}
-      </p>
+      <p className="muted">No partner added yet — tap the info icon above to invite one.</p>
     </div>
   );
 }
