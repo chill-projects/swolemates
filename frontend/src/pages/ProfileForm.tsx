@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { type GoalInput, useGoals, useLogWeight, useSetGoals } from "../api/nutrition";
 import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
+import { InfoPopover } from "../components/InfoPopover";
 
 // weight_lbs is always stored in pounds regardless of the user's display unit — matches
 // app/services/workouts.py's MET-calorie estimate, which reads it back the same way.
@@ -258,11 +259,16 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
       </label>
 
       <fieldset>
-        <legend>Stats for calculating targets</legend>
-        <p className="muted">
-          Used only to estimate a starting point for your calorie/macro targets via the
-          "Calculate targets" button below — nothing here is required to use the app.
-        </p>
+        <legend>
+          Stats for calculating targets
+          <InfoPopover label="About these stats">
+            <p className="info-popover-title">Stats for calculating targets</p>
+            <p className="muted">
+              Used only to estimate a starting point for your calorie/macro targets via the
+              "Calculate targets" button below — nothing here is required to use the app.
+            </p>
+          </InfoPopover>
+        </legend>
         <label>
           Current weight ({weightUnit})
           <input
@@ -370,13 +376,18 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
 
       {hasTargets && (
         <fieldset>
-          <legend>Daily targets</legend>
-          <p className="muted">
-            Adjusting calories redistributes fat/carbs/fiber around it, protein fixed to your
-            bodyweight. Adjusting protein, carbs, or fat instead keeps calories fixed and
-            splits the difference between the other two, proportionally to their current
-            split.
-          </p>
+          <legend>
+            Daily targets
+            <InfoPopover label="How editing these targets works">
+              <p className="info-popover-title">Daily targets</p>
+              <p className="muted">
+                Adjusting calories redistributes fat/carbs/fiber around it, protein fixed to
+                your bodyweight. Adjusting protein, carbs, or fat instead keeps calories fixed
+                and splits the difference between the other two, proportionally to their
+                current split.
+              </p>
+            </InfoPopover>
+          </legend>
           <label>
             Calories
             <input
