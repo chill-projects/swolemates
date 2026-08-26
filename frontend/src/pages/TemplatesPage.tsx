@@ -129,14 +129,14 @@ export function TemplatesPage({ me }: { me: Me }) {
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
-      <div style={{ display: "flex", gap: "1.5rem" }}>
-        <div style={{ minWidth: "10rem" }}>
-          <h3>Templates</h3>
+      <div className="dash-stack">
+        <div className="dash-card">
+          <h2>Templates</h2>
           {templates === null && <p className="muted">Loading…</p>}
           {templates?.length === 0 && (
             <p className="muted">No templates yet — ask Claude to make you one.</p>
           )}
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul>
             {templates?.map((t) => (
               <li key={t.id}>
                 <button type="button" onClick={() => setSelectedId(t.id)}>
@@ -146,7 +146,7 @@ export function TemplatesPage({ me }: { me: Me }) {
             ))}
           </ul>
         </div>
-        <div style={{ flex: 1 }}>
+        <div className="dash-card">
           {selectedId ? (
             <AppRenderer
               key={selectedId}
