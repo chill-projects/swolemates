@@ -55,6 +55,11 @@ async def create_workout_template(name: str, exercises: list[dict]) -> dict:
     """Save a reusable prescription — "make me a pull day" — Claude picks the
     exercises and targets from the conversation, no template-builder wizard needed.
 
+    Exercise names must match the catalog exactly (case-insensitive) to attach real
+    muscle-group data — call search_exercises first ("squat" -> "Barbell Back Squat")
+    rather than guessing a colloquial name; a near-miss silently creates a new custom
+    exercise with no muscle map coverage on the workout view.
+
     Args:
         name: e.g. "Pull day".
         exercises: [{"exercise": "Deadlift", "sets": 3, "reps": 5, "weight"?: 225,

@@ -85,6 +85,28 @@ async def list_exercises(session: AsyncSession, user_sub: str) -> list[Exercise]
     return list(result.scalars())
 
 
+async def search_exercises(
+    session: AsyncSession, user_sub: str, query: str, *, limit: int = 15
+) -> list[Exercise]:
+    """Substring match against the catalog + this user's own custom exercises — lets
+    a caller ground a colloquial exercise name ("squat", "bench press") against the
+    real catalog before naming it in log_workout/create_workout_template. `_resolve_
+    exercise` only ever matches an exact (case-insensitive) name; anything off by even
+    a word — "Back Squat" instead of the catalog's "Barbell Back Squat" — silently
+    creates a new custom exercise with no real muscle_group, which is why the workout
+    view's muscle map stays unfilled for it."""
+    result = await session.execute(
+        select(Exercise)
+        .where(
+            Exercise.is_custom.is_(False) | (Exercise.created_by == user_sub),
+            Exercise.name.ilike(f"%{query.strip()}%"),
+        )
+        .order_by(Exercise.name)
+        .limit(limit)
+    )
+    return list(result.scalars())
+
+
 @dataclass
 class PersonalRecordSummary:
     exercise_name: str

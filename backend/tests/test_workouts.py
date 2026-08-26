@@ -115,6 +115,27 @@ async def test_log_workout_matches_the_catalog_case_insensitively(session: Async
     )
 
     assert first.exercises[0].exercise_id == second.exercises[0].exercise_id
+
+
+async def test_search_exercises_matches_substring_case_insensitively(
+    session: AsyncSession,
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, "bArBeLl bAcK sQuAt")
+    assert any(e.name == "Barbell Back Squat" for e in matches)
+
+
+async def test_search_exercises_scopes_custom_exercises_to_their_owner(
+    session: AsyncSession,
+) -> None:
+    await service.log_workout(
+        session,
+        OTHER_USER,
+        exercises=[{"exercise": "Other User's Made Up Curl", "sets": [{"weight": 20, "reps": 10}]}],
+    )
+
+    matches = await service.search_exercises(session, TEST_USER, "Made Up Curl")
+
+    assert matches == []
     exercises = await service.list_exercises(session, TEST_USER)
     assert sum(1 for e in exercises if e.name == "Barbell Back Squat") == 1
 
