@@ -20,11 +20,20 @@
         font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
         font-size: 14px;
         line-height: 1.5;
+        /* Matches frontend/src/index.css's --ink exactly — this component is
+           self-contained (no shared stylesheet with the SPA shell) but renders inside
+           it via AppRenderer, so its body text needs to match the host's ink color, not
+           fall back to the browser's default black. Same light/dark pair, kept in sync
+           by hand. */
+        --ink: #122a2e;
         --accent: #2f9e8f;
         --border: color-mix(in srgb, currentColor 14%, transparent);
         --field-border: color-mix(in srgb, currentColor 35%, transparent);
       }
-      body { margin: 0; padding: 0.85rem; }
+      @media (prefers-color-scheme: dark) {
+        :root { --ink: #f2ede1; }
+      }
+      body { margin: 0; padding: 0.85rem; color: var(--ink); }
       .muted { opacity: 0.65; }
       .error { color: #d33; }
       button {

@@ -26,12 +26,13 @@
         --ring-fill: #2f9e8f;
         --bar-track: color-mix(in srgb, currentColor 10%, transparent);
         --border: color-mix(in srgb, currentColor 14%, transparent);
-        /* Matches frontend/src/index.css's --sand/--card/--teal/--gold/--plum/--coral
-           exactly — this component is self-contained (no shared stylesheet with the SPA
-           shell) but renders inside it via AppRenderer, and the dashboard's per-day
-           tooltip (DashboardPage.tsx's MACRO_COLORS) uses these same four for its bars,
-           so this view needs to match by value, not just look similarly "colorful".
-           Same light/dark pairs as the host, kept in sync by hand. */
+        /* Matches frontend/src/index.css's --ink/--sand/--card/--teal/--gold/--plum/
+           --coral exactly — this component is self-contained (no shared stylesheet with
+           the SPA shell) but renders inside it via AppRenderer, and the dashboard's
+           per-day tooltip (DashboardPage.tsx's MACRO_COLORS) uses these same four for
+           its bars, so this view needs to match by value, not just look similarly
+           "colorful". Same light/dark pairs as the host, kept in sync by hand. */
+        --ink: #122a2e;
         --page-bg: #f4f1e8;
         --card-bg: #ffffff;
         --teal: #0e5c56;
@@ -41,6 +42,7 @@
       }
       @media (prefers-color-scheme: dark) {
         :root {
+          --ink: #f2ede1;
           --page-bg: #16211f;
           --card-bg: #1c2926;
           --teal: #2bb3a3;
@@ -49,7 +51,7 @@
           --coral: #ff8b76;
         }
       }
-      body { margin: 0; padding: 0.85rem; background: var(--page-bg); }
+      body { margin: 0; padding: 0.85rem; background: var(--page-bg); color: var(--ink); }
       .hero {
         display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1rem;
         background: var(--card-bg); border: 1px solid var(--border); border-radius: 0.75rem;
