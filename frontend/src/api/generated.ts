@@ -974,8 +974,8 @@ export interface components {
             name: string;
             /** Protein G */
             protein_g: number | null;
-            /** Serving Description */
-            serving_description: string;
+            /** Serving Grams */
+            serving_grams: number | null;
         };
         /** GoalIn */
         GoalIn: {

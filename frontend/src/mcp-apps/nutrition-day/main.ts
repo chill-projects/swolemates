@@ -44,7 +44,9 @@ interface DayLogEntry {
 interface FoodMatch {
   name: string;
   brand: string | null;
-  serving_description: string;
+  // Every macro below is per 100g; serving_grams (when OFF reports a gram serving
+  // size) is only a prefill hint for the grams input, not a unit the values are in.
+  serving_grams: number | null;
   calories: number | null;
   protein_g: number | null;
   carbs_g: number | null;
@@ -596,13 +598,15 @@ async function callAndRender(name: string, args: Record<string, unknown>): Promi
   }
 }
 
-function macroSummary(match: FoodMatch, qty = 1): string {
+// match's fields are all per 100g — grams is how many grams were actually portioned.
+function macroSummary(match: FoodMatch, grams = 100): string {
+  const scale = grams / 100;
   const parts: string[] = [];
-  if (match.calories != null) parts.push(`${Math.round(match.calories * qty)} cal`);
-  if (match.protein_g != null) parts.push(`${Math.round(match.protein_g * qty)}g protein`);
-  if (match.carbs_g != null) parts.push(`${Math.round(match.carbs_g * qty)}g carbs`);
-  if (match.fat_g != null) parts.push(`${Math.round(match.fat_g * qty)}g fat`);
-  if (match.fiber_g != null) parts.push(`${Math.round(match.fiber_g * qty)}g fiber`);
+  if (match.calories != null) parts.push(`${Math.round(match.calories * scale)} cal`);
+  if (match.protein_g != null) parts.push(`${Math.round(match.protein_g * scale)}g protein`);
+  if (match.carbs_g != null) parts.push(`${Math.round(match.carbs_g * scale)}g carbs`);
+  if (match.fat_g != null) parts.push(`${Math.round(match.fat_g * scale)}g fat`);
+  if (match.fiber_g != null) parts.push(`${Math.round(match.fiber_g * scale)}g fiber`);
   return parts.join(", ");
 }
 
@@ -617,20 +621,26 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
   meta.className = "food-result-meta";
   info.append(name, meta);
 
-  // match's macros are per one serving_description (e.g. "1 cup"); qtyInput is the
-  // number of that serving, not raw grams, so the search result stays readable.
-  const qtyInput = document.createElement("input");
-  qtyInput.type = "number";
-  qtyInput.className = "food-result-qty";
-  qtyInput.value = "1";
-  qtyInput.min = "0.1";
-  qtyInput.step = "0.1";
+  // match's macros are all per 100g — gramsInput is how many grams were actually
+  // portioned (kitchen-scale style), not a multiple of some serving. Prefilled from
+  // the manufacturer's own serving size when OFF reports one in grams, else 100.
+  const gramsInput = document.createElement("input");
+  gramsInput.type = "number";
+  gramsInput.className = "food-result-grams";
+  gramsInput.value = String(match.serving_grams ?? 100);
+  gramsInput.min = "1";
+  gramsInput.step = "1";
+  gramsInput.setAttribute("aria-label", `Grams of ${match.name}`);
+
+  const gramsUnit = document.createElement("span");
+  gramsUnit.className = "food-result-grams-unit";
+  gramsUnit.textContent = "g";
 
   const updateMeta = () => {
-    const qty = Number(qtyInput.value) || 0;
-    meta.textContent = `${qty} × ${match.serving_description} — ${macroSummary(match, qty)}`;
+    const grams = Number(gramsInput.value) || 0;
+    meta.textContent = `${grams}g — ${macroSummary(match, grams)}`;
   };
-  qtyInput.oninput = updateMeta;
+  gramsInput.oninput = updateMeta;
   updateMeta();
 
   const logBtn = document.createElement("button");
@@ -638,7 +648,8 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
   logBtn.className = "food-result-log";
   logBtn.textContent = "Log";
   logBtn.onclick = () => {
-    const qty = Number(qtyInput.value) || 1;
+    const grams = Number(gramsInput.value) || 100;
+    const scale = grams / 100;
     const macros: [string, number | null][] = [
       ["calories", match.calories],
       ["protein_g", match.protein_g],
@@ -648,7 +659,7 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
     ];
     const entries = macros
       .filter(([, value]) => value != null)
-      .map(([trackable_key, value]) => ({ trackable_key, value: (value as number) * qty }));
+      .map(([trackable_key, value]) => ({ trackable_key, value: (value as number) * scale }));
     void callAndRender("log_nutrition", { entries, name: match.name }).then((ok) => {
       if (!ok) return;
       foodSearchResultsEl.replaceChildren();
@@ -658,7 +669,7 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
 
   const actions = document.createElement("div");
   actions.className = "food-result-actions";
-  actions.append(qtyInput, logBtn);
+  actions.append(gramsInput, gramsUnit, logBtn);
 
   li.append(info, actions);
   return li;

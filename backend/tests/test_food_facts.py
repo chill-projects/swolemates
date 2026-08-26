@@ -30,8 +30,11 @@ async def test_barcode_lookup_normalizes_off_v3_response(monkeypatch) -> None:
                         "proteins_serving": 0.9,
                         "proteins_100g": 6.3,
                         "carbohydrates_serving": 8.6,
+                        "carbohydrates_100g": 57.5,
                         "fat_serving": 4.6,
+                        "fat_100g": 30.9,
                         "fiber_serving": 0.5,
+                        "fiber_100g": 3.4,
                     },
                 },
             },
@@ -45,20 +48,89 @@ async def test_barcode_lookup_normalizes_off_v3_response(monkeypatch) -> None:
         {
             "name": "Nutella",
             "brand": "Nutella, Ferrero",
-            "serving_description": "Per serving (15 g)",
-            "calories": 80,
-            "protein_g": 0.9,
-            "carbs_g": 8.6,
-            "fat_g": 4.6,
-            "fiber_g": 0.5,
+            "serving_grams": 15.0,
+            "calories": 539,
+            "protein_g": 6.3,
+            "carbs_g": 57.5,
+            "fat_g": 30.9,
+            "fiber_g": 3.4,
         }
     ]
+
+
+async def test_barcode_lookup_converts_serving_only_data_to_per_100g(
+    monkeypatch,
+) -> None:
+    """A product contributed with only `_serving` nutriments (common on OFF) still
+    needs to come through per-100g — converted using the gram serving size — so the
+    UI's grams input can scale it like any other match."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "product": {
+                    "product_name": "Protein Bar",
+                    "brands": "Acme",
+                    "serving_size": "1 bar (40g)",
+                    "nutriments": {
+                        "energy-kcal_serving": 200,
+                        "proteins_serving": 20,
+                    },
+                },
+            },
+        )
+
+    monkeypatch.setattr(service, "_build_client", _client_builder(handler))
+
+    results = await service.search_food_facts(barcode="0000000000001")
+
+    assert results == [
+        {
+            "name": "Protein Bar",
+            "brand": "Acme",
+            "serving_grams": 40.0,
+            "calories": 500.0,  # 200 / 40 * 100
+            "protein_g": 50.0,  # 20 / 40 * 100
+            "carbs_g": None,
+            "fat_g": None,
+            "fiber_g": None,
+        }
+    ]
+
+
+async def test_barcode_lookup_nulls_serving_only_data_without_a_gram_serving_size(
+    monkeypatch,
+) -> None:
+    """Serving-only data with no gram-parseable serving_size ("1 cup") can't be
+    converted to per-100g at all — must come through null, not silently wrong."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "product": {
+                    "product_name": "Soup",
+                    "serving_size": "1 cup",
+                    "nutriments": {"energy-kcal_serving": 120},
+                },
+            },
+        )
+
+    monkeypatch.setattr(service, "_build_client", _client_builder(handler))
+
+    results = await service.search_food_facts(barcode="0000000000002")
+
+    assert results[0]["serving_grams"] is None
+    assert results[0]["calories"] is None
 
 
 async def test_barcode_lookup_falls_back_to_per_100g_and_nulls_missing_macros(
     monkeypatch,
 ) -> None:
-    """No `_serving` nutriments at all (common on OFF): fall back to per-100g and say so.
+    """No `_serving` nutriments at all (common on OFF): per-100g data alone is fine.
 
     This product also has no fiber data whatsoever — a real-world gap that must not
     crash normalization; fiber_g should come through as None.
@@ -90,7 +162,7 @@ async def test_barcode_lookup_falls_back_to_per_100g_and_nulls_missing_macros(
         {
             "name": "Generic Chocolate Spread",
             "brand": "Acme",
-            "serving_description": "Per 100g (serving size not available)",
+            "serving_grams": None,
             "calories": 539,
             "protein_g": 6.3,
             "carbs_g": 57.5,
@@ -141,7 +213,7 @@ async def test_text_query_normalizes_search_a_licious_hits(monkeypatch) -> None:
         {
             "name": "Nutella",
             "brand": "Nutella, Ferrero",
-            "serving_description": "Per 100g (serving size not available)",
+            "serving_grams": None,
             "calories": 539,
             "protein_g": 6.3,
             "carbs_g": 57.5,
@@ -194,11 +266,11 @@ async def test_rest_search_by_barcode_returns_normalized_matches(
                     "brands": "Nutella, Ferrero",
                     "serving_size": "15 g",
                     "nutriments": {
-                        "energy-kcal_serving": 80,
-                        "proteins_serving": 0.9,
-                        "carbohydrates_serving": 8.6,
-                        "fat_serving": 4.6,
-                        "fiber_serving": 0.5,
+                        "energy-kcal_100g": 539,
+                        "proteins_100g": 6.3,
+                        "carbohydrates_100g": 57.5,
+                        "fat_100g": 30.9,
+                        "fiber_100g": 3.4,
                     },
                 },
             },
@@ -213,12 +285,12 @@ async def test_rest_search_by_barcode_returns_normalized_matches(
         {
             "name": "Nutella",
             "brand": "Nutella, Ferrero",
-            "serving_description": "Per serving (15 g)",
-            "calories": 80,
-            "protein_g": 0.9,
-            "carbs_g": 8.6,
-            "fat_g": 4.6,
-            "fiber_g": 0.5,
+            "serving_grams": 15.0,
+            "calories": 539,
+            "protein_g": 6.3,
+            "carbs_g": 57.5,
+            "fat_g": 30.9,
+            "fiber_g": 3.4,
         }
     ]
 

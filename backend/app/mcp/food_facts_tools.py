@@ -18,9 +18,13 @@ async def search_food_facts(query: str | None = None, barcode: str | None = None
     """Look up nutrition facts from Open Food Facts, by free-text query or barcode.
 
     Provide exactly one of `query` or `barcode`; if both are given, `barcode` wins.
-    Each match reports calories, protein_g, carbs_g, fat_g, fiber_g per the serving OFF
-    describes (falling back to per-100g, noted per match) — read those numbers straight
-    into a `log_nutrition` call rather than re-deriving them.
+    Each match reports calories, protein_g, carbs_g, fat_g, fiber_g **per 100g** —
+    always per 100g, regardless of what OFF's own serving size is, so it scales
+    cleanly by however many grams the person portioned out (kitchen-scale style).
+    Ask how many grams if they haven't said, rather than assuming a serving; a
+    match's `serving_grams` (when present) is only the manufacturer's own suggested
+    serving, worth mentioning as a reference point, not a default to assume. To log
+    N grams of a match, multiply every field by N/100 before calling `log_nutrition`.
 
     Args:
         query: Free-text product search, e.g. "plain greek yogurt".

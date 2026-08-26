@@ -3,12 +3,16 @@
 Barcode lookups hit OFF's API v3 (`/api/v3/product/{barcode}.json`); text search hits
 Search-a-licious (`https://search.openfoodfacts.org/search`). Both return product-shaped
 JSON with a `nutriments` dict keyed like `proteins_serving` / `proteins_100g`; this module
-normalizes either shape into the five `trackable_key` fields the (future) `log_nutrition`
-tool expects: calories, protein_g, carbs_g, fat_g, fiber_g.
+normalizes either shape into the five `trackable_key` fields the `log_nutrition` tool
+expects: calories, protein_g, carbs_g, fat_g, fiber_g — always **per 100g**, so a caller
+(the UI's grams input, or Claude in chat) can scale by however many grams the person
+actually portioned out, kitchen-scale style, rather than by a manufacturer's serving.
 
 `_build_client` is the seam tests replace with an `httpx.MockTransport` — no real network
 call happens in the test suite.
 """
+
+import re
 
 import httpx
 
@@ -16,8 +20,7 @@ USER_AGENT = "Swolemates/1.0 (https://github.com/chill-projects/swolemates)"
 BARCODE_URL_TEMPLATE = "https://world.openfoodfacts.org/api/v3/product/{barcode}.json"
 SEARCH_URL = "https://search.openfoodfacts.org/search"
 
-# OFF nutriment key -> our output field. Values are looked up as `{key}_serving` first,
-# falling back to `{key}_100g`.
+# OFF nutriment key -> our output field.
 _NUTRIMENT_FIELDS = {
     "calories": "energy-kcal",
     "protein_g": "proteins",
@@ -26,27 +29,43 @@ _NUTRIMENT_FIELDS = {
     "fiber_g": "fiber",
 }
 
+# A leading gram quantity in OFF's freeform serving_size string ("15 g", "1 bar (40g)"),
+# not preceded by a letter (so it doesn't match the "g" in "mg") and not followed by one
+# (so it doesn't match "g" inside a longer unit word). Used only to prefill the UI's
+# grams input — the actual math below never depends on this parsing succeeding.
+_GRAMS_RE = re.compile(r"(?<![a-zA-Z])(\d+(?:\.\d+)?)\s*g\b", re.IGNORECASE)
+
 
 def _build_client() -> httpx.AsyncClient:
     """OFF's usage policy requires a compliant User-Agent on every request."""
     return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=10.0)
 
 
+def _parse_serving_grams(serving_size: object) -> float | None:
+    if not isinstance(serving_size, str):
+        return None
+    match = _GRAMS_RE.search(serving_size)
+    return float(match.group(1)) if match else None
+
+
 def _normalize_product(raw: dict) -> dict:
     nutriments = raw.get("nutriments") or {}
-    has_serving_data = any(f"{key}_serving" in nutriments for key in _NUTRIMENT_FIELDS.values())
-    suffix = "_serving" if has_serving_data else "_100g"
+    serving_grams = _parse_serving_grams(raw.get("serving_size"))
 
     values: dict[str, float | None] = {}
     for field, off_key in _NUTRIMENT_FIELDS.items():
-        value = nutriments.get(f"{off_key}{suffix}")
-        values[field] = value if isinstance(value, int | float) else None
-
-    serving_size = raw.get("serving_size")
-    if has_serving_data:
-        serving_description = f"Per serving ({serving_size})" if serving_size else "Per serving"
-    else:
-        serving_description = "Per 100g (serving size not available)"
+        per_100g = nutriments.get(f"{off_key}_100g")
+        if isinstance(per_100g, int | float):
+            values[field] = per_100g
+            continue
+        # Some products only ever get `_serving` data contributed — convert it to the
+        # per-100g basis everything else uses, when the serving size is actually in
+        # grams (not "1 cup" or similar, which can't be converted this way).
+        per_serving = nutriments.get(f"{off_key}_serving")
+        if isinstance(per_serving, int | float) and serving_grams:
+            values[field] = per_serving / serving_grams * 100
+        else:
+            values[field] = None
 
     brands = raw.get("brands")
     brand = ", ".join(brands) if isinstance(brands, list) else (brands or None)
@@ -54,7 +73,7 @@ def _normalize_product(raw: dict) -> dict:
     return {
         "name": raw.get("product_name") or raw.get("product_name_en") or "Unknown product",
         "brand": brand,
-        "serving_description": serving_description,
+        "serving_grams": serving_grams,
         **values,
     }
 

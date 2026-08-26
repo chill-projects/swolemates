@@ -624,15 +624,22 @@
             ],
             "title": "Protein G"
           },
-          "serving_description": {
-            "title": "Serving Description",
-            "type": "string"
+          "serving_grams": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serving Grams"
           }
         },
         "required": [
           "name",
           "brand",
-          "serving_description",
+          "serving_grams",
           "calories",
           "protein_g",
           "carbs_g",
