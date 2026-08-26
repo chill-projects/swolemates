@@ -178,11 +178,20 @@ def _live_payload(live: service.WorkoutLiveOut) -> dict:
 @catches_service_errors
 async def search_exercises(query: str) -> str:
     """Look up real catalog exercise names matching a query (substring, case-
-    insensitive) — call this before log_workout/create_workout_template and use one
-    of the returned names verbatim when there's a good match. Exercise resolution
-    only matches an *exact* name; a close-but-not-exact guess ("Back Squat" for the
-    catalog's "Barbell Back Squat") silently creates a new custom exercise with no
-    real muscle group, so it never lights up on the workout view's muscle map.
+    insensitive) — call this before log_workout/create_workout_template/log_set and
+    use one of the returned names verbatim when there's a good match. Exercise
+    resolution only matches an *exact* name; a close-but-not-exact guess ("Back
+    Squat" for the catalog's "Barbell Back Squat") silently creates a new custom
+    exercise with no real muscle group, so it never lights up on the workout view's
+    muscle map.
+
+    If nothing here is actually a good match, don't guess and don't silently fall
+    back to a custom exercise either — ask the user in chat: use this exact name
+    verbatim, use a different close match, or add it as a new custom exercise. If
+    they choose custom, ask which muscle group it targets (legs, arms, shoulders,
+    back, core, or chest — see the muscle_group arg on log_workout/
+    create_workout_template/log_set) so it's at least correctly categorized even
+    though it still won't have muscle-map data.
 
     Args:
         query: e.g. "squat", "bench press", "curl".
@@ -191,7 +200,7 @@ async def search_exercises(query: str) -> str:
     async with tool_session() as session:
         matches = await service.search_exercises(session, user_sub, query)
     if not matches:
-        return f'No catalog match for "{query}" — a new custom exercise is fine here.'
+        return f'No catalog match for "{query}" — ask the user how they want to proceed.'
     return "\n".join(f"{e.name} ({e.muscle_group})" for e in matches)
 
 
@@ -209,13 +218,18 @@ async def log_workout(
     Exercise names must match the catalog exactly (case-insensitive) to attach real
     muscle-group data — call search_exercises first ("squat" -> "Barbell Back Squat")
     rather than guessing a colloquial name; a near-miss silently creates a new custom
-    exercise with no muscle map coverage.
+    exercise with no muscle map coverage. If search_exercises finds nothing close,
+    ask the user rather than guessing — see search_exercises's docstring.
 
     Args:
         exercises: [{"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
-            "notes"?, "next_time_note"?}, ...]. Each set: reps sets need "reps" > 0 and
-            "weight" >= 0 (0 for bodyweight); timed sets need "set_type": "time" and
-            "work_seconds" > 0. Add "is_warmup": true to exclude a set from PR checks.
+            "notes"?, "next_time_note"?, "muscle_group"?}, ...]. Each set: reps sets
+            need "reps" > 0 and "weight" >= 0 (0 for bodyweight); timed sets need
+            "set_type": "time" and "work_seconds" > 0. Add "is_warmup": true to
+            exclude a set from PR checks. "muscle_group" only matters when this
+            exercise doesn't already exist (exact match failed) — one of "legs",
+            "arms", "shoulders", "back", "core", "chest"; ask the user which if
+            they've chosen to add it as a new custom exercise, don't guess.
         title: e.g. "Leg day".
         date: ISO date/datetime if backdating; defaults to now.
     """
@@ -369,6 +383,7 @@ async def log_set(
     sets: int = 1,
     note: str | None = None,
     continue_session: bool | None = None,
+    muscle_group: str | None = None,
 ) -> dict | str:
     """Record one or more sets against the active workout — auto-starts one if
     none is active. Auto-continues an already-open workout with no question
@@ -377,7 +392,9 @@ async def log_set(
     `continue_session` says explicitly which workout is meant.
 
     Args:
-        exercise: e.g. "Back Squat".
+        exercise: e.g. "Back Squat". Only matches the catalog if exact
+            (case-insensitive) — call search_exercises first if unsure of the real
+            name; if it finds nothing close, ask the user rather than guessing.
         reps: for rep-based sets, > 0.
         weight: lbs, >= 0 (0 for bodyweight). Required for rep-based sets.
         set_type: "reps" (default) or "time".
@@ -388,6 +405,9 @@ async def log_set(
         note: freeform note for this exercise (e.g. "felt easy, add 5 next time").
         continue_session: only needed if you get a clarifying question back —
             true to continue the old open workout, false to start a fresh one.
+        muscle_group: only matters when `exercise` doesn't already exist — one of
+            "legs", "arms", "shoulders", "back", "core", "chest". Ask the user
+            which if they've chosen to add it as a new custom exercise.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
@@ -403,6 +423,7 @@ async def log_set(
             sets=sets,
             note=note,
             continue_session=continue_session,
+            muscle_group=muscle_group,
         )
         if result.needs_clarification:
             return result.needs_clarification

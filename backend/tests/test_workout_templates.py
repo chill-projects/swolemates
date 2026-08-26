@@ -29,6 +29,43 @@ async def test_create_workout_template(session: AsyncSession) -> None:
     assert deadlift.superset_group is None
 
 
+async def test_create_workout_template_custom_exercise_accepts_a_chosen_muscle_group(
+    session: AsyncSession,
+) -> None:
+    template = await service.create_workout_template(
+        session,
+        TEST_USER,
+        name="Leg Day",
+        exercises=[
+            {"exercise": "Cable Hip Abduction", "sets": 3, "reps": 15, "muscle_group": "legs"},
+        ],
+    )
+
+    exercises = await workouts.list_exercises(session, TEST_USER)
+    custom = next(e for e in exercises if e.name == "Cable Hip Abduction")
+    assert custom.muscle_group == "legs"
+    assert template.exercises[0].exercise_name == "Cable Hip Abduction"
+
+
+async def test_create_workout_template_rejects_an_unknown_muscle_group(
+    session: AsyncSession,
+) -> None:
+    with pytest.raises(ValueError, match="muscle_group must be one of"):
+        await service.create_workout_template(
+            session,
+            TEST_USER,
+            name="Leg Day",
+            exercises=[
+                {
+                    "exercise": "Cable Hip Abduction",
+                    "sets": 3,
+                    "reps": 15,
+                    "muscle_group": "glutes",
+                },
+            ],
+        )
+
+
 async def test_create_workout_template_groups_supersets(session: AsyncSession) -> None:
     template = await service.create_workout_template(
         session,

@@ -89,11 +89,13 @@ async def create_workout_template(
     session: AsyncSession, user_sub: str, *, name: str, exercises: list[dict]
 ) -> TemplateOut:
     """`exercises`: [{"exercise": str, "sets": int, "reps"?: int, "seconds"?: int,
-    "weight"?: Decimal, "notes"?: str, "group"?: int}] — exactly one of reps/seconds
-    per entry. `group` is caller-supplied: exercises sharing a value become one
-    superset in the template (same convention as `update_workout_entry`'s
-    `superset_with`, just supplied up front since the whole template is created in
-    one call)."""
+    "weight"?: Decimal, "notes"?: str, "group"?: int, "muscle_group"?: str}] —
+    exactly one of reps/seconds per entry. `group` is caller-supplied: exercises
+    sharing a value become one superset in the template (same convention as
+    `update_workout_entry`'s `superset_with`, just supplied up front since the
+    whole template is created in one call). `muscle_group` (one of
+    `workouts.MUSCLE_GROUPS`) only matters when this exercise doesn't already
+    exist — see `_resolve_exercise`."""
     if not exercises:
         raise ValueError("A template needs at least one exercise.")
     for entry in exercises:
@@ -109,7 +111,9 @@ async def create_workout_template(
     await session.flush()
 
     for order, entry in enumerate(exercises):
-        resolved = await _resolve_exercise(session, user_sub, entry["exercise"])
+        resolved = await _resolve_exercise(
+            session, user_sub, entry["exercise"], muscle_group=entry.get("muscle_group")
+        )
         session.add(
             TemplateExercise(
                 template_id=template.id,

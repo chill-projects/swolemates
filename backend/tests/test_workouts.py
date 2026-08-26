@@ -102,6 +102,41 @@ async def test_log_workout_auto_creates_a_custom_exercise(session: AsyncSession)
     assert custom.muscle_group == "other"
 
 
+async def test_log_workout_custom_exercise_accepts_a_chosen_muscle_group(
+    session: AsyncSession,
+) -> None:
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {
+                "exercise": "Cable Hip Abduction",
+                "sets": [{"weight": 40, "reps": 12}],
+                "muscle_group": "legs",
+            }
+        ],
+    )
+
+    exercises = await service.list_exercises(session, TEST_USER)
+    custom = next(e for e in exercises if e.name == "Cable Hip Abduction")
+    assert custom.muscle_group == "legs"
+
+
+async def test_log_workout_rejects_an_unknown_muscle_group(session: AsyncSession) -> None:
+    with pytest.raises(ValueError, match="muscle_group must be one of"):
+        await service.log_workout(
+            session,
+            TEST_USER,
+            exercises=[
+                {
+                    "exercise": "Cable Hip Abduction",
+                    "sets": [{"weight": 40, "reps": 12}],
+                    "muscle_group": "glutes",
+                }
+            ],
+        )
+
+
 async def test_log_workout_matches_the_catalog_case_insensitively(session: AsyncSession) -> None:
     first = await service.log_workout(
         session,
@@ -606,6 +641,23 @@ async def test_log_set_auto_starts_when_nothing_active(session: AsyncSession) ->
     assert entry.exercise_name == "Back Squat"
     assert len(entry.sets) == 1
     assert entry.sets[0].reps == 5
+
+
+async def test_log_set_custom_exercise_accepts_a_chosen_muscle_group(
+    session: AsyncSession,
+) -> None:
+    await service.log_set(
+        session,
+        TEST_USER,
+        exercise="Cable Hip Abduction",
+        reps=12,
+        weight=40,
+        muscle_group="legs",
+    )
+
+    exercises = await service.list_exercises(session, TEST_USER)
+    custom = next(e for e in exercises if e.name == "Cable Hip Abduction")
+    assert custom.muscle_group == "legs"
 
 
 async def test_log_set_auto_continues_within_the_window(session: AsyncSession) -> None:

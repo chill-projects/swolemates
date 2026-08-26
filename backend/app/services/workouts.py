@@ -135,6 +135,15 @@ async def list_personal_records(
     ]
 
 
+# The coarse legacy taxonomy (Exercise.muscle_group) — distinct from the fine
+# 17-muscle free-exercise-db taxonomy (Exercise.primary_muscles/secondary_muscles)
+# that actually drives the live-workout muscle map (see _MUSCLE_TO_SLUG below).
+# Custom exercises never get the fine taxonomy — there's no vendor data for them —
+# so tagging one with a muscle_group categorizes/filters it correctly but does not
+# light it up on the muscle map; only a real catalog match does that.
+MUSCLE_GROUPS = ("legs", "arms", "shoulders", "back", "core", "chest")
+
+
 async def _resolve_exercise(
     session: AsyncSession, user_sub: str, name: str, *, muscle_group: str | None = None
 ) -> Exercise:
@@ -144,7 +153,16 @@ async def _resolve_exercise(
     catalog hit first would make anything off-catalog fail outright — a dedicated
     `search_exercises` tool for browsing the catalog is a later slice, not a
     prerequisite for logging.
+
+    `muscle_group`, when given, must be one of `MUSCLE_GROUPS` — the caller (the
+    MCP tool layer) is expected to ask the user which muscle group a genuinely new
+    custom exercise targets rather than leaving it in the "other" catch-all.
     """
+    if muscle_group is not None and muscle_group not in MUSCLE_GROUPS:
+        raise ValueError(
+            f"muscle_group must be one of {', '.join(MUSCLE_GROUPS)}; got {muscle_group!r}."
+        )
+
     normalized = name.strip()
     result = await session.execute(
         select(Exercise).where(
@@ -481,8 +499,9 @@ async def _find_or_create_workout_exercise(
     exercise_name: str,
     *,
     note: str | None = None,
+    muscle_group: str | None = None,
 ) -> WorkoutExercise:
-    resolved = await _resolve_exercise(session, user_sub, exercise_name)
+    resolved = await _resolve_exercise(session, user_sub, exercise_name, muscle_group=muscle_group)
     result = await session.execute(
         select(WorkoutExercise).where(
             WorkoutExercise.workout_id == workout.id, WorkoutExercise.exercise_id == resolved.id
@@ -795,13 +814,15 @@ async def log_set(
     sets: int = 1,
     note: str | None = None,
     continue_session: bool | None = None,
+    muscle_group: str | None = None,
 ) -> LogSetResult:
     """Record one or more sets (`sets` — "3 sets of squats at 185x5" — against the
     active workout, auto-starting one if none is active. An open workout auto-
     continues with no question asked if its last set was within
     `CONTINUATION_WINDOW`; past that, nothing is written and a clarifying message
     comes back instead, unless `continue_session` says explicitly which the caller
-    means (#3/#6, resolved).
+    means (#3/#6, resolved). `muscle_group` (one of `MUSCLE_GROUPS`) only matters
+    when `exercise` doesn't already exist — see `_resolve_exercise`.
     """
     _validate_sets(
         exercise,
@@ -841,7 +862,7 @@ async def log_set(
         await session.flush()
 
     workout_exercise = await _find_or_create_workout_exercise(
-        session, user_sub, active, exercise, note=note
+        session, user_sub, active, exercise, note=note, muscle_group=muscle_group
     )
 
     count_result = await session.execute(

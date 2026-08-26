@@ -58,14 +58,19 @@ async def create_workout_template(name: str, exercises: list[dict]) -> dict:
     Exercise names must match the catalog exactly (case-insensitive) to attach real
     muscle-group data — call search_exercises first ("squat" -> "Barbell Back Squat")
     rather than guessing a colloquial name; a near-miss silently creates a new custom
-    exercise with no muscle map coverage on the workout view.
+    exercise with no muscle map coverage on the workout view. If search_exercises
+    finds nothing close, ask the user rather than guessing — see its docstring.
 
     Args:
         name: e.g. "Pull day".
         exercises: [{"exercise": "Deadlift", "sets": 3, "reps": 5, "weight"?: 225,
             "seconds"?: N (for timed exercises, instead of reps — exactly one of
-            reps/seconds), "notes"?: str, "group"?: int}]. Give two or more entries
-            the same "group" int to make them a superset.
+            reps/seconds), "notes"?: str, "group"?: int, "muscle_group"?: str}].
+            Give two or more entries the same "group" int to make them a superset.
+            "muscle_group" only matters when this exercise doesn't already exist
+            (exact match failed) — one of "legs", "arms", "shoulders", "back",
+            "core", "chest"; ask the user which if they've chosen to add it as a
+            new custom exercise, don't guess.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
