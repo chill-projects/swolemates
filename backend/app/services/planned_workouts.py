@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
@@ -139,6 +139,20 @@ async def plan_workout(
 
 
 async def _generate_missing(session: AsyncSession, user_sub: str, start: date, end: date) -> None:
+    # Serializes concurrent calls for the same user within this transaction — without
+    # it, two overlapping get_planned_workouts calls (e.g. the Planned page's initial
+    # fetch racing its own SSE-triggered refetch) can each see a date as "missing"
+    # before either commits, and both insert a duplicate planned entry. Released
+    # automatically at transaction end; scoped by a fixed namespace key so it can't
+    # collide with an unrelated advisory lock elsewhere.
+    await session.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                func.hashtext("planned_workouts_generate"), func.hashtext(user_sub)
+            )
+        )
+    )
+
     pattern_result = await session.execute(
         select(WeeklyPatternDay).where(WeeklyPatternDay.user_id == user_sub)
     )
