@@ -147,9 +147,7 @@ async def test_get_today_planned_is_none_once_skipped(session: AsyncSession) -> 
 
 async def test_get_today_planned_is_scoped_to_the_caller(session: AsyncSession) -> None:
     legs = await _make_template(session, OTHER_USER, "Legs")
-    await service.plan_workout(
-        session, OTHER_USER, template_id=legs.id, scheduled_for=date.today()
-    )
+    await service.plan_workout(session, OTHER_USER, template_id=legs.id, scheduled_for=date.today())
 
     assert await service.get_today_planned(session, TEST_USER) is None
 
