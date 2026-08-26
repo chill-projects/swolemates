@@ -15,16 +15,22 @@ const numeric = (values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
 
 /** get_nutrition_day defaults to UTC "today" server-side (day.py: "no per-user timezone
- *  yet") — fine most of the day, but wrong for hours after the user's local midnight and
- *  before UTC's, when it silently shows an empty day instead of what they just logged.
- *  The browser knows the user's actual local date, so send it explicitly instead of
- *  relying on the server's default. */
+ *  yet") — wrong for hours after the user's local midnight and before UTC's (evening,
+ *  west of UTC), when it silently shows an empty day instead of what they just logged.
+ *  The date alone isn't enough either — the server also needs the UTC offset to bound
+ *  "today" at the caller's actual local midnight, not UTC's, or a log made minutes ago
+ *  can still fall outside the window (see day.py's tz_offset_minutes). Both come
+ *  straight from the browser. */
 function todayLocalDate(): string {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function tzOffsetMinutes(): number {
+  return new Date().getTimezoneOffset();
 }
 
 /** Shape the REST response into the same payload the MCP tools return (numbers
@@ -94,6 +100,34 @@ export function NutritionPage({ me }: { me: Me }) {
       switch (name) {
         case "get_nutrition_day":
           break;
+        // Pre-existing gap: nothing in the SPA ever called this until the food-search
+        // "Log" button (meal templates go through log_meal_template instead), so it
+        // fell to the `default: throw` below, unnoticed, until now.
+        case "log_nutrition": {
+          const { error } = await api.POST("/api/nutrition/logs", {
+            body: {
+              entries: (args.entries as { trackable_key: string; value: number }[]) ?? [],
+              name: (args.name as string | undefined) ?? null,
+              meal_type: (args.meal_type as string | undefined) ?? null,
+              source: "manual",
+            },
+          });
+          if (error) throw new Error("log food failed");
+          break;
+        }
+        case "search_food_facts": {
+          const { data, error } = await api.GET("/api/food-facts/search", {
+            params: {
+              query: {
+                query: args.query as string | undefined,
+                barcode: args.barcode as string | undefined,
+              },
+            },
+          });
+          if (error) throw new Error("food search failed");
+          const payload = { matches: data ?? [] };
+          return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
+        }
         case "save_meal_template": {
           const { error } = await api.POST("/api/nutrition/templates", {
             body: {
@@ -134,7 +168,7 @@ export function NutritionPage({ me }: { me: Me }) {
           throw new Error(`unknown tool: ${name}`);
       }
       const { data, error } = await api.GET("/api/nutrition/day", {
-        params: { query: { day: todayLocalDate() } },
+        params: { query: { day: todayLocalDate(), tz_offset_minutes: tzOffsetMinutes() } },
       });
       if (error || !data) throw new Error("day fetch failed");
       return toPayload(data);

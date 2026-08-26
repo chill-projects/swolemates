@@ -118,6 +118,38 @@ async def test_calendar_maintain_goal_uses_symmetric_band(session: AsyncSession)
     assert days[0].status == "miss"
 
 
+async def test_calendar_tz_offset_buckets_a_log_under_the_callers_local_day(
+    session: AsyncSession,
+) -> None:
+    """Regression: same underlying bug as get_nutrition_day's tz_offset_minutes test —
+    a log at 8pm Pacific is already 2026-08-26 in UTC, so without the offset it buckets
+    under the wrong calendar day entirely."""
+    pacific_8pm_in_utc = datetime(2026, 8, 25, 3, 0, tzinfo=UTC)  # 2026-08-24 20:00 PDT
+    await service.log_nutrition(
+        session,
+        TEST_USER,
+        entries=[{"trackable_key": "calories", "value": 500}],
+        logged_at=pacific_8pm_in_utc,
+    )
+    await session.flush()
+
+    utc_only = await service.get_nutrition_calendar(
+        session, TEST_USER, start=date(2026, 8, 24), end=date(2026, 8, 25)
+    )
+    assert {d.date: d.status for d in utc_only} == {
+        date(2026, 8, 24): "no-data",
+        date(2026, 8, 25): "hit",
+    }
+
+    local_aware = await service.get_nutrition_calendar(
+        session, TEST_USER, start=date(2026, 8, 24), end=date(2026, 8, 25), tz_offset_minutes=420
+    )
+    assert {d.date: d.status for d in local_aware} == {
+        date(2026, 8, 24): "hit",
+        date(2026, 8, 25): "no-data",
+    }
+
+
 async def test_calendar_excludes_other_users_and_out_of_range_days(session: AsyncSession) -> None:
     await service.log_nutrition(
         session,

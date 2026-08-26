@@ -6,7 +6,9 @@
  * Any tool call that changes today's totals (`log_nutrition`, `get_nutrition_day`,
  * `save_meal_template`, `log_meal_template`) returns this same payload shape, so the
  * component re-renders fully from whichever result the host pushes — no separate
- * fetch, same pattern as tmpx.
+ * fetch, same pattern as tmpx. `search_food_facts` is the one exception: it renders
+ * into its own results list, not the day payload, and only feeds `log_nutrition` when
+ * a result is picked.
  *
  * No delete-template button here: `delete_meal_template` is a REST-only action (the
  * resolved tool spec deliberately keeps chat delete-free), and this bundle runs
@@ -37,6 +39,17 @@ interface DayLogEntry {
   meal_type: string | null;
   values: Record<string, number>;
   items: DayLogItem[];
+}
+
+interface FoodMatch {
+  name: string;
+  brand: string | null;
+  serving_description: string;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
 }
 
 interface MealTemplateItem {
@@ -93,6 +106,9 @@ const logsEl = $<HTMLUListElement>("logs");
 const saveBarEl = $<HTMLDivElement>("save-template-bar");
 const templateNameInput = $<HTMLInputElement>("template-name");
 const saveTemplateBtn = $<HTMLButtonElement>("save-template-btn");
+const foodSearchInput = $<HTMLInputElement>("food-search-input");
+const foodSearchBtn = $<HTMLButtonElement>("food-search-btn");
+const foodSearchResultsEl = $<HTMLUListElement>("food-search-results");
 
 // Selection state for "save these as a template" — lives outside render() so it
 // survives the re-renders every tool call triggers.
@@ -116,6 +132,32 @@ function extractPayload(result: {
   }
 }
 
+function extractMatches(result: {
+  structuredContent?: unknown;
+  content?: Array<{ type: string; text?: string }>;
+}): FoodMatch[] {
+  const structured = result.structuredContent as { matches?: FoodMatch[] } | undefined;
+  if (structured?.matches) return structured.matches;
+  const text = result.content?.find((c) => c.type === "text")?.text;
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as { matches?: FoodMatch[] };
+    return parsed.matches ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Matches DashboardPage.tsx's MACRO_COLORS — the per-day calendar tooltip and this
+// view show the same four macros and should read as the same bars, not just similarly
+// styled ones.
+const MACRO_COLORS: Record<string, string> = {
+  protein_g: "var(--teal)",
+  carbs_g: "var(--gold)",
+  fat_g: "var(--plum)",
+  fiber_g: "var(--coral)",
+};
+
 function renderBar(progress: TrackableProgress): HTMLDivElement {
   const row = document.createElement("div");
   row.className = "bar-row";
@@ -137,6 +179,7 @@ function renderBar(progress: TrackableProgress): HTMLDivElement {
   fill.className = "bar-fill";
   const pct = progress.target ? Math.min((progress.consumed / progress.target) * 100, 100) : 0;
   fill.style.width = `${pct}%`;
+  fill.style.background = MACRO_COLORS[progress.trackable_key] ?? "var(--ring-fill)";
   track.appendChild(fill);
 
   row.append(top, track);
@@ -442,17 +485,94 @@ function render(payload: NutritionDayPayload): void {
   );
 }
 
-async function callAndRender(name: string, args: Record<string, unknown>): Promise<void> {
+async function callAndRender(name: string, args: Record<string, unknown>): Promise<boolean> {
   try {
     const result = await app.callServerTool({ name, arguments: args });
     const payload = extractPayload(result);
     if (payload) render(payload);
+    return true;
   } catch (err) {
     statusEl.textContent = "Something went wrong talking to the server.";
     statusEl.className = "error";
     console.error(err);
+    return false;
   }
 }
+
+function macroSummary(match: FoodMatch): string {
+  const parts: string[] = [];
+  if (match.calories != null) parts.push(`${Math.round(match.calories)} cal`);
+  if (match.protein_g != null) parts.push(`${Math.round(match.protein_g)}g protein`);
+  if (match.carbs_g != null) parts.push(`${Math.round(match.carbs_g)}g carbs`);
+  if (match.fat_g != null) parts.push(`${Math.round(match.fat_g)}g fat`);
+  if (match.fiber_g != null) parts.push(`${Math.round(match.fiber_g)}g fiber`);
+  return parts.join(", ");
+}
+
+function renderFoodResult(match: FoodMatch): HTMLLIElement {
+  const li = document.createElement("li");
+
+  const info = document.createElement("div");
+  const name = document.createElement("div");
+  name.className = "food-result-name";
+  name.textContent = match.brand ? `${match.name} (${match.brand})` : match.name;
+  const meta = document.createElement("div");
+  meta.className = "food-result-meta";
+  meta.textContent = `${match.serving_description} — ${macroSummary(match)}`;
+  info.append(name, meta);
+
+  const logBtn = document.createElement("button");
+  logBtn.type = "button";
+  logBtn.className = "food-result-log";
+  logBtn.textContent = "Log";
+  logBtn.onclick = () => {
+    const macros: [string, number | null][] = [
+      ["calories", match.calories],
+      ["protein_g", match.protein_g],
+      ["carbs_g", match.carbs_g],
+      ["fat_g", match.fat_g],
+      ["fiber_g", match.fiber_g],
+    ];
+    const entries = macros
+      .filter(([, value]) => value != null)
+      .map(([trackable_key, value]) => ({ trackable_key, value: value as number }));
+    void callAndRender("log_nutrition", { entries, name: match.name }).then((ok) => {
+      if (!ok) return;
+      foodSearchResultsEl.replaceChildren();
+      foodSearchInput.value = "";
+    });
+  };
+
+  li.append(info, logBtn);
+  return li;
+}
+
+async function performFoodSearch(): Promise<void> {
+  const query = foodSearchInput.value.trim();
+  if (!query) return;
+  foodSearchResultsEl.replaceChildren(
+    Object.assign(document.createElement("li"), { className: "muted", textContent: "Searching…" }),
+  );
+  try {
+    const result = await app.callServerTool({ name: "search_food_facts", arguments: { query } });
+    const matches = extractMatches(result);
+    foodSearchResultsEl.replaceChildren(
+      ...(matches.length
+        ? matches.map(renderFoodResult)
+        : [Object.assign(document.createElement("li"), { className: "muted", textContent: "No matches found." })]),
+    );
+  } catch (err) {
+    foodSearchResultsEl.replaceChildren(
+      Object.assign(document.createElement("li"), { className: "error", textContent: "Search failed." }),
+    );
+    console.error(err);
+  }
+}
+
+foodSearchBtn.onclick = () => void performFoodSearch();
+foodSearchInput.onkeydown = (event) => {
+  if (event.key === "Enter") void performFoodSearch();
+};
 
 saveTemplateBtn.onclick = () => {
   const name = templateNameInput.value.trim();

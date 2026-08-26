@@ -68,17 +68,25 @@ class NutritionDay:
 
 
 async def get_nutrition_day(
-    session: AsyncSession, user_sub: str, day: date | None = None
+    session: AsyncSession, user_sub: str, day: date | None = None, tz_offset_minutes: int = 0
 ) -> NutritionDay:
     """The day-vs-goals view (#4, resolved): the calorie ring is always the hero, and
     every other goal-eligible trackable always renders as a bar, whether or not a
     target's been set for it (matching the legacy TodaySummary.tsx reference this
-    generalizes — `target` is just None until the caller sets one). Bounds the day in
-    UTC; there's no per-user timezone yet.
+    generalizes — `target` is just None until the caller sets one).
+
+    `tz_offset_minutes` matches JS's `Date.getTimezoneOffset()` (UTC minus local, in
+    minutes — positive west of UTC, e.g. Pacific is +420): a caller's local midnight is
+    UTC midnight *plus* this many minutes, not the same instant. Without it, "day" only
+    lines up with the UTC calendar date, and anything logged after the caller's local
+    midnight but before UTC's (evening, west of UTC) reads as missing until UTC catches
+    up. Defaults to 0 (UTC) — chat/MCP has no timezone context to supply this with yet,
+    so that path still has the gap this fixes for the web app (#19-adjacent, not fully
+    resolved: still no *stored* per-user timezone, just a per-call offset).
     """
-    day = day or datetime.now(UTC).date()
-    start = datetime.combine(day, time.min, tzinfo=UTC)
-    end = datetime.combine(day, time.max, tzinfo=UTC)
+    day = day or (datetime.now(UTC) - timedelta(minutes=tz_offset_minutes)).date()
+    start = datetime.combine(day, time.min, tzinfo=UTC) + timedelta(minutes=tz_offset_minutes)
+    end = start + timedelta(days=1) - timedelta(microseconds=1)
 
     result = await session.execute(
         select(Log, LogValue)
@@ -208,16 +216,21 @@ def _day_status(
 
 
 async def get_nutrition_calendar(
-    session: AsyncSession, user_sub: str, *, start: date, end: date
+    session: AsyncSession, user_sub: str, *, start: date, end: date, tz_offset_minutes: int = 0
 ) -> list[NutritionCalendarDay]:
     """One entry per day in `[start, end]` inclusive — the dashboard's nutrition
     calendar. `status` mirrors legacy's `ConsistencyCalendar`, never ported until
     now; `hero`/`bars` are the same per-day shape `get_nutrition_day` returns, so a
     calendar cell's hover detail is exactly "what `get_nutrition_day` would show for
     that date." Goals/targets/goal-direction are read once for the whole range
-    (matching legacy, which also had no historical-target tracking)."""
-    start_dt = datetime.combine(start, time.min, tzinfo=UTC)
-    end_dt = datetime.combine(end, time.max, tzinfo=UTC)
+    (matching legacy, which also had no historical-target tracking).
+
+    `tz_offset_minutes`: see get_nutrition_day — same reasoning, applied to both the
+    query window and which calendar day each log buckets into.
+    """
+    offset = timedelta(minutes=tz_offset_minutes)
+    start_dt = datetime.combine(start, time.min, tzinfo=UTC) + offset
+    end_dt = datetime.combine(end, time.max, tzinfo=UTC) + offset
 
     result = await session.execute(
         select(Log, LogValue)
@@ -228,7 +241,7 @@ async def get_nutrition_calendar(
     logged_dates: set[date] = set()
     totals_by_date: dict[date, dict[str, Decimal]] = {}
     for log, value in result.all():
-        d = log.logged_at.date()
+        d = (log.logged_at - offset).date()
         logged_dates.add(d)
         if value is not None:
             day_totals = totals_by_date.setdefault(d, {})

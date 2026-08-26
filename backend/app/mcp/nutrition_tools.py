@@ -13,10 +13,9 @@ from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
+from app.mcp._resources import NUTRITION_UI_URI
 from app.mcp.server import mcp
 from app.services import nutrition as service
-
-NUTRITION_UI_URI = "ui://swolemates/nutrition-day.html"
 
 NUTRITION_UI_BUNDLE = (
     Path(__file__).resolve().parent.parent.parent / "static" / "mcp-apps" / "nutrition-day.html"

@@ -102,10 +102,15 @@ async def amend_last_log(
 
 @router.get("/day", response_model=NutritionDayOut, operation_id="getNutritionDay")
 async def get_nutrition_day(
-    user_sub: CurrentUser, session: DbSession, day: date | None = None
+    user_sub: CurrentUser,
+    session: DbSession,
+    day: date | None = None,
+    tz_offset_minutes: int = 0,
 ) -> NutritionDayOut:
     return NutritionDayOut.model_validate(
-        await service.get_nutrition_day(session, user_sub, day=day)
+        await service.get_nutrition_day(
+            session, user_sub, day=day, tz_offset_minutes=tz_offset_minutes
+        )
     )
 
 
@@ -113,9 +118,15 @@ async def get_nutrition_day(
     "/calendar", response_model=list[NutritionCalendarDayOut], operation_id="getNutritionCalendar"
 )
 async def get_nutrition_calendar(
-    user_sub: CurrentUser, session: DbSession, start: date, end: date
+    user_sub: CurrentUser,
+    session: DbSession,
+    start: date,
+    end: date,
+    tz_offset_minutes: int = 0,
 ) -> list[NutritionCalendarDayOut]:
-    days = await service.get_nutrition_calendar(session, user_sub, start=start, end=end)
+    days = await service.get_nutrition_calendar(
+        session, user_sub, start=start, end=end, tz_offset_minutes=tz_offset_minutes
+    )
     return [NutritionCalendarDayOut.model_validate(d) for d in days]
 
 

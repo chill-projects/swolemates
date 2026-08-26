@@ -3349,6 +3349,16 @@
               "title": "End",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -3402,6 +3412,16 @@
                 }
               ],
               "title": "Day"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
             }
           }
         ],

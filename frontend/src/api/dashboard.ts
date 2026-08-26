@@ -7,7 +7,10 @@ export function useNutritionCalendar(start: string, end: string) {
     queryKey: ["nutritionCalendar", start, end] as const,
     queryFn: async () => {
       const { data, error } = await api.GET("/api/nutrition/calendar", {
-        params: { query: { start, end } },
+        // tz_offset_minutes: see NutritionPage.tsx's tzOffsetMinutes doc comment — a
+        // log made in the caller's local evening (west of UTC) can otherwise bucket
+        // under the wrong calendar day.
+        params: { query: { start, end, tz_offset_minutes: new Date().getTimezoneOffset() } },
       });
       if (error) throw new Error("Failed to load nutrition calendar");
       return data;

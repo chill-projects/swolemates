@@ -1825,6 +1825,7 @@ export interface operations {
             query: {
                 start: string;
                 end: string;
+                tz_offset_minutes?: number;
             };
             header?: never;
             path?: never;
@@ -1856,6 +1857,7 @@ export interface operations {
         parameters: {
             query?: {
                 day?: string | null;
+                tz_offset_minutes?: number;
             };
             header?: never;
             path?: never;

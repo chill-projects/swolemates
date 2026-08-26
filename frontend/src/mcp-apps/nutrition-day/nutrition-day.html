@@ -16,17 +16,27 @@
         --ring-fill: #2f9e8f;
         --bar-track: color-mix(in srgb, currentColor 10%, transparent);
         --border: color-mix(in srgb, currentColor 14%, transparent);
-        /* Matches frontend/src/index.css's --sand/--card exactly — this component is
-           self-contained (no shared stylesheet with the SPA shell) but renders inside
-           it via AppRenderer, so its card surfaces need to match by value, not just by
-           being "a card". Same light/dark pair as the host, kept in sync by hand. */
+        /* Matches frontend/src/index.css's --sand/--card/--teal/--gold/--plum/--coral
+           exactly — this component is self-contained (no shared stylesheet with the SPA
+           shell) but renders inside it via AppRenderer, and the dashboard's per-day
+           tooltip (DashboardPage.tsx's MACRO_COLORS) uses these same four for its bars,
+           so this view needs to match by value, not just look similarly "colorful".
+           Same light/dark pairs as the host, kept in sync by hand. */
         --page-bg: #f4f1e8;
         --card-bg: #ffffff;
+        --teal: #0e5c56;
+        --gold: #d69a2d;
+        --plum: #7c6a9c;
+        --coral: #ff6f59;
       }
       @media (prefers-color-scheme: dark) {
         :root {
           --page-bg: #16211f;
           --card-bg: #1c2926;
+          --teal: #2bb3a3;
+          --gold: #e2a83f;
+          --plum: #9b87c4;
+          --coral: #ff8b76;
         }
       }
       body { margin: 0; padding: 0.85rem; background: var(--page-bg); }
@@ -129,6 +139,17 @@
         border-radius: 0.375rem; background: transparent; color: inherit; cursor: pointer;
         font-size: 0.8rem;
       }
+
+      .food-search-row { display: flex; gap: 0.5rem; }
+      .food-search-row input {
+        flex: 1; padding: 0.4rem 0.5rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit;
+      }
+      #food-search-results { margin-top: 0.5rem; }
+      #food-search-results li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+      .food-result-name { font-weight: 600; }
+      .food-result-meta { opacity: 0.65; font-size: 0.75rem; margin-top: 0.1rem; }
+      .food-result-log { flex-shrink: 0; }
     </style>
   </head>
   <body>
@@ -152,6 +173,20 @@
     </div>
 
     <p id="status" class="muted">Connecting…</p>
+
+    <section id="food-search-section">
+      <h2>Log food</h2>
+      <div class="food-search-row">
+        <input
+          id="food-search-input"
+          type="text"
+          placeholder="Search a food, e.g. &quot;chicken breast&quot;"
+          aria-label="Search food"
+        />
+        <button type="button" id="food-search-btn">Search</button>
+      </div>
+      <ul id="food-search-results"></ul>
+    </section>
 
     <section class="remaining-card">
       <h2>You have left today</h2>
