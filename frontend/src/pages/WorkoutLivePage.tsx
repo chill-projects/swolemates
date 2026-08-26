@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { api } from "../api/client";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
+import { WorkoutHistoryFeed } from "./WorkoutHistoryFeed";
 
 type WorkoutLiveOut = components["schemas"]["WorkoutLiveOut"];
 type ExerciseEntryOut = components["schemas"]["ExerciseEntryOut"];
@@ -226,6 +227,7 @@ export function WorkoutLivePage({ me }: { me: Me }) {
         onCallTool={handleTool}
         eventsUrl="/api/workouts/events"
       />
+      <WorkoutHistoryFeed />
     </section>
   );
 }

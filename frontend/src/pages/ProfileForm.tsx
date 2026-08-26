@@ -12,13 +12,48 @@ type TargetKey = (typeof TARGET_KEYS)[number];
 
 /** Direct port of app/services/tdee.py::distribute_macros — fat/carbs/fiber all scale
  *  with total calories; protein is a fixed anchor, not derived here. Only the calorie
- *  field cascades this on edit (matching docs/legacy/components/TargetsForm.tsx); editing
- *  protein/carbs/fat/fiber directly changes just that one field. */
+ *  field cascades this on edit (matching docs/legacy/components/TargetsForm.tsx). */
 function distributeMacros(calories: number, proteinG: number): { carbs: number; fat: number; fiber: number } {
   const fat = (calories * 0.27) / 9;
   const carbs = Math.max((calories - proteinG * 4 - fat * 9) / 4, 0);
   const fiber = (calories / 1000) * 14;
   return { carbs: Math.round(carbs), fat: Math.round(fat), fiber: Math.round(fiber) };
+}
+
+type MacroKey = "protein_g" | "carbs_g" | "fat_g";
+const CAL_PER_GRAM: Record<MacroKey, number> = { protein_g: 4, carbs_g: 4, fat_g: 9 };
+
+/** Editing protein, carbs, or fat directly (as opposed to calories) keeps the calorie
+ *  target fixed and lets the *other two* of those three macros absorb the difference —
+ *  split proportionally to their current calorie contribution to each other, not their
+ *  gram amounts (fat is more calorie-dense per gram, so a gram-preserving split would
+ *  visibly favor it). This mirrors how carbs/fat already move together in a fixed ratio
+ *  when calories itself changes (real macro calculators — e.g. Ripped Body's — use the
+ *  same "carbs and fat scale together by calories" convention there). Fiber sits outside
+ *  this entirely; it doesn't contribute to the calorie total in this app's model. */
+function redistributeOtherMacros(
+  edited: MacroKey,
+  newValue: number,
+  current: Record<MacroKey, number>,
+  calories: number,
+): Record<MacroKey, number> {
+  const [a, b] = (["protein_g", "carbs_g", "fat_g"] as const).filter((k) => k !== edited) as [
+    MacroKey,
+    MacroKey,
+  ];
+  const remaining = Math.max(calories - newValue * CAL_PER_GRAM[edited], 0);
+
+  const aCalories = current[a] * CAL_PER_GRAM[a];
+  const bCalories = current[b] * CAL_PER_GRAM[b];
+  const totalCalories = aCalories + bCalories;
+  const aShare = totalCalories > 0 ? aCalories / totalCalories : 0.5;
+
+  return {
+    ...current,
+    [edited]: newValue,
+    [a]: Math.round((remaining * aShare) / CAL_PER_GRAM[a]),
+    [b]: Math.round((remaining * (1 - aShare)) / CAL_PER_GRAM[b]),
+  };
 }
 
 type WeightUnit = "lbs" | "kg";
@@ -141,6 +176,27 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
     } else {
       setTargets((t) => ({ ...t, calories: value }));
     }
+  }
+
+  function handleMacroTargetChange(key: MacroKey, value: string) {
+    const calories = Number(targets.calories);
+    const newValue = Number(value);
+    if (!value || !newValue || !targets.calories || !calories) {
+      setTargets((t) => ({ ...t, [key]: value }));
+      return;
+    }
+    const current: Record<MacroKey, number> = {
+      protein_g: Number(targets.protein_g) || 0,
+      carbs_g: Number(targets.carbs_g) || 0,
+      fat_g: Number(targets.fat_g) || 0,
+    };
+    const next = redistributeOtherMacros(key, newValue, current, calories);
+    setTargets((t) => ({
+      ...t,
+      protein_g: String(next.protein_g),
+      carbs_g: String(next.carbs_g),
+      fat_g: String(next.fat_g),
+    }));
   }
 
   function handleSaveTargets() {
@@ -316,8 +372,10 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
         <fieldset>
           <legend>Daily targets</legend>
           <p className="muted">
-            Adjusting calories redistributes fat/carbs/fiber around it; protein stays fixed to
-            your bodyweight.
+            Adjusting calories redistributes fat/carbs/fiber around it, protein fixed to your
+            bodyweight. Adjusting protein, carbs, or fat instead keeps calories fixed and
+            splits the difference between the other two, proportionally to their current
+            split.
           </p>
           <label>
             Calories
@@ -334,7 +392,7 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
               type="number"
               inputMode="numeric"
               value={targets.protein_g}
-              onChange={(e) => setTargets((t) => ({ ...t, protein_g: e.target.value }))}
+              onChange={(e) => handleMacroTargetChange("protein_g", e.target.value)}
             />
           </label>
           <label>
@@ -343,7 +401,7 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
               type="number"
               inputMode="numeric"
               value={targets.carbs_g}
-              onChange={(e) => setTargets((t) => ({ ...t, carbs_g: e.target.value }))}
+              onChange={(e) => handleMacroTargetChange("carbs_g", e.target.value)}
             />
           </label>
           <label>
@@ -352,7 +410,7 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
               type="number"
               inputMode="numeric"
               value={targets.fat_g}
-              onChange={(e) => setTargets((t) => ({ ...t, fat_g: e.target.value }))}
+              onChange={(e) => handleMacroTargetChange("fat_g", e.target.value)}
             />
           </label>
           <label>

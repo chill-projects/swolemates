@@ -179,6 +179,33 @@ describe("ProfileForm", () => {
     expect(screen.getByLabelText(/protein/i)).toHaveValue(117);
   });
 
+  it("keeps calories fixed and splits carbs/fat proportionally when protein is edited", async () => {
+    const data = { tdee: 1650, calories: 1650, protein_g: 100, carbs_g: 200, fat_g: 50, fiber_g: 20 };
+    mutateCalculate.mockImplementation((_vars, options) => options?.onSuccess?.(data));
+    vi.mocked(useCalculateTargets).mockReturnValue({
+      mutate: mutateCalculate,
+      isPending: false,
+      isSuccess: true,
+      isError: false,
+      data,
+    } as unknown as ReturnType<typeof useCalculateTargets>);
+
+    const user = userEvent.setup();
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+    await user.click(screen.getByRole("button", { name: /calculate targets/i }));
+
+    const protein = screen.getByLabelText(/protein/i);
+    await user.clear(protein);
+    await user.type(protein, "150");
+
+    // Current split by calories: carbs 200*4=800, fat 50*9=450 (16:9). Protein +50g
+    // frees up 1650 - 150*4 = 1050 cal, split 16:9 -> carbs 672cal/4=168g, fat
+    // 378cal/9=42g. Calories itself never changes.
+    expect(screen.getByLabelText(/^calories$/i)).toHaveValue(1650);
+    expect(screen.getByLabelText(/carbs/i)).toHaveValue(168);
+    expect(screen.getByLabelText(/fat/i)).toHaveValue(42);
+  });
+
   it("shows an error message when calculation fails", () => {
     vi.mocked(useCalculateTargets).mockReturnValue({
       mutate: mutateCalculate,

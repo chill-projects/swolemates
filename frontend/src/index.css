@@ -686,3 +686,92 @@ li {
   color: var(--ink-soft);
   text-align: center;
 }
+
+/* Workout history feed (Workout tab, below the active-workout app) */
+
+.workout-history {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.workout-history h3 {
+  font-family: var(--font-display);
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+}
+
+.workout-history-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.workout-history-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.workout-history-card-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.75rem 0.9rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workout-history-card-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.workout-history-day {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workout-history-stats {
+  font-size: 0.8rem;
+}
+
+.workout-history-chevron {
+  opacity: 0.5;
+}
+
+.workout-history-detail {
+  padding: 0.6rem 0.9rem 0.85rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.workout-history-exercise {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  padding: 0;
+  border: none;
+}
+
+.workout-history-exercise-name {
+  font-weight: 600;
+}
+
+.workout-history-exercise-sets {
+  text-align: right;
+  font-size: 0.78rem;
+}
