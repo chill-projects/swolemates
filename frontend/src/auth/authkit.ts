@@ -87,9 +87,28 @@ function scheduleRefresh(accessToken: string): void {
   }, delay);
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
 /** Exchanges the stored refresh token for a new access token via the backend. Returns
- *  false (and clears the session) if there was no refresh token or WorkOS rejected it. */
+ *  false (and clears the session) if there was no refresh token or WorkOS rejected it.
+ *
+ *  Refresh tokens are single-use and rotate on every call, so two callers racing on the
+ *  same stored token would have the second one rejected as reused — wiping out the
+ *  session the first call just renewed. That race is real: a workout view fires several
+ *  requests in quick succession, and more than one can land a 401 at the same moment the
+ *  access token expires. Coalescing concurrent callers onto one in-flight request avoids
+ *  it. */
 export async function refreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = performRefresh();
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
+async function performRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
 
