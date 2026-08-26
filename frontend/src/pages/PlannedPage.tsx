@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import { api } from "../api/client";
+import { InfoPopover } from "../components/InfoPopover";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 
 interface Me {
@@ -69,7 +70,21 @@ export function PlannedPage({ me }: { me: Me }) {
 
   return (
     <section>
-      <h2>Planned</h2>
+      <h2>
+        Planned
+        <InfoPopover label="How the Planned page works">
+          <p className="info-popover-title">Planned</p>
+          <p className="muted">
+            Set a weekly pattern — pick a template for each day, or leave it as Rest. It
+            auto-saves whenever you change a day.
+          </p>
+          <p className="muted">
+            The list below shows the next 7 days generated from that pattern. Start a
+            workout straight from a planned entry, or Skip it if you're not doing it —
+            skipped days can be undone with Unskip.
+          </p>
+        </InfoPopover>
+      </h2>
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
