@@ -115,6 +115,10 @@
         cursor: pointer;
       }
       .template-delete-btn:hover { opacity: 1; }
+      /* A long title wraps to a second line that would otherwise run directly under
+         the × (it's positioned relative to the whole card, not the title) — reserve
+         space on the right so wrapped text never sits under the button. */
+      .template-name { display: block; padding-right: 1.1rem; }
       .template-delete-confirm:not([hidden]) {
         display: flex; flex-direction: column; gap: 0.5rem; padding-right: 1rem;
       }

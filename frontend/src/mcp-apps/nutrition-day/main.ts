@@ -324,6 +324,7 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
   const body = document.createElement("div");
 
   const name = document.createElement("strong");
+  name.className = "template-name";
   name.textContent = template.name;
 
   const total = document.createElement("div");
@@ -619,13 +620,14 @@ foodSearchInput.onkeydown = (event) => {
 saveTemplateBtn.onclick = () => {
   const name = templateNameInput.value.trim();
   if (!name || selectedLogIds.size === 0) return;
-  void callAndRender("save_meal_template", {
-    name,
-    log_ids: Array.from(selectedLogIds),
-  }).then(() => {
-    selectedLogIds.clear();
-    templateNameInput.value = "";
-  });
+  const logIds = Array.from(selectedLogIds);
+  // Clear before the call, not in a .then() after it — callAndRender's own render()
+  // runs as soon as the server responds and reads selectedLogIds to check each log's
+  // checkbox, so clearing afterward was always one render too late: the items stayed
+  // checked (and the save bar stayed visible) until something else re-rendered.
+  selectedLogIds.clear();
+  templateNameInput.value = "";
+  void callAndRender("save_meal_template", { name, log_ids: logIds });
 };
 templateNameInput.onkeydown = (event) => {
   if (event.key === "Enter") saveTemplateBtn.click();
