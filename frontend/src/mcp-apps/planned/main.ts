@@ -248,6 +248,7 @@ async function loadPatternAndCatalog(): Promise<void> {
   const patternResult = await app.callServerTool({ name: "get_weekly_pattern", arguments: {} });
   currentPattern = extractPattern(patternResult) ?? [];
   renderPattern();
+  if (statusEl.textContent === "Loading…") statusEl.textContent = "";
 }
 
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
@@ -264,6 +265,9 @@ app.ontoolresult = (result) => {
   if (planned) {
     currentPlanned = planned;
     renderPlanned();
+    if (statusEl.textContent === "Loading…" || statusEl.textContent === "Waiting for data…") {
+      statusEl.textContent = "";
+    }
   } else {
     statusEl.textContent = "Waiting for data…";
   }
