@@ -69,6 +69,7 @@ export function PlannedPage({ me }: { me: Me }) {
 
   return (
     <section>
+      <h2>Planned</h2>
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
