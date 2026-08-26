@@ -129,8 +129,20 @@ export function TemplatesPage({ me }: { me: Me }) {
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
-      <div className="dash-stack">
-        <div className="dash-card">
+      <div style={{ display: "flex", gap: "1.5rem", justifyContent: "center" }}>
+        <div className="dash-card" style={{ flex: 1, maxWidth: "26rem", alignSelf: "flex-start" }}>
+          {selectedId ? (
+            <AppRenderer
+              key={selectedId}
+              bundleUrl="/mcp-apps/template.html"
+              initialTool="get_workout_template"
+              onCallTool={handleTool}
+            />
+          ) : (
+            <p className="muted">Select a template to edit it.</p>
+          )}
+        </div>
+        <div className="dash-card" style={{ minWidth: "12rem", alignSelf: "flex-start" }}>
           <h2>Templates</h2>
           {templates === null && <p className="muted">Loading…</p>}
           {templates?.length === 0 && (
@@ -145,18 +157,6 @@ export function TemplatesPage({ me }: { me: Me }) {
               </li>
             ))}
           </ul>
-        </div>
-        <div className="dash-card">
-          {selectedId ? (
-            <AppRenderer
-              key={selectedId}
-              bundleUrl="/mcp-apps/template.html"
-              initialTool="get_workout_template"
-              onCallTool={handleTool}
-            />
-          ) : (
-            <p className="muted">Select a template to edit it.</p>
-          )}
         </div>
       </div>
     </section>
