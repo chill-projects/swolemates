@@ -1,11 +1,25 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
-import { useLogWeight } from "../api/nutrition";
+import { type GoalInput, useGoals, useLogWeight, useSetGoals } from "../api/nutrition";
 import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
 
 // weight_lbs is always stored in pounds regardless of the user's display unit — matches
 // app/services/workouts.py's MET-calorie estimate, which reads it back the same way.
 const LBS_PER_KG = 2.20462;
+
+const TARGET_KEYS = ["calories", "protein_g", "carbs_g", "fat_g", "fiber_g"] as const;
+type TargetKey = (typeof TARGET_KEYS)[number];
+
+/** Direct port of app/services/tdee.py::distribute_macros — fat/carbs/fiber all scale
+ *  with total calories; protein is a fixed anchor, not derived here. Only the calorie
+ *  field cascades this on edit (matching docs/legacy/components/TargetsForm.tsx); editing
+ *  protein/carbs/fat/fiber directly changes just that one field. */
+function distributeMacros(calories: number, proteinG: number): { carbs: number; fat: number; fiber: number } {
+  const fat = (calories * 0.27) / 9;
+  const carbs = Math.max((calories - proteinG * 4 - fat * 9) / 4, 0);
+  const fiber = (calories / 1000) * 14;
+  return { carbs: Math.round(carbs), fat: Math.round(fat), fiber: Math.round(fiber) };
+}
 
 type WeightUnit = "lbs" | "kg";
 type BiologicalSex = "male" | "female";
@@ -66,6 +80,79 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
     const weightLbs = weightUnit === "kg" ? value * LBS_PER_KG : value;
     logWeight.mutate(weightLbs, { onSuccess: () => setWeightInput("") });
   }
+
+  // Editable targets (#TDEE, legacy parity): calculate_targets already persists what it
+  // computes, so this is purely for adjusting afterward — "the numbers below are fully
+  // editable" per docs/legacy/components/TargetsForm.tsx. Seeded once from whichever
+  // comes first, existing goals (a returning visit) or a fresh calculation, then left
+  // alone — re-seeding on every goals refetch would clobber in-progress edits.
+  const goals = useGoals();
+  const setGoals = useSetGoals();
+  const [targets, setTargets] = useState<Record<TargetKey, string>>({
+    calories: "",
+    protein_g: "",
+    carbs_g: "",
+    fat_g: "",
+    fiber_g: "",
+  });
+  const seededTargets = useRef(false);
+
+  useEffect(() => {
+    if (seededTargets.current || !goals.data || goals.data.length === 0) return;
+    seededTargets.current = true;
+    const byKey = Object.fromEntries(goals.data.map((g) => [g.trackable_key, g.target_value]));
+    setTargets((t) => ({
+      ...t,
+      ...Object.fromEntries(
+        TARGET_KEYS.filter((k) => byKey[k] != null).map((k) => [k, String(byKey[k])]),
+      ),
+    }));
+  }, [goals.data]);
+
+  function seedTargetsFromCalculation(data: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    fiber_g: number;
+  }) {
+    seededTargets.current = true;
+    setTargets({
+      calories: String(data.calories),
+      protein_g: String(data.protein_g),
+      carbs_g: String(data.carbs_g),
+      fat_g: String(data.fat_g),
+      fiber_g: String(data.fiber_g),
+    });
+  }
+
+  function handleCalorieTargetChange(value: string) {
+    const protein = Number(targets.protein_g);
+    const calories = Number(value);
+    if (value && calories && targets.protein_g && protein) {
+      const { carbs, fat, fiber } = distributeMacros(calories, protein);
+      setTargets((t) => ({
+        ...t,
+        calories: value,
+        carbs_g: String(carbs),
+        fat_g: String(fat),
+        fiber_g: String(fiber),
+      }));
+    } else {
+      setTargets((t) => ({ ...t, calories: value }));
+    }
+  }
+
+  function handleSaveTargets() {
+    const body: GoalInput[] = TARGET_KEYS.filter((k) => targets[k] !== "").map((k) => ({
+      trackable_key: k,
+      target_value: Number(targets[k]),
+    }));
+    if (body.length === 0) return;
+    setGoals.mutate(body);
+  }
+
+  const hasTargets = TARGET_KEYS.some((k) => targets[k] !== "");
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -212,23 +299,78 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
       <div className="calculate-targets">
         <button
           type="button"
-          onClick={() => calculateTargets.mutate()}
+          onClick={() => calculateTargets.mutate(undefined, { onSuccess: seedTargetsFromCalculation })}
           disabled={calculateTargets.isPending}
         >
           Calculate targets
         </button>
         {calculateTargets.isSuccess && (
-          <p className="muted">
-            Estimated TDEE: ~{calculateTargets.data.tdee.toLocaleString()} cal/day. Set targets:{" "}
-            {calculateTargets.data.calories.toLocaleString()} cal, {calculateTargets.data.protein_g}g
-            protein, {calculateTargets.data.carbs_g}g carbs, {calculateTargets.data.fat_g}g fat,{" "}
-            {calculateTargets.data.fiber_g}g fiber.
-          </p>
+          <p className="muted">Estimated TDEE: ~{calculateTargets.data.tdee.toLocaleString()} cal/day.</p>
         )}
         {calculateTargets.isError && (
           <p className="error">{calculateTargets.error.message}</p>
         )}
       </div>
+
+      {hasTargets && (
+        <fieldset>
+          <legend>Daily targets</legend>
+          <p className="muted">
+            Adjusting calories redistributes fat/carbs/fiber around it; protein stays fixed to
+            your bodyweight.
+          </p>
+          <label>
+            Calories
+            <input
+              type="number"
+              inputMode="numeric"
+              value={targets.calories}
+              onChange={(e) => handleCalorieTargetChange(e.target.value)}
+            />
+          </label>
+          <label>
+            Protein (g)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={targets.protein_g}
+              onChange={(e) => setTargets((t) => ({ ...t, protein_g: e.target.value }))}
+            />
+          </label>
+          <label>
+            Carbs (g)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={targets.carbs_g}
+              onChange={(e) => setTargets((t) => ({ ...t, carbs_g: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fat (g)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={targets.fat_g}
+              onChange={(e) => setTargets((t) => ({ ...t, fat_g: e.target.value }))}
+            />
+          </label>
+          <label>
+            Fiber (g)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={targets.fiber_g}
+              onChange={(e) => setTargets((t) => ({ ...t, fiber_g: e.target.value }))}
+            />
+          </label>
+          <button type="button" onClick={handleSaveTargets} disabled={setGoals.isPending}>
+            Save targets
+          </button>
+          {setGoals.isSuccess && <p className="muted">Saved.</p>}
+          {setGoals.isError && <p className="error">{setGoals.error.message}</p>}
+        </fieldset>
+      )}
     </form>
   );
 }

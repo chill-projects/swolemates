@@ -1,6 +1,33 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
+
+const GOALS_KEY = ["nutritionGoals"] as const;
+
+export function useGoals() {
+  return useQuery({
+    queryKey: GOALS_KEY,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/nutrition/goals");
+      if (error) throw new Error("Failed to load targets");
+      return data;
+    },
+  });
+}
+
+export type GoalInput = { trackable_key: string; target_value: number };
+
+export function useSetGoals() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (goals: GoalInput[]) => {
+      const { data, error } = await api.PUT("/api/nutrition/goals", { body: { goals } });
+      if (error) throw new Error("Failed to save targets");
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: GOALS_KEY }),
+  });
+}
 
 /** Body weight, canonical pounds — always `weight_lbs` regardless of the user's
  *  display unit preference (matches app/services/workouts.py's MET-calorie estimate,
