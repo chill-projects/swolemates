@@ -36,21 +36,12 @@ function workoutTitle(w: Workout): string {
   return w.title ?? (w.workout_type === "strength" ? "Strength workout" : (w.activity_type ?? "Workout"));
 }
 
-function volume(w: Workout): number {
-  return w.exercises.reduce(
-    (sum, e) =>
-      sum +
-      e.sets.reduce((s, set) => s + (set.weight != null ? Number(set.weight) : 0) * (set.reps ?? 0), 0),
-    0,
-  );
-}
-
 function totalSets(w: Workout): number {
   return w.exercises.reduce((n, e) => n + e.sets.length, 0);
 }
 
-function formatVolume(v: number): string {
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}k lbs` : `${Math.round(v)} lbs`;
+function formatCalories(w: Workout): string | null {
+  return w.calories_burned != null ? `~${Math.round(Number(w.calories_burned))} kcal (est.)` : null;
 }
 
 function formatSet(s: Set): string {
@@ -71,7 +62,9 @@ function WorkoutCard({ w }: { w: Workout }) {
           <strong>{workoutTitle(w)}</strong>
           <span className="muted workout-history-stats">
             {w.duration_minutes != null && `${w.duration_minutes} min`}
-            {isStrength && sets > 0 && ` · ${sets} sets · ${formatVolume(volume(w))}`}
+            {isStrength &&
+              sets > 0 &&
+              `${w.exercises.length} exercise${w.exercises.length === 1 ? "" : "s"}, ${sets} set${sets === 1 ? "" : "s"}`}
           </span>
         </div>
         <span className="workout-history-chevron">{open ? "▾" : "▸"}</span>
@@ -80,23 +73,32 @@ function WorkoutCard({ w }: { w: Workout }) {
       {open && (
         <div className="workout-history-detail">
           {isStrength ? (
-            w.exercises.length > 0 ? (
-              w.exercises.map((e) => (
-                <div key={e.id} className="workout-history-exercise">
-                  <span className="workout-history-exercise-name">{e.exercise_name ?? "Exercise"}</span>
-                  <span className="muted workout-history-exercise-sets">
-                    {e.sets.map(formatSet).join(", ")}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>
-                No exercises logged.
-              </p>
-            )
+            <>
+              {formatCalories(w) && (
+                <p className="muted" style={{ margin: "0 0 0.5rem" }}>
+                  {formatCalories(w)}
+                </p>
+              )}
+              {w.exercises.length > 0 ? (
+                w.exercises.map((e) => (
+                  <div key={e.id} className="workout-history-exercise">
+                    <span className="workout-history-exercise-name">
+                      {e.exercise_name ?? "Exercise"}
+                    </span>
+                    <span className="muted workout-history-exercise-sets">
+                      {e.sets.map(formatSet).join(", ")}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="muted" style={{ margin: 0 }}>
+                  No exercises logged.
+                </p>
+              )}
+            </>
           ) : (
             <p className="muted" style={{ margin: 0 }}>
-              {w.calories_burned != null && `~${Math.round(Number(w.calories_burned))} kcal (est.)`}
+              {formatCalories(w)}
               {w.notes && ` — ${w.notes}`}
             </p>
           )}
