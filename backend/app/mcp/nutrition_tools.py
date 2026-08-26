@@ -140,6 +140,14 @@ async def log_nutrition(
     today is to target, or that this extends/breaks a logging or goal-adherence streak —
     without making them ask.
 
+    A meal with separately-adjustable components (a bowl with mix-ins, a plate with
+    sides) needs one log_nutrition call per component, not one call combining
+    everything — e.g. "yogurt bowl: yogurt, apple, chia seeds, granola" is 4 calls, not
+    1. save_meal_template later snapshots whatever's already logged one-for-one, so a
+    combined entry becomes a template with a single fixed-portion item nobody can
+    adjust; separate entries become separately-adjustable items. A single genuinely
+    indivisible dish ("chicken and rice") still gets one call.
+
     Args:
         entries: [{"trackable_key": "calories", "value": 450}, ...]. Valid keys today:
             calories, protein_g, carbs_g, fat_g, fiber_g, weight_lbs. If this food came
