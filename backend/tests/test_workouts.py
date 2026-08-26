@@ -754,15 +754,35 @@ async def test_finish_workout_404s_for_another_users_workout(session: AsyncSessi
         await service.finish_workout(session, OTHER_USER, workout_id=workout.id)
 
 
-async def test_finish_workout_allows_zero_logged_sets(session: AsyncSession) -> None:
-    workout = await service.start_workout(session, TEST_USER)
+async def test_finish_workout_allows_zero_logged_sets_on_an_added_exercise(
+    session: AsyncSession,
+) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
 
     finished = await service.finish_workout(
         session, TEST_USER, workout_id=workout.id, notes="short one"
     )
 
+    assert finished is not None
     assert finished.completed_at is not None
     assert finished.notes == "short one"
+
+
+async def test_finish_workout_discards_a_workout_with_no_exercises_added(
+    session: AsyncSession,
+) -> None:
+    """The accidental-start-and-cancel case: the app's Cancel button only shows
+    when nothing was ever added, and finishing that shouldn't leave a phantom
+    "completed" row behind for history/streaks to pick up."""
+    workout = await service.start_workout(session, TEST_USER)
+
+    finished = await service.finish_workout(session, TEST_USER, workout_id=workout.id)
+
+    assert finished is None
+    remaining = (
+        await session.execute(select(Workout).where(Workout.id == workout.id))
+    ).scalar_one_or_none()
+    assert remaining is None
 
 
 async def test_get_active_workout_returns_none_when_nothing_active(session: AsyncSession) -> None:
@@ -914,8 +934,9 @@ async def test_update_workout_entry_404s_for_another_users_workout(session: Asyn
 
 
 async def test_update_workout_entry_rejects_a_finished_workout(session: AsyncSession) -> None:
-    workout = await service.start_workout(session, TEST_USER)
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
     finished = await service.finish_workout(session, TEST_USER, workout_id=workout.id)
+    assert finished is not None
 
     with pytest.raises(ValueError, match="already finished"):
         await service.update_workout_entry(
@@ -1224,13 +1245,25 @@ async def test_log_set_over_rest(client: AsyncClient) -> None:
 
 
 async def test_finish_workout_over_rest(client: AsyncClient) -> None:
-    start_resp = await client.post("/api/workouts/start", json={})
+    start_resp = await client.post("/api/workouts/start", json={"exercises": ["Deadlift"]})
     workout_id = start_resp.json()["id"]
 
     resp = await client.post(f"/api/workouts/{workout_id}/finish", json={})
 
     assert resp.status_code == 200
     assert resp.json()["completed_at"] is not None
+
+
+async def test_finish_workout_over_rest_returns_null_for_a_workout_with_no_exercises(
+    client: AsyncClient,
+) -> None:
+    start_resp = await client.post("/api/workouts/start", json={})
+    workout_id = start_resp.json()["id"]
+
+    resp = await client.post(f"/api/workouts/{workout_id}/finish", json={})
+
+    assert resp.status_code == 200
+    assert resp.json() is None
 
 
 async def test_get_active_workout_over_rest_returns_null_when_none(client: AsyncClient) -> None:

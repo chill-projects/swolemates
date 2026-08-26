@@ -400,6 +400,10 @@ async def finish_workout(workout_id: str, notes: str | None = None) -> dict:
         workout = await service.finish_workout(
             session, user_sub, workout_id=UUID(workout_id), notes=notes
         )
+        # No exercises were ever added — finish_workout discarded it rather than
+        # persisting an empty completed row (the accidental-start-and-cancel case).
+        if workout is None:
+            return {"active": False, "summary": "No active workout."}
         live = await service.get_workout_live(session, user_sub, workout)
     return _live_payload(live)
 

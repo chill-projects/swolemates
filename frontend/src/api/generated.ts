@@ -3013,7 +3013,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkoutOut"];
+                    "application/json": components["schemas"]["WorkoutOut"] | null;
                 };
             };
             /** @description Validation Error */

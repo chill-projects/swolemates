@@ -119,17 +119,19 @@ async def log_set(body: LogSetRequest, user_sub: CurrentUser, session: DbSession
     )
 
 
-@router.post("/{workout_id}/finish", response_model=WorkoutOut, operation_id="finishWorkout")
+@router.post("/{workout_id}/finish", response_model=WorkoutOut | None, operation_id="finishWorkout")
 async def finish_workout(
     workout_id: uuid.UUID, body: FinishWorkoutRequest, user_sub: CurrentUser, session: DbSession
-) -> WorkoutOut:
+) -> WorkoutOut | None:
     try:
         workout = await service.finish_workout(
             session, user_sub, workout_id=workout_id, notes=body.notes
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return WorkoutOut.model_validate(workout)
+    # None means finish_workout discarded it (no exercises were ever added) rather
+    # than persisting an empty completed row.
+    return WorkoutOut.model_validate(workout) if workout else None
 
 
 @router.get("/streak", response_model=StreakOut, operation_id="getWorkoutStreak")

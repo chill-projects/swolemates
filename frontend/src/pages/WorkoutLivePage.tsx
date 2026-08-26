@@ -177,6 +177,9 @@ export function WorkoutLivePage({ me }: { me: Me }) {
             body: {},
           });
           if (error) throw new Error("finish workout failed");
+          // No exercises were ever added — the server discarded it rather than
+          // persisting an empty completed row, so there's no /live to re-fetch.
+          if (!data) return emptyPayload;
           earnedStreak = data.streak ?? null;
           workoutId = finishedId;
           break;

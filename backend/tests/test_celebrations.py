@@ -226,10 +226,11 @@ async def test_get_streak_is_scoped_to_owner(session: AsyncSession) -> None:
 
 
 async def test_finish_workout_attaches_streak(session: AsyncSession) -> None:
-    started = await workouts.start_workout(session, TEST_USER)
+    started = await workouts.start_workout(session, TEST_USER, exercises=["Deadlift"])
 
     finished = await workouts.finish_workout(session, TEST_USER, workout_id=started.id)
 
+    assert finished is not None
     assert finished.streak is not None
     assert finished.streak.this_week >= 1
 
@@ -305,7 +306,7 @@ async def test_log_set_over_rest_includes_celebrations(client: AsyncClient) -> N
 
 
 async def test_finish_workout_over_rest_includes_streak(client: AsyncClient) -> None:
-    start_resp = await client.post("/api/workouts/start", json={})
+    start_resp = await client.post("/api/workouts/start", json={"exercises": ["Deadlift"]})
     workout_id = start_resp.json()["id"]
 
     resp = await client.post(f"/api/workouts/{workout_id}/finish", json={})

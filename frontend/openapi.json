@@ -5000,7 +5000,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkoutOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorkoutOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Finishworkout"
                 }
               }
             },

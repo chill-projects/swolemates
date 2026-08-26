@@ -861,13 +861,19 @@ async def log_set(
 
 async def finish_workout(
     session: AsyncSession, user_sub: str, *, workout_id: uuid.UUID, notes: str | None = None
-) -> WorkoutOut:
+) -> WorkoutOut | None:
     """Stamps `completed_at`, drops any never-logged sets (workoutValidation port:
     empty prescribed-but-unlogged sets are dropped, not errors — a no-op today
     since blank-start sessions never create unlogged sets, but ready for slice 3's
     template-prescribed ones). No PR/streak computation yet — that's slice 4,
     wrapping around this function without changing its signature. Finishing with
-    zero logged sets is allowed; there's no separate "discard" tool in this slice.
+    zero logged sets on an exercise is allowed (e.g. picked an exercise, then
+    stopped) — but a workout with *no exercises added at all* is the shape left
+    behind by starting one by accident and immediately cancelling (the app's
+    Cancel button only ever shows in exactly that state), and isn't a real
+    session: it's discarded outright rather than persisted as a zero-content
+    "completed" workout, so it doesn't pollute history or streaks. Returns None
+    in that case.
     """
     result = await session.execute(
         select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
@@ -875,6 +881,17 @@ async def finish_workout(
     workout = result.scalar_one_or_none()
     if workout is None:
         raise NotFoundError(f"No workout {workout_id}")
+
+    has_exercises = (
+        await session.execute(
+            select(WorkoutExercise.id).where(WorkoutExercise.workout_id == workout_id).limit(1)
+        )
+    ).first() is not None
+    if not has_exercises:
+        await session.delete(workout)
+        await session.flush()
+        events.publish(user_sub, "workouts")
+        return None
 
     await session.execute(
         delete(WorkoutSet).where(
