@@ -14,6 +14,19 @@ interface Me {
 const numeric = (values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
 
+/** get_nutrition_day defaults to UTC "today" server-side (day.py: "no per-user timezone
+ *  yet") — fine most of the day, but wrong for hours after the user's local midnight and
+ *  before UTC's, when it silently shows an empty day instead of what they just logged.
+ *  The browser knows the user's actual local date, so send it explicitly instead of
+ *  relying on the server's default. */
+function todayLocalDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** Shape the REST response into the same payload the MCP tools return (numbers
  *  instead of the Decimal-as-string REST wire format), so the component can't tell
  *  which host it's running in. */
@@ -120,7 +133,9 @@ export function NutritionPage({ me }: { me: Me }) {
         default:
           throw new Error(`unknown tool: ${name}`);
       }
-      const { data, error } = await api.GET("/api/nutrition/day");
+      const { data, error } = await api.GET("/api/nutrition/day", {
+        params: { query: { day: todayLocalDate() } },
+      });
       if (error || !data) throw new Error("day fetch failed");
       return toPayload(data);
     },

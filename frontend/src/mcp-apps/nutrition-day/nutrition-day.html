@@ -16,9 +16,25 @@
         --ring-fill: #2f9e8f;
         --bar-track: color-mix(in srgb, currentColor 10%, transparent);
         --border: color-mix(in srgb, currentColor 14%, transparent);
+        /* Matches frontend/src/index.css's --sand/--card exactly — this component is
+           self-contained (no shared stylesheet with the SPA shell) but renders inside
+           it via AppRenderer, so its card surfaces need to match by value, not just by
+           being "a card". Same light/dark pair as the host, kept in sync by hand. */
+        --page-bg: #f4f1e8;
+        --card-bg: #ffffff;
       }
-      body { margin: 0; padding: 0.85rem; }
-      .hero { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1rem; }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page-bg: #16211f;
+          --card-bg: #1c2926;
+        }
+      }
+      body { margin: 0; padding: 0.85rem; background: var(--page-bg); }
+      .hero {
+        display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1rem;
+        background: var(--card-bg); border: 1px solid var(--border); border-radius: 0.75rem;
+        padding: 0.75rem;
+      }
       .ring-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
       .ring-wrap svg { transform: rotate(-90deg); }
       .ring-center {
@@ -38,7 +54,10 @@
       .bar-fill { height: 100%; border-radius: 999px; background: var(--ring-fill); }
       .muted { opacity: 0.65; }
       .error { color: #d33; }
-      section { border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.75rem; }
+      section {
+        background: var(--card-bg); border: 1px solid var(--border); border-radius: 0.75rem;
+        padding: 0.75rem;
+      }
       section + section { margin-top: 0.75rem; }
       h2 {
         font-size: 0.65rem; letter-spacing: 0.05em; text-transform: uppercase;
