@@ -321,6 +321,8 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
   const card = document.createElement("div");
   card.className = "template-card";
 
+  const body = document.createElement("div");
+
   const name = document.createElement("strong");
   name.textContent = template.name;
 
@@ -353,7 +355,47 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
   };
   actions.append(logBtn, itemsBtn);
 
-  card.append(name, total, macros, actions, itemsList);
+  body.append(name, total, macros, actions, itemsList);
+
+  // Delete lives behind a confirm step, in the card itself rather than a separate
+  // management list — deleting a saved template is unrecoverable (no undo), so a
+  // stray tap on a small × shouldn't be enough on its own.
+  const confirm = document.createElement("div");
+  confirm.className = "template-delete-confirm";
+  confirm.hidden = true;
+  const confirmText = document.createElement("p");
+  confirmText.className = "muted";
+  confirmText.textContent = `Delete "${template.name}"? This can't be undone.`;
+  const confirmActions = document.createElement("div");
+  confirmActions.className = "template-delete-confirm-actions";
+  const confirmDeleteBtn = document.createElement("button");
+  confirmDeleteBtn.type = "button";
+  confirmDeleteBtn.className = "template-delete-confirm-btn";
+  confirmDeleteBtn.textContent = "Delete";
+  confirmDeleteBtn.onclick = () =>
+    void callAndRender("delete_meal_template", { template_id: template.id });
+  const cancelDeleteBtn = document.createElement("button");
+  cancelDeleteBtn.type = "button";
+  cancelDeleteBtn.textContent = "Cancel";
+  cancelDeleteBtn.onclick = () => {
+    confirm.hidden = true;
+    body.hidden = false;
+  };
+  confirmActions.append(confirmDeleteBtn, cancelDeleteBtn);
+  confirm.append(confirmText, confirmActions);
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "template-delete-btn";
+  deleteBtn.textContent = "×";
+  deleteBtn.title = "Delete template";
+  deleteBtn.setAttribute("aria-label", `Delete ${template.name}`);
+  deleteBtn.onclick = () => {
+    body.hidden = true;
+    confirm.hidden = false;
+  };
+
+  card.append(deleteBtn, body, confirm);
   return card;
 }
 

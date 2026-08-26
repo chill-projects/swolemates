@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { api } from "../api/client";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
 
 type NutritionDayOut = components["schemas"]["NutritionDayOut"];
-type MealTemplateSummaryOut = components["schemas"]["MealTemplateSummaryOut"];
 
 const numeric = (values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
@@ -91,34 +90,6 @@ function toPayload(day: NutritionDayOut): ToolResultPayload {
 }
 
 export function NutritionPage() {
-  // Deleting a meal template is deliberately REST-only, not a chat/MCP tool — the
-  // nutrition-day bundle's own comment explains why (it runs unchanged inside Claude,
-  // and a delete button there would work in the SPA but silently fail in chat). So
-  // this list lives here in plain React, next to the shared iframe rather than inside
-  // it. The iframe's own template list stays in sync on its own: delete_meal_template
-  // publishes the same "nutrition" SSE event log_nutrition etc. already trigger, which
-  // AppRenderer's eventsUrl already re-fetches on.
-  const [templates, setTemplates] = useState<MealTemplateSummaryOut[] | null>(null);
-
-  const refreshTemplates = useCallback(async () => {
-    const { data } = await api.GET("/api/nutrition/templates");
-    setTemplates(data ?? []);
-  }, []);
-
-  useEffect(() => {
-    void refreshTemplates();
-  }, [refreshTemplates]);
-
-  const handleDeleteTemplate = useCallback(
-    async (templateId: string) => {
-      const { error } = await api.DELETE("/api/nutrition/templates/{template_id}", {
-        params: { path: { template_id: templateId } },
-      });
-      if (!error) void refreshTemplates();
-    },
-    [refreshTemplates],
-  );
-
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       switch (name) {
@@ -160,7 +131,13 @@ export function NutritionPage() {
             },
           });
           if (error) throw new Error("save template failed");
-          void refreshTemplates();
+          break;
+        }
+        case "delete_meal_template": {
+          const { error } = await api.DELETE("/api/nutrition/templates/{template_id}", {
+            params: { path: { template_id: String(args.template_id ?? "") } },
+          });
+          if (error) throw new Error("delete template failed");
           break;
         }
         case "log_meal_template": {
@@ -198,7 +175,7 @@ export function NutritionPage() {
       if (error || !data) throw new Error("day fetch failed");
       return toPayload(data);
     },
-    [refreshTemplates],
+    [],
   );
 
   return (
@@ -210,33 +187,6 @@ export function NutritionPage() {
         onCallTool={handleTool}
         eventsUrl="/api/nutrition/events"
       />
-      {templates != null && templates.length > 0 && (
-        <div className="dash-card">
-          <div className="dash-card-header">
-            <span className="dash-card-title">Manage meal templates</span>
-          </div>
-          <ul>
-            {templates.map((t) => (
-              <li key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ flex: 1 }}>
-                  {t.name}{" "}
-                  <span className="muted">
-                    ({t.items.length} item{t.items.length === 1 ? "" : "s"})
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteTemplate(t.id)}
-                  aria-label={`Delete ${t.name}`}
-                  title="Delete template"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </section>
   );
 }

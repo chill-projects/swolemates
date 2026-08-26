@@ -267,6 +267,24 @@ async def save_meal_template(
         return await _day_payload(session, user_sub)
 
 
+@mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["app"]))
+@catches_service_errors
+async def delete_meal_template(template_id: str) -> dict:
+    """App-only: delete a saved meal template — driven by the template card's own
+    delete control (with its own confirm step), not a chat entry point. Kept off the
+    model's tool list on purpose so a casual mention in conversation ("get rid of
+    that") can't delete something; matches archive_workout_template's precedent for
+    the analogous workout-template action.
+
+    Args:
+        template_id: the template to delete.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        await service.delete_meal_template(session, user_sub, UUID(template_id))
+        return await _day_payload(session, user_sub)
+
+
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
 @catches_service_errors
 async def update_meal_template_item(
