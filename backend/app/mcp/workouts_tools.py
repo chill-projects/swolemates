@@ -176,6 +176,27 @@ def _live_payload(live: service.WorkoutLiveOut) -> dict:
 
 @mcp.tool
 @catches_service_errors
+async def search_exercises(query: str) -> str:
+    """Look up real catalog exercise names matching a query (substring, case-
+    insensitive) — call this before log_workout/create_workout_template and use one
+    of the returned names verbatim when there's a good match. Exercise resolution
+    only matches an *exact* name; a close-but-not-exact guess ("Back Squat" for the
+    catalog's "Barbell Back Squat") silently creates a new custom exercise with no
+    real muscle group, so it never lights up on the workout view's muscle map.
+
+    Args:
+        query: e.g. "squat", "bench press", "curl".
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        matches = await service.search_exercises(session, user_sub, query)
+    if not matches:
+        return f'No catalog match for "{query}" — a new custom exercise is fine here.'
+    return "\n".join(f"{e.name} ({e.muscle_group})" for e in matches)
+
+
+@mcp.tool
+@catches_service_errors
 async def log_workout(
     exercises: list[dict], title: str | None = None, date: str | None = None
 ) -> str:
@@ -185,8 +206,13 @@ async def log_workout(
     and mention anything notable — a near-PR, a stalled lift, a broken or extended
     streak.
 
+    Exercise names must match the catalog exactly (case-insensitive) to attach real
+    muscle-group data — call search_exercises first ("squat" -> "Barbell Back Squat")
+    rather than guessing a colloquial name; a near-miss silently creates a new custom
+    exercise with no muscle map coverage.
+
     Args:
-        exercises: [{"exercise": "Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
+        exercises: [{"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
             "notes"?, "next_time_note"?}, ...]. Each set: reps sets need "reps" > 0 and
             "weight" >= 0 (0 for bodyweight); timed sets need "set_type": "time" and
             "work_seconds" > 0. Add "is_warmup": true to exclude a set from PR checks.
@@ -421,6 +447,22 @@ async def get_active_workout() -> dict:
             return {"active": False, "summary": "No active workout."}
         live = await service.get_workout_live(session, user_sub, workout)
     return _live_payload(live)
+
+
+@mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["app"]))
+@catches_service_errors
+async def get_todays_plan() -> dict:
+    """App-only: today's planned workout, if any is still unstarted — lets the
+    empty-state "Start workout" button offer "start today's plan" alongside "start
+    from scratch" instead of only the latter."""
+    from app.services import planned_workouts
+
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        entry = await planned_workouts.get_today_planned(session, user_sub)
+    if entry is None:
+        return {"planned": None}
+    return {"planned": {"id": str(entry.id), "template_name": entry.template_name}}
 
 
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["app"]))

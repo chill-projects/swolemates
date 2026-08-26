@@ -214,6 +214,16 @@ async def get_planned_workouts(
     return out
 
 
+async def get_today_planned(session: AsyncSession, user_sub: str) -> PlannedWorkoutOut | None:
+    """Today's planned entry, only if it's still unstarted (status "planned") — lets
+    the in-workout view's "Start workout" offer starting from today's plan alongside
+    starting from scratch. None once the day's plan is done, skipped, or there was
+    never one."""
+    today = date.today()
+    planned = await get_planned_workouts(session, user_sub, start=today, end=today)
+    return next((p for p in planned if p.status == PlannedWorkoutStatus.planned), None)
+
+
 async def _require_planned(
     session: AsyncSession, user_sub: str, planned_id: uuid.UUID
 ) -> PlannedWorkout:

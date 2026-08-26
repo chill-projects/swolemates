@@ -122,6 +122,7 @@ const celebrationsEl = $<HTMLDivElement>("celebrations");
 const streakLineEl = $<HTMLParagraphElement>("streak-line");
 const muscleMapEl = $<HTMLDivElement>("muscle-map");
 const emptyEl = $<HTMLDivElement>("empty");
+const todayPlanBtn = $<HTMLButtonElement>("today-plan-btn");
 const startBtn = $<HTMLButtonElement>("start-btn");
 const logActivityBtn = $<HTMLButtonElement>("log-activity-btn");
 const activityFormEl = $<HTMLDivElement>("activity-form");
@@ -163,6 +164,9 @@ let pickerSupersetWith: string | null = null;
 let selectedCategory: string | null = null;
 let selectedEquipment: string | null = null;
 let selectedActivityType: string | null = null;
+// Today's still-unstarted planned workout, if any — lets the empty state offer
+// "start today's plan" alongside "start from scratch" instead of only the latter.
+let todayPlanned: { id: string; template_name: string } | null = null;
 
 const app = new App({ name: "Swolemates Workouts", version: "1.0.0" });
 
@@ -492,6 +496,8 @@ function render(payload: LivePayload): void {
   if (!payload.active) {
     emptyEl.hidden = false;
     workoutEl.hidden = true;
+    updateStartButtons();
+    void loadTodaysPlan();
     return;
   }
   emptyEl.hidden = true;
@@ -514,6 +520,35 @@ function render(payload: LivePayload): void {
     hasSetDefaultOpenGroup = true;
   }
   groupsEl.replaceChildren(...groups.map((g) => renderGroup(g, finished)));
+}
+
+/** Reflects `todayPlanned` onto the empty-state buttons: a second "start today's
+ *  plan" button appears (and "Start workout" relabels to "Start from scratch")
+ *  only when today has an unstarted planned entry. */
+function updateStartButtons(): void {
+  if (todayPlanned) {
+    const planned = todayPlanned;
+    todayPlanBtn.hidden = false;
+    todayPlanBtn.textContent = `Start today's plan: ${planned.template_name}`;
+    todayPlanBtn.onclick = () => void callAndRender("start_workout", { planned_id: planned.id });
+    startBtn.textContent = "Start from scratch";
+  } else {
+    todayPlanBtn.hidden = true;
+    startBtn.textContent = "Start workout";
+  }
+}
+
+async function loadTodaysPlan(): Promise<void> {
+  try {
+    const result = await app.callServerTool({ name: "get_todays_plan", arguments: {} });
+    const structured = result.structuredContent as
+      | { planned?: { id: string; template_name: string } | null }
+      | undefined;
+    todayPlanned = structured?.planned ?? null;
+  } catch {
+    todayPlanned = null;
+  }
+  updateStartButtons();
 }
 
 async function loadCatalog(): Promise<void> {

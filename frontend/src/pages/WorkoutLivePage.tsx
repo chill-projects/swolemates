@@ -146,10 +146,23 @@ export function WorkoutLivePage({ me }: { me: Me }) {
             body: {
               exercises: (args.exercises as string[] | undefined) ?? null,
               template_id: (args.template_id as string | undefined) ?? null,
+              planned_id: (args.planned_id as string | undefined) ?? null,
             },
           });
           if (error) throw new Error("start workout failed");
           break;
+        }
+        case "get_todays_plan": {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data, error } = await api.GET("/api/planned-workouts", {
+            params: { query: { start: today, end: today } },
+          });
+          if (error || !data) throw new Error("planned fetch failed");
+          const entry = data.find((p) => p.status === "planned");
+          const payload = {
+            planned: entry ? { id: entry.id, template_name: entry.template_name } : null,
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
         }
         case "log_set": {
           const { data, error } = await api.POST("/api/workouts/log-set", {

@@ -109,6 +109,51 @@ async def test_get_planned_workouts_is_idempotent(session: AsyncSession) -> None
     assert {p.id for p in first} == {p.id for p in second}
 
 
+async def test_get_today_planned_is_none_with_nothing_scheduled(session: AsyncSession) -> None:
+    assert await service.get_today_planned(session, TEST_USER) is None
+
+
+async def test_get_today_planned_returns_todays_unstarted_entry(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=date.today()
+    )
+
+    today_planned = await service.get_today_planned(session, TEST_USER)
+
+    assert today_planned is not None
+    assert today_planned.id == planned.id
+    assert today_planned.template_name == "Legs"
+
+
+async def test_get_today_planned_ignores_a_future_entry(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=date.today() + timedelta(days=1)
+    )
+
+    assert await service.get_today_planned(session, TEST_USER) is None
+
+
+async def test_get_today_planned_is_none_once_skipped(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=date.today()
+    )
+    await service.update_planned_workout(session, TEST_USER, planned_id=planned.id, action="skip")
+
+    assert await service.get_today_planned(session, TEST_USER) is None
+
+
+async def test_get_today_planned_is_scoped_to_the_caller(session: AsyncSession) -> None:
+    legs = await _make_template(session, OTHER_USER, "Legs")
+    await service.plan_workout(
+        session, OTHER_USER, template_id=legs.id, scheduled_for=date.today()
+    )
+
+    assert await service.get_today_planned(session, TEST_USER) is None
+
+
 async def test_get_planned_workouts_skips_rest_days(session: AsyncSession) -> None:
     legs = await _make_template(session, TEST_USER, "Legs")
     await service.set_weekly_pattern(
