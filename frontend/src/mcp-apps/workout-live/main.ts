@@ -100,6 +100,12 @@ interface CatalogExercise {
 
 const UNSPECIFIED_EQUIPMENT = "Unspecified";
 
+// lucide "rotate-cw" — same source/style as the nav icons in components/icons.tsx.
+const REDO_SET_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+
 // Curated, not freeform: a known activity type is what lets a future calorie
 // estimate look up a MET value. "Other" still escapes to free text below.
 const ACTIVITY_TYPES = ["Hiking", "Yoga", "Pilates", "Zumba", "Running", "Cycling", "Swimming"];
@@ -242,30 +248,22 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     wrap.appendChild(lt);
   }
 
-  const list = document.createElement("ul");
-  list.className = "logged-sets";
-  list.replaceChildren(
-    ...e.sets.map((s) => {
-      const li = document.createElement("li");
-      const base =
-        s.set_type === "time"
-          ? `${s.work_seconds}s`
-          : `${s.weight ?? "—"}lbs × ${s.reps}`;
-      li.textContent = s.is_warmup ? `${base} (warmup)` : base;
-      return li;
-    }),
-  );
-  wrap.appendChild(list);
+  // Built ahead of the sets list (though appended after it, same as before) so the
+  // redo button on the most recent set can reach them to prefill a repeat set.
+  let weightInput: HTMLInputElement | null = null;
+  let mainInput: HTMLInputElement | null = null;
+  let warmupInput: HTMLInputElement | null = null;
+  let draft: HTMLDivElement | null = null;
+  // A template can prescribe a timed exercise (target.seconds); ad-hoc exercises
+  // stay reps-only in this draft row, same as before templates existed.
+  const isTimed = e.target?.seconds != null;
 
   if (!finished) {
-    const draft = document.createElement("div");
+    draft = document.createElement("div");
     draft.className = "draft-set";
-    // A template can prescribe a timed exercise (target.seconds); ad-hoc exercises
-    // stay reps-only in this draft row, same as before templates existed.
-    const isTimed = e.target?.seconds != null;
     const lastSet = e.last_time?.sets[e.last_time.sets.length - 1];
 
-    const weightInput = document.createElement("input");
+    weightInput = document.createElement("input");
     weightInput.type = "number";
     weightInput.step = "5";
     weightInput.placeholder = "lbs";
@@ -277,7 +275,7 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
           : "";
     weightInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} weight`);
 
-    const mainInput = document.createElement("input");
+    mainInput = document.createElement("input");
     mainInput.type = "number";
     mainInput.placeholder = isTimed ? "seconds" : "reps";
     mainInput.value = isTimed
@@ -295,7 +293,7 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     );
 
     const warmupLabel = document.createElement("label");
-    const warmupInput = document.createElement("input");
+    warmupInput = document.createElement("input");
     warmupInput.type = "checkbox";
     warmupLabel.append(warmupInput, document.createTextNode(" warmup"));
 
@@ -303,6 +301,7 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     logBtn.type = "button";
     logBtn.textContent = "Log set";
     logBtn.onclick = () => {
+      if (!weightInput || !mainInput || !warmupInput) return;
       if (mainInput.value === "") return;
       const weight = weightInput.value === "" ? undefined : Number(weightInput.value);
       void callAndRender("log_set", {
@@ -316,6 +315,51 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     };
 
     draft.append(weightInput, mainInput, warmupLabel, logBtn);
+  }
+
+  const list = document.createElement("ul");
+  list.className = "logged-sets";
+  const mostRecentIndex = e.sets.length - 1;
+  list.replaceChildren(
+    ...e.sets.map((s, i) => {
+      const li = document.createElement("li");
+      const base =
+        s.set_type === "time"
+          ? `${s.work_seconds}s`
+          : `${s.weight ?? "—"}lbs × ${s.reps}`;
+      const label = document.createElement("span");
+      label.textContent = s.is_warmup ? `${base} (warmup)` : base;
+      li.appendChild(label);
+
+      if (!finished && i === mostRecentIndex && weightInput && mainInput && warmupInput) {
+        const redoBtn = document.createElement("button");
+        redoBtn.type = "button";
+        redoBtn.className = "redo-set-btn";
+        redoBtn.title = "Copy into the set inputs below";
+        redoBtn.setAttribute("aria-label", "Copy this set into the inputs below");
+        redoBtn.innerHTML = REDO_SET_ICON;
+        redoBtn.onclick = () => {
+          if (!weightInput || !mainInput || !warmupInput) return;
+          weightInput.value = s.weight != null ? String(s.weight) : "";
+          mainInput.value =
+            s.set_type === "time"
+              ? s.work_seconds != null
+                ? String(s.work_seconds)
+                : ""
+              : s.reps != null
+                ? String(s.reps)
+                : "";
+          warmupInput.checked = s.is_warmup;
+          mainInput.focus();
+        };
+        li.appendChild(redoBtn);
+      }
+      return li;
+    }),
+  );
+  wrap.appendChild(list);
+
+  if (draft) {
     wrap.appendChild(draft);
 
     const noteInput = document.createElement("input");

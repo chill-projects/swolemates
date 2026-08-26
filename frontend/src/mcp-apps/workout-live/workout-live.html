@@ -103,7 +103,13 @@
 
       .last-time { font-size: 0.78rem; margin-top: 0.3rem; }
       .logged-sets { list-style: none; margin: 0.35rem 0 0; padding: 0; font-size: 0.8rem; }
-      .logged-sets li { padding: 0.15rem 0; opacity: 0.85; }
+      .logged-sets li { display: flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0; opacity: 0.85; }
+      .redo-set-btn {
+        border: none; background: none; padding: 0.1rem; margin: 0; line-height: 0;
+        color: var(--accent); opacity: 0.75; cursor: pointer;
+      }
+      .redo-set-btn:hover { opacity: 1; }
+      .redo-set-btn svg { width: 0.85rem; height: 0.85rem; display: block; }
 
       .draft-set { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
       .draft-set input[type="number"] { width: 4rem; }
