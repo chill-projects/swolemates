@@ -199,7 +199,7 @@ function macroLine(totals: Record<string, number>): string {
 // assumed a full targets object), so the tip falls back gracefully when protein or
 // calories has no goal set yet.
 function renderRemaining(payload: NutritionDayPayload): void {
-  const items = [...payload.bars, payload.hero];
+  const items = [payload.hero, ...payload.bars];
   remainingGridEl.replaceChildren(
     ...items.map((p) => {
       const div = document.createElement("div");
