@@ -53,11 +53,17 @@
         border: 1px solid var(--border); border-radius: 0.6rem;
         padding: 0.6rem; margin-bottom: 0.6rem;
       }
+      .group-header { display: flex; align-items: center; gap: 0.3rem; }
       .group-toggle {
-        display: flex; align-items: center; gap: 0.4rem; width: 100%;
+        display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0;
         border: none; padding: 0; background: none; color: inherit; text-align: left;
         font: inherit; font-weight: 600; cursor: pointer;
       }
+      .move-btn {
+        flex: 0 0 auto; padding: 0.1rem 0.4rem !important; font-size: 0.75rem;
+        line-height: 1.4;
+      }
+      .move-btn:disabled { opacity: 0.3; cursor: default; }
       .badge {
         font-size: 0.65rem; font-weight: 400; border: 1px solid var(--field-border);
         border-radius: 999px; padding: 0.05rem 0.5rem; color: var(--accent);

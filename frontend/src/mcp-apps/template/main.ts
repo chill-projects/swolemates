@@ -242,12 +242,32 @@ function renderExercise(e: TemplateExercise): HTMLDivElement {
   return wrap;
 }
 
-function renderGroup(g: Group): HTMLDivElement {
+/** Moves a whole group (a superset's exercises stay together) one slot up/down
+ *  in the template, by rebuilding the full template_exercise_id order backend's
+ *  reorder_exercises expects from the groups' current arrangement. */
+function moveGroup(groups: Group[], index: number, direction: -1 | 1): void {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= groups.length) return;
+  const reordered = [...groups];
+  const [moved] = reordered.splice(index, 1);
+  if (!moved) return;
+  reordered.splice(targetIndex, 0, moved);
+  void callAndRender("update_workout_template", {
+    template_id: currentPayload?.id,
+    action: "reorder_exercises",
+    order: reordered.flatMap((group) => group.exercises.map((e) => e.id)),
+  });
+}
+
+function renderGroup(g: Group, index: number, groups: Group[]): HTMLDivElement {
   const isOpen = openGroups.has(g.key);
   const title = g.exercises.map((e) => e.exercise_name ?? "Exercise").join(" + ");
 
   const wrap = document.createElement("div");
   wrap.className = "group";
+
+  const headerRow = document.createElement("div");
+  headerRow.className = "group-header";
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -273,7 +293,29 @@ function renderGroup(g: Group): HTMLDivElement {
     else openGroups.add(g.key);
     if (currentPayload) render(currentPayload);
   };
-  wrap.appendChild(toggle);
+  headerRow.appendChild(toggle);
+
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "move-btn";
+  upBtn.title = "Move up";
+  upBtn.setAttribute("aria-label", `Move ${title} up`);
+  upBtn.textContent = "↑";
+  upBtn.disabled = index === 0;
+  upBtn.onclick = () => moveGroup(groups, index, -1);
+  headerRow.appendChild(upBtn);
+
+  const downBtn = document.createElement("button");
+  downBtn.type = "button";
+  downBtn.className = "move-btn";
+  downBtn.title = "Move down";
+  downBtn.setAttribute("aria-label", `Move ${title} down`);
+  downBtn.textContent = "↓";
+  downBtn.disabled = index === groups.length - 1;
+  downBtn.onclick = () => moveGroup(groups, index, 1);
+  headerRow.appendChild(downBtn);
+
+  wrap.appendChild(headerRow);
 
   const body = document.createElement("div");
   body.className = "group-body";
@@ -310,7 +352,7 @@ function render(payload: TemplatePayload): void {
     openGroups.add(firstGroup.key);
     hasSetDefaultOpenGroup = true;
   }
-  groupsEl.replaceChildren(...groups.map(renderGroup));
+  groupsEl.replaceChildren(...groups.map((g, i) => renderGroup(g, i, groups)));
 }
 
 async function loadCatalog(): Promise<void> {
