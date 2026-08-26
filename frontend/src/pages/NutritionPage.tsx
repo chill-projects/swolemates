@@ -140,6 +140,13 @@ export function NutritionPage() {
           if (error) throw new Error("delete template failed");
           break;
         }
+        case "delete_nutrition_log": {
+          const { error } = await api.DELETE("/api/nutrition/logs/{log_id}", {
+            params: { path: { log_id: String(args.log_id ?? "") } },
+          });
+          if (error) throw new Error("delete log failed");
+          break;
+        }
         case "log_meal_template": {
           const templateId = String(args.template_id ?? "");
           const { error } = await api.POST("/api/nutrition/templates/{template_id}/log", {

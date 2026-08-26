@@ -93,6 +93,18 @@
       .log-values { opacity: 0.7; font-size: 0.8rem; margin-top: 0.15rem; }
       .log-top { display: flex; align-items: center; gap: 0.5rem; }
 
+      /* Same confirm-behind-a-small-× pattern as the meal template card. */
+      .log-entry { position: relative; padding-right: 1.6rem; }
+      .log-delete-btn {
+        position: absolute; top: 0.4rem; right: 0.1rem; border: none; background: none;
+        padding: 0.1rem 0.35rem; line-height: 1; font-size: 0.85rem; opacity: 0.45;
+        cursor: pointer;
+      }
+      .log-delete-btn:hover { opacity: 1; }
+      .log-delete-confirm:not([hidden]) { display: flex; flex-direction: column; gap: 0.4rem; }
+      .log-delete-confirm p { margin: 0; font-size: 0.75rem; }
+      .log-delete-confirm-actions { display: flex; gap: 0.4rem; }
+
       .remaining-card { background: var(--ring-fill); color: #fff; border: none; }
       .remaining-card h2 { color: #fff; opacity: 0.85; }
       .remaining-grid { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
@@ -182,6 +194,11 @@
       #food-search-results li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
       .food-result-name { font-weight: 600; }
       .food-result-meta { opacity: 0.65; font-size: 0.75rem; margin-top: 0.1rem; }
+      .food-result-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+      .food-result-qty {
+        width: 3.25rem; padding: 0.3rem 0.35rem; border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.8rem; text-align: center;
+      }
       .food-result-log { flex-shrink: 0; }
     </style>
   </head>

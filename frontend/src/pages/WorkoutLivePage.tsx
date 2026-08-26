@@ -199,6 +199,7 @@ export function WorkoutLivePage() {
               action: String(args.action ?? ""),
               exercise: (args.exercise as string | undefined) ?? null,
               workout_exercise_id: (args.workout_exercise_id as string | undefined) ?? null,
+              workout_set_id: (args.workout_set_id as string | undefined) ?? null,
               superset_with: (args.superset_with as string | undefined) ?? null,
               order: (args.order as string[] | undefined) ?? null,
               note: (args.note as string | undefined) ?? null,

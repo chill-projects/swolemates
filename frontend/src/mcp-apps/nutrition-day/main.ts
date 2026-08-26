@@ -407,7 +407,7 @@ function updateSaveBar(): void {
 
 function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
   const li = document.createElement("li");
-  li.className = "grouped-log";
+  li.className = "grouped-log log-entry";
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -452,14 +452,62 @@ function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
     arrow.textContent = items.hidden ? "▸ " : "▾ ";
   };
 
-  li.append(header, values, items);
+  const body = document.createElement("div");
+  body.append(header, values, items);
+
+  const confirm = renderDeleteLogControl(log, body);
+  const deleteBtn = renderDeleteLogBtn(log, body, confirm);
+
+  li.append(deleteBtn, body, confirm);
   return li;
+}
+
+function renderDeleteLogControl(log: DayLogEntry, body: HTMLElement): HTMLDivElement {
+  // Same confirm-behind-a-small-× pattern as the meal template card — deleting a
+  // logged entry is unrecoverable, so a stray tap shouldn't be enough on its own.
+  const confirm = document.createElement("div");
+  confirm.className = "log-delete-confirm";
+  confirm.hidden = true;
+  const confirmText = document.createElement("p");
+  confirmText.className = "muted";
+  confirmText.textContent = `Delete "${log.name ?? "this entry"}"? This can't be undone.`;
+  const confirmActions = document.createElement("div");
+  confirmActions.className = "log-delete-confirm-actions";
+  const confirmDeleteBtn = document.createElement("button");
+  confirmDeleteBtn.type = "button";
+  confirmDeleteBtn.textContent = "Delete";
+  confirmDeleteBtn.onclick = () => void callAndRender("delete_nutrition_log", { log_id: log.id });
+  const cancelDeleteBtn = document.createElement("button");
+  cancelDeleteBtn.type = "button";
+  cancelDeleteBtn.textContent = "Cancel";
+  cancelDeleteBtn.onclick = () => {
+    confirm.hidden = true;
+    body.hidden = false;
+  };
+  confirmActions.append(confirmDeleteBtn, cancelDeleteBtn);
+  confirm.append(confirmText, confirmActions);
+  return confirm;
+}
+
+function renderDeleteLogBtn(log: DayLogEntry, body: HTMLElement, confirm: HTMLElement): HTMLButtonElement {
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "log-delete-btn";
+  deleteBtn.textContent = "×";
+  deleteBtn.title = "Delete entry";
+  deleteBtn.setAttribute("aria-label", `Delete ${log.name ?? "entry"}`);
+  deleteBtn.onclick = () => {
+    body.hidden = true;
+    confirm.hidden = false;
+  };
+  return deleteBtn;
 }
 
 function renderLog(log: DayLogEntry): HTMLLIElement {
   if (log.items.length > 0) return renderGroupedLog(log);
 
   const li = document.createElement("li");
+  li.className = "log-entry";
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
@@ -492,7 +540,13 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
   top.className = "log-top";
   top.append(checkbox, name);
 
-  li.append(top, values);
+  const body = document.createElement("div");
+  body.append(top, values);
+
+  const confirm = renderDeleteLogControl(log, body);
+  const deleteBtn = renderDeleteLogBtn(log, body, confirm);
+
+  li.append(deleteBtn, body, confirm);
   return li;
 }
 
@@ -542,13 +596,13 @@ async function callAndRender(name: string, args: Record<string, unknown>): Promi
   }
 }
 
-function macroSummary(match: FoodMatch): string {
+function macroSummary(match: FoodMatch, qty = 1): string {
   const parts: string[] = [];
-  if (match.calories != null) parts.push(`${Math.round(match.calories)} cal`);
-  if (match.protein_g != null) parts.push(`${Math.round(match.protein_g)}g protein`);
-  if (match.carbs_g != null) parts.push(`${Math.round(match.carbs_g)}g carbs`);
-  if (match.fat_g != null) parts.push(`${Math.round(match.fat_g)}g fat`);
-  if (match.fiber_g != null) parts.push(`${Math.round(match.fiber_g)}g fiber`);
+  if (match.calories != null) parts.push(`${Math.round(match.calories * qty)} cal`);
+  if (match.protein_g != null) parts.push(`${Math.round(match.protein_g * qty)}g protein`);
+  if (match.carbs_g != null) parts.push(`${Math.round(match.carbs_g * qty)}g carbs`);
+  if (match.fat_g != null) parts.push(`${Math.round(match.fat_g * qty)}g fat`);
+  if (match.fiber_g != null) parts.push(`${Math.round(match.fiber_g * qty)}g fiber`);
   return parts.join(", ");
 }
 
@@ -561,14 +615,30 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
   name.textContent = match.brand ? `${match.name} (${match.brand})` : match.name;
   const meta = document.createElement("div");
   meta.className = "food-result-meta";
-  meta.textContent = `${match.serving_description} — ${macroSummary(match)}`;
   info.append(name, meta);
+
+  // match's macros are per one serving_description (e.g. "1 cup"); qtyInput is the
+  // number of that serving, not raw grams, so the search result stays readable.
+  const qtyInput = document.createElement("input");
+  qtyInput.type = "number";
+  qtyInput.className = "food-result-qty";
+  qtyInput.value = "1";
+  qtyInput.min = "0.1";
+  qtyInput.step = "0.1";
+
+  const updateMeta = () => {
+    const qty = Number(qtyInput.value) || 0;
+    meta.textContent = `${qty} × ${match.serving_description} — ${macroSummary(match, qty)}`;
+  };
+  qtyInput.oninput = updateMeta;
+  updateMeta();
 
   const logBtn = document.createElement("button");
   logBtn.type = "button";
   logBtn.className = "food-result-log";
   logBtn.textContent = "Log";
   logBtn.onclick = () => {
+    const qty = Number(qtyInput.value) || 1;
     const macros: [string, number | null][] = [
       ["calories", match.calories],
       ["protein_g", match.protein_g],
@@ -578,7 +648,7 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
     ];
     const entries = macros
       .filter(([, value]) => value != null)
-      .map(([trackable_key, value]) => ({ trackable_key, value: value as number }));
+      .map(([trackable_key, value]) => ({ trackable_key, value: (value as number) * qty }));
     void callAndRender("log_nutrition", { entries, name: match.name }).then((ok) => {
       if (!ok) return;
       foodSearchResultsEl.replaceChildren();
@@ -586,7 +656,11 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
     });
   };
 
-  li.append(info, logBtn);
+  const actions = document.createElement("div");
+  actions.className = "food-result-actions";
+  actions.append(qtyInput, logBtn);
+
+  li.append(info, actions);
   return li;
 }
 

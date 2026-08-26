@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useWorkoutHistory } from "../api/dashboard";
+import { useDeleteWorkout, useWorkoutHistory } from "../api/dashboard";
 import type { components } from "../api/generated";
 
 type Workout = components["schemas"]["WorkoutOut"];
@@ -51,8 +51,10 @@ function formatSet(s: Set): string {
 
 function WorkoutCard({ w }: { w: Workout }) {
   const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isStrength = w.workout_type === "strength";
   const sets = isStrength ? totalSets(w) : 0;
+  const deleteWorkout = useDeleteWorkout();
 
   return (
     <div className="workout-history-card">
@@ -101,6 +103,32 @@ function WorkoutCard({ w }: { w: Workout }) {
               {formatCalories(w)}
               {w.notes && ` — ${w.notes}`}
             </p>
+          )}
+
+          {confirmingDelete ? (
+            <div className="workout-history-delete-confirm">
+              <span>Delete this workout? This can't be undone.</span>
+              <div className="workout-history-delete-confirm-actions">
+                <button
+                  type="button"
+                  onClick={() => deleteWorkout.mutate(w.id)}
+                  disabled={deleteWorkout.isPending}
+                >
+                  {deleteWorkout.isPending ? "Deleting…" : "Delete"}
+                </button>
+                <button type="button" onClick={() => setConfirmingDelete(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="workout-history-delete-btn"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete workout
+            </button>
           )}
         </div>
       )}

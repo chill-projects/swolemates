@@ -326,6 +326,14 @@ textarea {
   width: 100%;
 }
 
+/* Direct children only (Weight unit, Coach notes) — the fieldset's own padding
+   already insets its own labels (Sex, Age, Height...) by this same amount, so
+   without this their boxes don't line up even though the raw widths match. */
+.profile-form > label {
+  padding: 0 0.85rem;
+  box-sizing: border-box;
+}
+
 .profile-form fieldset {
   display: flex;
   flex-direction: column;
@@ -334,6 +342,15 @@ textarea {
   border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   border-radius: 0.5rem;
   padding: 0.85rem;
+  /* Without this, width: 100% is content-box — padding and border get added on
+     top, so the fieldset actually rendered wider than its siblings above it,
+     not narrower. border-box makes 100% the outer width, matching them. */
+  box-sizing: border-box;
+  /* <fieldset> has a browser-default min-width tied to its content (a long-
+     standing CSS quirk), which can override an explicit width and make it
+     render wider than intended — exactly what was happening here once the
+     Height (ft)/(in) row's content needed more space. */
+  min-width: 0;
 }
 
 .profile-form .calculate-targets {
@@ -774,4 +791,30 @@ li {
 .workout-history-exercise-sets {
   text-align: right;
   font-size: 0.78rem;
+}
+
+.workout-history-delete-btn {
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.workout-history-delete-confirm {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.workout-history-delete-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
 }

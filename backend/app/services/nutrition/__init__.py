@@ -21,6 +21,7 @@ from app.services.nutrition.day import (
 from app.services.nutrition.goals import get_goals, set_goals
 from app.services.nutrition.logs import (
     amend_last_log,
+    delete_nutrition_log,
     get_latest_trackable_value,
     get_log_values,
     log_nutrition,
@@ -53,6 +54,7 @@ __all__ = [
     "get_latest_trackable_value",
     "update_nutrition_log",
     "amend_last_log",
+    "delete_nutrition_log",
     "get_goals",
     "set_goals",
     "list_meal_templates",

@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -827,6 +828,85 @@ async def test_finish_workout_404s_for_another_users_workout(session: AsyncSessi
         await service.finish_workout(session, OTHER_USER, workout_id=workout.id)
 
 
+async def test_delete_workout_removes_a_finished_workout_with_sets(session: AsyncSession) -> None:
+    result = await service.log_set(session, TEST_USER, exercise="Back Squat", reps=5, weight=185)
+    assert result.workout is not None
+    workout_id = result.workout.id
+    await service.finish_workout(session, TEST_USER, workout_id=workout_id)
+
+    await service.delete_workout(session, TEST_USER, workout_id)
+
+    with pytest.raises(service.NotFoundError):
+        await service.get_workout(session, TEST_USER, workout_id)
+
+
+async def test_delete_workout_removes_an_in_progress_workout(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+
+    await service.delete_workout(session, TEST_USER, workout.id)
+
+    with pytest.raises(service.NotFoundError):
+        await service.get_workout(session, TEST_USER, workout.id)
+
+
+async def test_delete_workout_404s_for_another_users_workout(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER)
+
+    with pytest.raises(service.NotFoundError):
+        await service.delete_workout(session, OTHER_USER, workout.id)
+
+
+async def test_delete_workout_falls_back_pr_to_a_remaining_workout(
+    session: AsyncSession,
+) -> None:
+    """Deleting the workout that holds the current PR cascades that
+    PersonalRecord row away too — it must get recomputed against whatever's
+    left, not silently vanish."""
+    lighter = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 90, "reps": 6}]}],
+    )
+    heavier = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 100, "reps": 5}]}],
+    )
+    exercise_id = lighter.exercises[0].exercise_id
+
+    await service.delete_workout(session, TEST_USER, heavier.id)
+
+    result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == TEST_USER,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == PersonalRecordKind.weight,
+        )
+    )
+    pr = result.scalar_one()
+    assert float(pr.value) == 90
+
+
+async def test_delete_workout_clears_pr_with_nothing_left(session: AsyncSession) -> None:
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Bench Press", "sets": [{"weight": 90, "reps": 6}]}],
+    )
+    exercise_id = workout.exercises[0].exercise_id
+
+    await service.delete_workout(session, TEST_USER, workout.id)
+
+    result = await session.execute(
+        select(PersonalRecord).where(
+            PersonalRecord.user_id == TEST_USER,
+            PersonalRecord.exercise_id == exercise_id,
+            PersonalRecord.kind == PersonalRecordKind.weight,
+        )
+    )
+    assert result.scalar_one_or_none() is None
+
+
 async def test_finish_workout_allows_zero_logged_sets_on_an_added_exercise(
     session: AsyncSession,
 ) -> None:
@@ -986,6 +1066,36 @@ async def test_update_workout_entry_set_next_time_note(session: AsyncSession) ->
     )
 
     assert workout.exercises[0].next_time_note == "add 5 next time"
+
+
+async def test_update_workout_entry_delete_set(session: AsyncSession) -> None:
+    result = await service.log_set(session, TEST_USER, exercise="Back Squat", reps=5, weight=185)
+    assert result.workout is not None
+    we = result.workout.exercises[0]
+    set_id = we.sets[0].id
+
+    workout = await service.update_workout_entry(
+        session,
+        TEST_USER,
+        workout_id=result.workout.id,
+        action="delete_set",
+        workout_set_id=set_id,
+    )
+
+    assert workout.exercises[0].sets == []
+
+
+async def test_update_workout_entry_delete_set_404s_for_unknown_set(session: AsyncSession) -> None:
+    workout = await service.start_workout(session, TEST_USER, exercises=["Deadlift"])
+
+    with pytest.raises(service.NotFoundError):
+        await service.update_workout_entry(
+            session,
+            TEST_USER,
+            workout_id=workout.id,
+            action="delete_set",
+            workout_set_id=uuid.uuid4(),
+        )
 
 
 async def test_update_workout_entry_rejects_unknown_action(session: AsyncSession) -> None:
@@ -1315,6 +1425,22 @@ async def test_log_set_over_rest(client: AsyncClient) -> None:
     body = resp.json()
     assert body["needs_clarification"] is None
     assert body["workout"]["exercises"][0]["exercise_name"] == "Back Squat"
+
+
+async def test_delete_workout_over_rest(client: AsyncClient) -> None:
+    start_resp = await client.post("/api/workouts/start", json={"exercises": ["Deadlift"]})
+    workout_id = start_resp.json()["id"]
+
+    resp = await client.delete(f"/api/workouts/{workout_id}")
+    assert resp.status_code == 204
+
+    history = await client.get("/api/workouts")
+    assert workout_id not in [w["id"] for w in history.json()]
+
+
+async def test_delete_workout_over_rest_404s_for_unknown_workout(client: AsyncClient) -> None:
+    resp = await client.delete(f"/api/workouts/{uuid.uuid4()}")
+    assert resp.status_code == 404
 
 
 async def test_finish_workout_over_rest(client: AsyncClient) -> None:

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
 
@@ -41,6 +41,24 @@ export function useWorkoutHistory(start: string, end: string) {
       if (error) throw new Error("Failed to load workout history");
       return data;
     },
+  });
+}
+
+// Self-service delete for a mistakenly-logged workout — history's own version of
+// nutrition-day's meal-template delete control, so the user never has to ask for
+// a one-off script against production again.
+export function useDeleteWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (workoutId: string) => {
+      const { error } = await api.DELETE("/api/workouts/{workout_id}", {
+        params: { path: { workout_id: workoutId } },
+      });
+      if (error) throw new Error("Failed to delete workout");
+    },
+    // Prefix match: invalidates every ["workoutHistory", start, end] query
+    // regardless of the specific date range in its key.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["workoutHistory"] }),
   });
 }
 

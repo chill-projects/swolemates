@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -23,6 +25,25 @@ async def test_post_log_nutrition_writes_entries(client: AsyncClient) -> None:
     assert resp.json()["name"] == "chicken and rice"
 
 
+async def test_delete_nutrition_log_over_rest(client: AsyncClient) -> None:
+    logged = await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "calories", "value": "150"}], "name": "Yogurt"},
+    )
+    log_id = logged.json()["id"]
+
+    deleted = await client.delete(f"/api/nutrition/logs/{log_id}")
+    assert deleted.status_code == 204
+
+    day = await client.get("/api/nutrition/day")
+    assert log_id not in [entry["id"] for entry in day.json()["logs"]]
+
+
+async def test_delete_nutrition_log_404s_for_unknown_log(client: AsyncClient) -> None:
+    resp = await client.delete(f"/api/nutrition/logs/{uuid4()}")
+    assert resp.status_code == 404
+
+
 async def test_log_nutrition_writes_one_header_and_all_values(session: AsyncSession) -> None:
     log = await service.log_nutrition(
         session,
@@ -43,6 +64,43 @@ async def test_log_nutrition_writes_one_header_and_all_values(session: AsyncSess
     assert float(by_key["protein_g"]) == 32
 
 
+async def test_log_nutrition_rounds_float_noise(session: AsyncSession) -> None:
+    """External sources (e.g. search_food_facts scaling Open Food Facts to a
+    serving) can hand back ~15-digit float noise like 3.90000009536743; stored
+    values should come out clean regardless."""
+    log = await service.log_nutrition(
+        session,
+        TEST_USER,
+        entries=[
+            {"trackable_key": "calories", "value": 149.500001},
+            {"trackable_key": "protein_g", "value": 3.90000009536743},
+            {"trackable_key": "fiber_g", "value": 0.119999997317791},
+        ],
+    )
+    await session.flush()
+
+    values = await service.get_log_values(session, TEST_USER, log.id)
+    by_key = {v.trackable_key: v.value for v in values}
+
+    assert by_key["calories"] == 150
+    assert by_key["protein_g"] == Decimal("3.9")
+    assert by_key["fiber_g"] == Decimal("0.1")
+
+
+async def test_update_nutrition_log_rounds_float_noise(session: AsyncSession) -> None:
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "protein_g", "value": 10}]
+    )
+    await session.flush()
+
+    await service.update_nutrition_log(
+        session, TEST_USER, log_id=log.id, values={"protein_g": 12.6999998092651}
+    )
+
+    values = await service.get_log_values(session, TEST_USER, log.id)
+    assert values[0].value == Decimal("12.7")
+
+
 async def test_users_cannot_read_each_others_log_values(session: AsyncSession) -> None:
     """The whole permission model, asserted directly against the service layer."""
     bobs_log = await service.log_nutrition(
@@ -51,6 +109,27 @@ async def test_users_cannot_read_each_others_log_values(session: AsyncSession) -
     await session.flush()
 
     assert await service.get_log_values(session, TEST_USER, bobs_log.id) == []
+
+
+async def test_delete_nutrition_log_removes_it(session: AsyncSession) -> None:
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 150}], name="Yogurt"
+    )
+    await session.flush()
+
+    await service.delete_nutrition_log(session, TEST_USER, log.id)
+
+    assert await service.get_log_values(session, TEST_USER, log.id) == []
+
+
+async def test_delete_nutrition_log_404s_for_another_users_log(session: AsyncSession) -> None:
+    bobs_log = await service.log_nutrition(
+        session, OTHER_USER, entries=[{"trackable_key": "calories", "value": 999}]
+    )
+    await session.flush()
+
+    with pytest.raises(service.NotFoundError):
+        await service.delete_nutrition_log(session, TEST_USER, bobs_log.id)
 
 
 async def test_update_nutrition_log_patches_only_given_fields(session: AsyncSession) -> None:

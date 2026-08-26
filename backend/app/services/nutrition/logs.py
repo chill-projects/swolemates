@@ -12,6 +12,17 @@ from app.models.nutrition import Log, LogValue
 from app.services.errors import NotFoundError
 
 
+def _round_trackable_value(trackable_key: str, value: object) -> Decimal:
+    """Nutrition-facts precision, not the ~15-digit float noise an external source
+    can hand back (search_food_facts scales Open Food Facts' per-100g figures to the
+    reported serving in floating point, e.g. 3.90000009536743) — whole calories,
+    everything else (grams) to one decimal place."""
+    decimal_value = Decimal(str(value))
+    if trackable_key == "calories":
+        return decimal_value.quantize(Decimal("1"))
+    return decimal_value.quantize(Decimal("0.1"))
+
+
 async def log_nutrition(
     session: AsyncSession,
     user_sub: str,
@@ -34,8 +45,13 @@ async def log_nutrition(
     await session.flush()
 
     for entry in entries:
+        trackable_key = entry["trackable_key"]
         session.add(
-            LogValue(log_id=log.id, trackable_key=entry["trackable_key"], value=entry["value"])
+            LogValue(
+                log_id=log.id,
+                trackable_key=trackable_key,
+                value=_round_trackable_value(trackable_key, entry["value"]),
+            )
         )
     await session.flush()
     events.publish(user_sub, "nutrition")
@@ -94,16 +110,31 @@ async def update_nutrition_log(
     if values:
         existing = {v.trackable_key: v for v in await get_log_values(session, user_sub, log.id)}
         for trackable_key, value in values.items():
+            rounded_value = _round_trackable_value(trackable_key, value)
             row = existing.get(trackable_key)
             if row is not None:
-                row.value = value
+                row.value = rounded_value
             else:
-                session.add(LogValue(log_id=log.id, trackable_key=trackable_key, value=value))
+                session.add(
+                    LogValue(log_id=log.id, trackable_key=trackable_key, value=rounded_value)
+                )
     log.edited_by_user = True
 
     await session.flush()
     events.publish(user_sub, "nutrition")
     return log
+
+
+async def delete_nutrition_log(session: AsyncSession, user_sub: str, log_id: uuid.UUID) -> None:
+    """Self-service delete for a mistakenly-logged entry — the general case of
+    amend_last_log's no-fields-given branch, for any entry, not just the latest."""
+    result = await session.execute(select(Log).where(Log.id == log_id, Log.user_id == user_sub))
+    log = result.scalar_one_or_none()
+    if log is None:
+        raise NotFoundError(f"No log {log_id}")
+    await session.delete(log)
+    await session.flush()
+    events.publish(user_sub, "nutrition")
 
 
 async def amend_last_log(

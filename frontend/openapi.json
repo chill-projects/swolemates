@@ -2632,6 +2632,18 @@
               }
             ],
             "title": "Workout Exercise Id"
+          },
+          "workout_set_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workout Set Id"
           }
         },
         "required": [
@@ -3604,6 +3616,40 @@
       }
     },
     "/api/nutrition/logs/{log_id}": {
+      "delete": {
+        "operationId": "deleteNutritionLog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "log_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Log Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Nutrition Log",
+        "tags": [
+          "nutrition"
+        ]
+      },
       "patch": {
         "operationId": "updateNutritionLog",
         "parameters": [
@@ -4912,6 +4958,42 @@
           }
         },
         "summary": "Get Workout Streak",
+        "tags": [
+          "workouts"
+        ]
+      }
+    },
+    "/api/workouts/{workout_id}": {
+      "delete": {
+        "operationId": "deleteWorkout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workout_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workout Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Workout",
         "tags": [
           "workouts"
         ]

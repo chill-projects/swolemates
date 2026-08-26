@@ -234,6 +234,23 @@ async def amend_last_log(
     return f'Updated "{updated.name or "entry"}" — {macros}.'
 
 
+@mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["app"]))
+@catches_service_errors
+async def delete_nutrition_log(log_id: str) -> dict:
+    """App-only: delete a logged entry outright — driven by the log list's own
+    delete control (with its own confirm step), not a chat entry point. Kept off
+    the model's tool list on purpose, same as delete_meal_template; for a chat-
+    driven undo, amend_last_log (most-recent-only) is still the right tool.
+
+    Args:
+        log_id: the entry to delete (from a prior log_nutrition/get_nutrition_day result).
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        await service.delete_nutrition_log(session, user_sub, UUID(log_id))
+        return await _day_payload(session, user_sub)
+
+
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
 @catches_service_errors
 async def save_meal_template(

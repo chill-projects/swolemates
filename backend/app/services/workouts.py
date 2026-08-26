@@ -980,6 +980,44 @@ async def get_workout(session: AsyncSession, user_sub: str, workout_id: uuid.UUI
     return details[0]
 
 
+async def delete_workout(session: AsyncSession, user_sub: str, workout_id: uuid.UUID) -> None:
+    """Self-service delete for a whole workout — the general case of the one-off
+    delete_empty_workouts.py script, for any workout (finished or not), not just
+    empty ones. FK cascades handle WorkoutExercise/WorkoutSet/PersonalRecord
+    cleanup; a linked PlannedWorkout has its workout_id set null rather than being
+    blocked.
+
+    Deleting a workout that held the caller's current PR for some exercise would
+    otherwise cascade that PersonalRecord row away too, silently dropping the
+    record instead of falling back to their next-best set elsewhere — so touched
+    exercises get recomputed after the delete, same as update_workout's set-delete
+    path."""
+    result = await session.execute(
+        select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
+    )
+    workout = result.scalar_one_or_none()
+    if workout is None:
+        raise NotFoundError(f"No workout {workout_id}")
+
+    exercise_ids_result = await session.execute(
+        select(WorkoutExercise.exercise_id)
+        .where(WorkoutExercise.workout_id == workout.id)
+        .distinct()
+    )
+    touched_exercise_ids = list(exercise_ids_result.scalars())
+
+    await session.delete(workout)
+    await session.flush()
+
+    for exercise_id in touched_exercise_ids:
+        await recompute_pr(
+            session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.weight
+        )
+        await recompute_pr(session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.e1rm)
+
+    events.publish(user_sub, "workouts")
+
+
 async def update_workout(
     session: AsyncSession,
     user_sub: str,
@@ -1221,14 +1259,16 @@ async def update_workout_entry(
     action: str,
     exercise: str | None = None,
     workout_exercise_id: uuid.UUID | None = None,
+    workout_set_id: uuid.UUID | None = None,
     superset_with: uuid.UUID | None = None,
     order: list[uuid.UUID] | None = None,
     note: str | None = None,
 ) -> WorkoutOut:
     """App-only mutations for the in-workout component: add/remove/reorder an
-    exercise mid-workout, or edit its next-time note. Editing an *already-logged*
-    set is out of scope here (that's `update_workout`, slice 5) — `log_set` is the
-    only way sets get written."""
+    exercise mid-workout, edit its next-time note, or delete a mistakenly-logged
+    set (self-service — the UI equivalent of update_workout's exercise_updates
+    delete flag, scoped here to a single set by id so the delete button on a set
+    row doesn't need to know the exercise name or set_number)."""
     workout = await _require_active_workout(session, user_sub, workout_id)
 
     if action == "add_exercise":
@@ -1284,6 +1324,24 @@ async def update_workout_entry(
         if we is None or we.workout_id != workout.id:
             raise NotFoundError("No such exercise in this workout.")
         we.next_time_note = note
+    elif action == "delete_set":
+        if workout_set_id is None:
+            raise ValueError("delete_set needs 'workout_set_id'.")
+        set_result = await session.execute(
+            select(WorkoutSet, WorkoutExercise.exercise_id)
+            .join(WorkoutExercise, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
+            .where(WorkoutSet.id == workout_set_id, WorkoutExercise.workout_id == workout.id)
+        )
+        row = set_result.first()
+        if row is None:
+            raise NotFoundError("No such set in this workout.")
+        workout_set, exercise_id = row
+        await session.execute(delete(WorkoutSet).where(WorkoutSet.id == workout_set.id))
+        await session.flush()
+        await recompute_pr(
+            session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.weight
+        )
+        await recompute_pr(session, user_sub, exercise_id=exercise_id, kind=PersonalRecordKind.e1rm)
     else:
         raise ValueError(f"Unknown action: {action!r}")
 

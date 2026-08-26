@@ -166,7 +166,8 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Nutrition Log */
+        delete: operations["deleteNutritionLog"];
         options?: never;
         head?: never;
         /** Update Nutrition Log */
@@ -664,6 +665,23 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workouts/{workout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Workout */
+        delete: operations["deleteWorkout"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1570,6 +1588,8 @@ export interface components {
             superset_with?: string | null;
             /** Workout Exercise Id */
             workout_exercise_id?: string | null;
+            /** Workout Set Id */
+            workout_set_id?: string | null;
         };
         /** UpdateWorkoutTemplateRequest */
         UpdateWorkoutTemplateRequest: {
@@ -1992,6 +2012,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AmendLastLogOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteNutritionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2953,6 +3002,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StreakOut"];
+                };
+            };
+        };
+    };
+    deleteWorkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

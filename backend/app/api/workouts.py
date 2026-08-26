@@ -134,6 +134,14 @@ async def finish_workout(
     return WorkoutOut.model_validate(workout) if workout else None
 
 
+@router.delete("/{workout_id}", status_code=204, operation_id="deleteWorkout")
+async def delete_workout(workout_id: uuid.UUID, user_sub: CurrentUser, session: DbSession) -> None:
+    try:
+        await service.delete_workout(session, user_sub, workout_id)
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.get("/streak", response_model=StreakOut, operation_id="getWorkoutStreak")
 async def get_workout_streak(user_sub: CurrentUser, session: DbSession) -> StreakOut:
     return StreakOut.model_validate(await service.get_streak(session, user_sub))
@@ -180,6 +188,7 @@ async def update_workout_entry(
             action=body.action,
             exercise=body.exercise,
             workout_exercise_id=body.workout_exercise_id,
+            workout_set_id=body.workout_set_id,
             superset_with=body.superset_with,
             order=body.order,
             note=body.note,

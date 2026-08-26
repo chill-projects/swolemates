@@ -74,6 +74,16 @@ async def update_nutrition_log(
     )
 
 
+@router.delete("/logs/{log_id}", status_code=204, operation_id="deleteNutritionLog")
+async def delete_nutrition_log(
+    log_id: uuid.UUID, user_sub: CurrentUser, session: DbSession
+) -> None:
+    try:
+        await service.delete_nutrition_log(session, user_sub, log_id)
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.post("/logs/amend-last", response_model=AmendLastLogOut, operation_id="amendLastLog")
 async def amend_last_log(
     body: UpdateNutritionLogRequest, user_sub: CurrentUser, session: DbSession

@@ -106,6 +106,12 @@ const REDO_SET_ICON =
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
 
+// lucide "x" — same style as the redo icon above.
+const DELETE_SET_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
 // Curated, not freeform: a known activity type is what lets a future calorie
 // estimate look up a MET value. "Other" still escapes to free text below.
 const ACTIVITY_TYPES = ["Hiking", "Yoga", "Pilates", "Zumba", "Running", "Cycling", "Swimming"];
@@ -157,6 +163,10 @@ const openGroups = new Set<string>();
 let hasSetDefaultOpenGroup = false;
 let currentPayload: LivePayload | null = null;
 let exerciseCatalog: CatalogExercise[] | null = null;
+// Set ids currently showing their inline "delete this set?" confirm, instead of
+// the normal row — same local-only re-render trick as openGroups, no server round
+// trip needed just to show/hide a confirm prompt.
+const pendingDeleteSetIds = new Set<string>();
 let pickerSupersetWith: string | null = null;
 // null means "All" for both — persist across picker close/reopen (and across
 // catalog reloads) so filtering to e.g. legs+dumbbell survives adding several
@@ -327,6 +337,33 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
   list.replaceChildren(
     ...e.sets.map((s, i) => {
       const li = document.createElement("li");
+
+      if (!finished && pendingDeleteSetIds.has(s.id)) {
+        li.className = "set-delete-confirm";
+        const text = document.createElement("span");
+        text.textContent = "Delete this set?";
+        const yesBtn = document.createElement("button");
+        yesBtn.type = "button";
+        yesBtn.textContent = "Delete";
+        yesBtn.onclick = () => {
+          pendingDeleteSetIds.delete(s.id);
+          void callAndRender("update_workout_entry", {
+            workout_id: currentPayload?.id,
+            action: "delete_set",
+            workout_set_id: s.id,
+          });
+        };
+        const noBtn = document.createElement("button");
+        noBtn.type = "button";
+        noBtn.textContent = "Cancel";
+        noBtn.onclick = () => {
+          pendingDeleteSetIds.delete(s.id);
+          if (currentPayload) render(currentPayload);
+        };
+        li.append(text, yesBtn, noBtn);
+        return li;
+      }
+
       const base =
         s.set_type === "time"
           ? `${s.work_seconds}s`
@@ -357,6 +394,20 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
           mainInput.focus();
         };
         li.appendChild(redoBtn);
+      }
+
+      if (!finished) {
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "delete-set-btn";
+        deleteBtn.title = "Delete this set";
+        deleteBtn.setAttribute("aria-label", "Delete this set");
+        deleteBtn.innerHTML = DELETE_SET_ICON;
+        deleteBtn.onclick = () => {
+          pendingDeleteSetIds.add(s.id);
+          if (currentPayload) render(currentPayload);
+        };
+        li.appendChild(deleteBtn);
       }
       return li;
     }),

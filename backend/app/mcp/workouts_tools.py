@@ -493,19 +493,22 @@ async def update_workout_entry(
     action: str,
     exercise: str | None = None,
     workout_exercise_id: str | None = None,
+    workout_set_id: str | None = None,
     superset_with: str | None = None,
     order: list[str] | None = None,
     note: str | None = None,
 ) -> dict:
-    """App-only: add/remove/reorder an exercise mid-workout, or edit its
-    next-time note. Driven by the component's own buttons.
+    """App-only: add/remove/reorder an exercise mid-workout, edit its next-time
+    note, or delete a mistakenly-logged set. Driven by the component's own
+    buttons (each with its own confirm step for the destructive actions).
 
     Args:
         workout_id: the in-progress workout being edited.
         action: "add_exercise" | "remove_exercise" | "reorder_exercises" |
-            "set_next_time_note".
+            "set_next_time_note" | "delete_set".
         exercise: for add_exercise — the exercise name.
         workout_exercise_id: for remove_exercise / set_next_time_note.
+        workout_set_id: for delete_set — the logged set to remove.
         superset_with: for add_exercise — an existing workout_exercise_id to
             group the new exercise with as a superset.
         order: for reorder_exercises — every current workout_exercise_id, in
@@ -521,6 +524,7 @@ async def update_workout_entry(
             action=action,
             exercise=exercise,
             workout_exercise_id=UUID(workout_exercise_id) if workout_exercise_id else None,
+            workout_set_id=UUID(workout_set_id) if workout_set_id else None,
             superset_with=UUID(superset_with) if superset_with else None,
             order=[UUID(i) for i in order] if order else None,
             note=note,

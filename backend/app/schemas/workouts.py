@@ -184,6 +184,7 @@ class UpdateWorkoutEntryRequest(BaseModel):
     action: str
     exercise: str | None = None
     workout_exercise_id: UUID | None = None
+    workout_set_id: UUID | None = None
     superset_with: UUID | None = None
     order: list[UUID] | None = None
     note: str | None = None

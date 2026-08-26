@@ -307,24 +307,26 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
             onChange={(e) => setAge(e.target.value)}
           />
         </label>
-        <label>
-          Height (ft)
-          <input
-            type="number"
-            inputMode="numeric"
-            value={heightFt}
-            onChange={(e) => setHeightFt(e.target.value)}
-          />
-        </label>
-        <label>
-          Height (in)
-          <input
-            type="number"
-            inputMode="numeric"
-            value={heightIn}
-            onChange={(e) => setHeightIn(e.target.value)}
-          />
-        </label>
+        <div style={{ display: "flex", gap: "0.75rem", width: "100%" }}>
+          <label style={{ flex: 1 }}>
+            Height (ft)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={heightFt}
+              onChange={(e) => setHeightFt(e.target.value)}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            Height (in)
+            <input
+              type="number"
+              inputMode="numeric"
+              value={heightIn}
+              onChange={(e) => setHeightIn(e.target.value)}
+            />
+          </label>
+        </div>
         <label>
           Activity level
           <select
