@@ -5,11 +5,6 @@ import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
 
 type NutritionDayOut = components["schemas"]["NutritionDayOut"];
-interface Me {
-  user_sub: string;
-  email: string | null;
-  display_name: string | null;
-}
 
 const numeric = (values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
@@ -94,7 +89,7 @@ function toPayload(day: NutritionDayOut): ToolResultPayload {
   };
 }
 
-export function NutritionPage({ me }: { me: Me }) {
+export function NutritionPage() {
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       switch (name) {
@@ -179,9 +174,6 @@ export function NutritionPage({ me }: { me: Me }) {
   return (
     <section>
       <h2>Nutrition</h2>
-      <p className="muted">
-        Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
-      </p>
       <AppRenderer
         bundleUrl="/mcp-apps/nutrition-day.html"
         initialTool="get_nutrition_day"

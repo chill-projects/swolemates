@@ -121,7 +121,7 @@ export function App() {
           )}
           {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
           {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
-          {!busy && whoami.data && <AuthenticatedApp me={whoami.data} />}
+          {!busy && whoami.data && <AuthenticatedApp />}
         </>
       )}
     </main>
@@ -133,11 +133,7 @@ export function App() {
  * form until it completes once, ever. `/profile` reaches the same form afterward as
  * plain settings — no router yet, same bare-pathname pattern used for `/callback`.
  */
-function AuthenticatedApp({
-  me,
-}: {
-  me: { user_sub: string; email: string | null; display_name: string | null };
-}) {
+function AuthenticatedApp() {
   const profile = useProfile();
   const onSettingsRoute = window.location.pathname === "/profile";
   const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
@@ -174,13 +170,13 @@ function AuthenticatedApp({
       ) : onPartnerRoute ? (
         <PartnerPage />
       ) : onWorkoutsLiveRoute ? (
-        <WorkoutLivePage me={me} />
+        <WorkoutLivePage />
       ) : onTemplatesRoute ? (
-        <TemplatesPage me={me} />
+        <TemplatesPage />
       ) : onPlannedRoute ? (
-        <PlannedPage me={me} />
+        <PlannedPage />
       ) : onNutritionRoute ? (
-        <NutritionPage me={me} />
+        <NutritionPage />
       ) : (
         // Home ("/", and anything unrecognized) — the dashboard, per the user's
         // request that "Swolemates" in the header link somewhere real.

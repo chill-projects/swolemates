@@ -4,18 +4,12 @@ import { api } from "../api/client";
 import { InfoPopover } from "../components/InfoPopover";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 
-interface Me {
-  user_sub: string;
-  email: string | null;
-  display_name: string | null;
-}
-
 function toPayload(key: string, data: unknown): ToolResultPayload {
   const payload = { [key]: data };
   return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
 }
 
-export function PlannedPage({ me }: { me: Me }) {
+export function PlannedPage() {
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       switch (name) {
@@ -85,9 +79,6 @@ export function PlannedPage({ me }: { me: Me }) {
           </p>
         </InfoPopover>
       </h2>
-      <p className="muted">
-        Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
-      </p>
       <AppRenderer
         bundleUrl="/mcp-apps/planned.html"
         initialTool="get_planned_workouts"

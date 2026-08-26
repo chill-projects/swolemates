@@ -7,11 +7,6 @@ import type { components } from "../api/generated";
 
 type TemplateOut = components["schemas"]["TemplateOut"];
 type TemplateExerciseOut = components["schemas"]["TemplateExerciseOut"];
-interface Me {
-  user_sub: string;
-  email: string | null;
-  display_name: string | null;
-}
 
 const numeric = (v: string | null | undefined) => (v == null ? null : Number(v));
 
@@ -45,7 +40,7 @@ function toTemplatePayload(t: TemplateOut): ToolResultPayload {
  * only lists existing templates and hosts the shared editor component for whichever
  * one is selected.
  */
-export function TemplatesPage({ me }: { me: Me }) {
+export function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateOut[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -138,9 +133,6 @@ export function TemplatesPage({ me }: { me: Me }) {
           <p className="muted">Select a template to view and edit its exercises.</p>
         </InfoPopover>
       </h2>
-      <p className="muted">
-        Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
-      </p>
       <div style={{ display: "flex", gap: "1.5rem", justifyContent: "center" }}>
         <div className="dash-card" style={{ flex: 1, maxWidth: "26rem", alignSelf: "flex-start" }}>
           {selectedId ? (

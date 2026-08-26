@@ -8,11 +8,6 @@ import { WorkoutHistoryFeed } from "./WorkoutHistoryFeed";
 type WorkoutLiveOut = components["schemas"]["WorkoutLiveOut"];
 type ExerciseEntryOut = components["schemas"]["ExerciseEntryOut"];
 type WorkoutOut = components["schemas"]["WorkoutOut"];
-interface Me {
-  user_sub: string;
-  email: string | null;
-  display_name: string | null;
-}
 
 const numeric = (v: string | null | undefined) => (v == null ? null : Number(v));
 
@@ -90,7 +85,7 @@ const emptyPayload: ToolResultPayload = {
   structuredContent: { active: false, summary: "No active workout." },
 };
 
-export function WorkoutLivePage({ me }: { me: Me }) {
+export function WorkoutLivePage() {
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       if (name === "list_workout_exercises") {
@@ -235,9 +230,6 @@ export function WorkoutLivePage({ me }: { me: Me }) {
   return (
     <section>
       <h2>Workout</h2>
-      <p className="muted">
-        Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
-      </p>
       <AppRenderer
         bundleUrl="/mcp-apps/workout-live.html"
         initialTool="get_active_workout"
