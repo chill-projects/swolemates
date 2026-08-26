@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "../api/client";
+import { InfoPopover } from "../components/InfoPopover";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
 
@@ -126,6 +127,17 @@ export function TemplatesPage({ me }: { me: Me }) {
 
   return (
     <section>
+      <h2>
+        Templates
+        <InfoPopover label="How the Templates page works">
+          <p className="info-popover-title">Templates</p>
+          <p className="muted">
+            Templates aren't created here — ask Claude to make you one (e.g. "make me a
+            pull day") and it'll show up in the list on the right.
+          </p>
+          <p className="muted">Select a template to view and edit its exercises.</p>
+        </InfoPopover>
+      </h2>
       <p className="muted">
         Signed in as <strong>{me.display_name ?? me.email ?? me.user_sub}</strong> ✓
       </p>
@@ -143,10 +155,10 @@ export function TemplatesPage({ me }: { me: Me }) {
           )}
         </div>
         <div className="dash-card" style={{ minWidth: "12rem", alignSelf: "flex-start" }}>
-          <h2>Templates</h2>
+          <h3>Templates</h3>
           {templates === null && <p className="muted">Loading…</p>}
           {templates?.length === 0 && (
-            <p className="muted">No templates yet — ask Claude to make you one.</p>
+            <p className="muted">No templates yet.</p>
           )}
           <ul>
             {templates?.map((t) => (
