@@ -21,6 +21,7 @@ def _summary(profile) -> str:
     )
     return (
         f"Weight unit: {profile.weight_unit.value}. "
+        f"Timezone: {profile.timezone or 'unset (UTC)'}. "
         f"Onboarding complete: {onboarded}. "
         f"Coach notes: {notes}. "
         f"TDEE inputs: {stats}."
@@ -30,7 +31,7 @@ def _summary(profile) -> str:
 @mcp.tool
 @catches_service_errors
 async def get_profile() -> str:
-    """Read the caller's profile: weight-unit preference, coach notes, onboarding state."""
+    """Read the caller's profile: weight unit, timezone, coach notes, onboarding state."""
     user_sub = mcp_user_sub()
     async with tool_session() as session:
         profile = await service.get_or_create_profile(session, user_sub)
@@ -47,9 +48,10 @@ async def update_profile(
     height_in: float | None = None,
     activity_level: str | None = None,
     goal_type: str | None = None,
+    timezone: str | None = None,
 ) -> str:
-    """Update the caller's profile: weight-unit preference, coach notes, and/or the
-    stats used to calculate nutrition targets (see calculate_targets).
+    """Update the caller's profile: weight-unit preference, coach notes, timezone,
+    and/or the stats used to calculate nutrition targets (see calculate_targets).
 
     Args:
         weight_unit: "lbs" or "kg" — display preference only, storage stays canonical lbs.
@@ -60,6 +62,11 @@ async def update_profile(
         height_in: Total height in inches (e.g. 5'2" = 62).
         activity_level: One of sedentary, light, moderate, active, very_active.
         goal_type: One of lose_weight, maintain, gain_muscle, recomp.
+        timezone: IANA name (e.g. "America/Los_Angeles"). Sets which local day
+            workouts/meals/streaks fall on for this user. The web app sets this
+            automatically from the browser; set it here if a chat-only user's days
+            look shifted (e.g. today's log showing under tomorrow) — ask them their
+            city/timezone first, don't guess.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
@@ -73,6 +80,7 @@ async def update_profile(
             height_in=height_in,
             activity_level=ActivityLevel(activity_level) if activity_level is not None else None,
             goal_type=GoalType(goal_type) if goal_type is not None else None,
+            timezone=timezone,
         )
         return _summary(profile)
 

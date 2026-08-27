@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type GoalInput, useGoals, useLogWeight, useSetGoals } from "../api/nutrition";
 import { useCalculateTargets, useCompleteOnboarding, useUpdateProfile } from "../api/profile";
 import { InfoPopover } from "../components/InfoPopover";
+import { detectedTimezone } from "../lib/datetime";
 
 // weight_lbs is always stored in pounds regardless of the user's display unit — matches
 // app/services/workouts.py's MET-calorie estimate, which reads it back the same way.
@@ -57,6 +58,19 @@ function redistributeOtherMacros(
   };
 }
 
+/** Every IANA zone the runtime knows, with UTC and the current value guaranteed
+ *  present so the `<select>` can always render its value. */
+function timezoneOptions(current: string): string[] {
+  let zones: string[] = [];
+  try {
+    const supported = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
+    if (supported) zones = supported("timeZone");
+  } catch {
+    zones = [];
+  }
+  return [...new Set(["UTC", current, ...zones])];
+}
+
 type WeightUnit = "lbs" | "kg";
 type BiologicalSex = "male" | "female";
 type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
@@ -66,6 +80,7 @@ type ProfileFormProps = {
   profile: {
     weight_unit: WeightUnit;
     coach_notes: string | null;
+    timezone?: string | null;
     sex?: BiologicalSex | null;
     age?: number | null;
     height_in?: string | null;
@@ -95,6 +110,9 @@ const GOAL_OPTIONS: { value: GoalType; label: string }[] = [
 export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: ProfileFormProps) {
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(profile.weight_unit);
   const [coachNotes, setCoachNotes] = useState(profile.coach_notes ?? "");
+  const detectedTz = detectedTimezone();
+  const [timezone, setTimezone] = useState(profile.timezone ?? detectedTz);
+  const tzOptions = timezoneOptions(timezone);
   const [sex, setSex] = useState<BiologicalSex | "">(profile.sex ?? "");
   const [age, setAge] = useState(profile.age?.toString() ?? "");
   const totalHeightIn = profile.height_in ? Math.round(Number(profile.height_in)) : null;
@@ -219,6 +237,7 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
       {
         weight_unit: weightUnit,
         coach_notes: coachNotes,
+        timezone,
         sex: sex || undefined,
         age: age ? Number(age) : undefined,
         height_in: combinedHeightIn,
@@ -248,6 +267,21 @@ export function ProfileForm({ profile, completeOnboardingOnSave, onSaved }: Prof
           <option value="lbs">lbs</option>
           <option value="kg">kg</option>
         </select>
+      </label>
+      <label>
+        Timezone
+        <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+          {tzOptions.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+        <span className="muted">
+          {timezone === detectedTz
+            ? "Detected from your browser. Used for streaks and which day meals and workouts fall on."
+            : `Overriding your browser's ${detectedTz}.`}
+        </span>
       </label>
       <label>
         Coach notes

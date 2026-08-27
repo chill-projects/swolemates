@@ -2,6 +2,14 @@ import { useMemo, useState } from "react";
 
 import { useDeleteWorkout, useWorkoutHistory } from "../api/dashboard";
 import type { components } from "../api/generated";
+import {
+  dateFromIso,
+  daysBetween,
+  isoDateInTz,
+  isoFromDate,
+  todayIsoInTz,
+  useUserTimezone,
+} from "../lib/datetime";
 
 type Workout = components["schemas"]["WorkoutOut"];
 type Set = components["schemas"]["SetOut"];
@@ -10,25 +18,18 @@ type Set = components["schemas"]["SetOut"];
 // for "what have I been doing lately" without pagination.
 const HISTORY_WINDOW_DAYS = 90;
 
-// Local-date, not UTC — `toISOString()` rolls to the next UTC day before local
-// midnight, mislabeling "today" as tomorrow for anyone west of UTC in the
-// evening (see the nutrition-day "today" fix).
-function localIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function relativeDay(startedAt: string): string {
-  const d = new Date(startedAt);
-  const dayOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const today = new Date();
-  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const diffDays = Math.round((todayOnly.getTime() - dayOnly.getTime()) / 86_400_000);
+// "Today" / "Yesterday" / "Monday" / "Mar 4" — all relative to the user's zone, so
+// an evening workout doesn't read as "tomorrow" and the day-of-week matches the
+// calendar the backend bucketed it into.
+function relativeDay(startedAt: string, tz: string): string {
+  const dayIso = isoDateInTz(startedAt, tz);
+  const diffDays = daysBetween(dayIso, todayIsoInTz(tz));
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return dayOnly.toLocaleDateString(undefined, { weekday: "long" });
+  const dayOnly = dateFromIso(dayIso);
+  if (diffDays > 1 && diffDays < 7) {
+    return dayOnly.toLocaleDateString(undefined, { weekday: "long" });
+  }
   return dayOnly.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -55,12 +56,13 @@ function WorkoutCard({ w }: { w: Workout }) {
   const isStrength = w.workout_type === "strength";
   const sets = isStrength ? totalSets(w) : 0;
   const deleteWorkout = useDeleteWorkout();
+  const tz = useUserTimezone();
 
   return (
     <div className="workout-history-card">
       <button type="button" className="workout-history-card-toggle" onClick={() => setOpen((o) => !o)}>
         <div className="workout-history-card-main">
-          <span className="workout-history-day muted">{relativeDay(w.started_at)}</span>
+          <span className="workout-history-day muted">{relativeDay(w.started_at, tz)}</span>
           <strong>{workoutTitle(w)}</strong>
           <span className="muted workout-history-stats">
             {w.duration_minutes != null && `${w.duration_minutes} min`}
@@ -137,12 +139,13 @@ function WorkoutCard({ w }: { w: Workout }) {
 }
 
 export function WorkoutHistoryFeed() {
-  const end = useMemo(() => localIsoDate(new Date()), []);
+  const tz = useUserTimezone();
+  const end = useMemo(() => todayIsoInTz(tz), [tz]);
   const start = useMemo(() => {
-    const d = new Date();
+    const d = dateFromIso(end);
     d.setDate(d.getDate() - HISTORY_WINDOW_DAYS);
-    return localIsoDate(d);
-  }, []);
+    return isoFromDate(d);
+  }, [end]);
   const history = useWorkoutHistory(start, end);
 
   return (

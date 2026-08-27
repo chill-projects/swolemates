@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,14 +144,13 @@ async def test_nutrition_day_excludes_other_users_logs_and_older_days(
     assert day.logs == []
 
 
-async def test_nutrition_day_tz_offset_finds_a_log_made_after_local_midnight_but_before_utcs(
+async def test_nutrition_day_tz_finds_a_log_made_after_local_midnight_but_before_utcs(
     session: AsyncSession,
 ) -> None:
     """Regression: a log made at 8pm Pacific — already the next UTC calendar day — must
-    still show up under the caller's local "today" once the caller's UTC offset is
-    supplied. Passing `day` alone (the earlier, incomplete fix) doesn't cover this: the
-    naive UTC-bounded window for "2026-08-25" ends before this log's UTC timestamp even
-    starts.
+    still show up under the caller's local "today" once their IANA zone is supplied.
+    Passing `day` alone (an earlier, incomplete fix) doesn't cover this: the UTC-bounded
+    window for "2026-08-25" ends before this log's UTC timestamp even starts.
     """
     pacific_8pm_in_utc = datetime(2026, 8, 26, 3, 0, tzinfo=UTC)  # 2026-08-25 20:00 PDT
     await service.log_nutrition(
@@ -165,7 +165,7 @@ async def test_nutrition_day_tz_offset_finds_a_log_made_after_local_midnight_but
     assert float(utc_only.hero.consumed) == 0
 
     local_aware = await service.get_nutrition_day(
-        session, TEST_USER, day=date(2026, 8, 25), tz_offset_minutes=420
+        session, TEST_USER, day=date(2026, 8, 25), tz=ZoneInfo("America/Los_Angeles")
     )
     assert float(local_aware.hero.consumed) == 450
 

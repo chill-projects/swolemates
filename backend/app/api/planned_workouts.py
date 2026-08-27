@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.deps import CurrentUser, DbSession
+from app.deps import CurrentUser, DbSession, UserTimezone
 from app.schemas.planned_workouts import (
     PlannedWorkoutOut,
     PlanWorkoutRequest,
@@ -12,6 +12,7 @@ from app.schemas.planned_workouts import (
     WeeklyPatternDayOut,
 )
 from app.services import planned_workouts as service
+from app.services.timezones import today_in
 
 router = APIRouter(tags=["planned-workouts"])
 
@@ -51,10 +52,11 @@ async def set_weekly_pattern(
 async def get_planned_workouts(
     user_sub: CurrentUser,
     session: DbSession,
+    tz: UserTimezone,
     start: date | None = None,
     end: date | None = None,
 ) -> list[PlannedWorkoutOut]:
-    range_start = start or date.today()
+    range_start = start or today_in(tz)
     range_end = end or (range_start + timedelta(days=6))
     planned = await service.get_planned_workouts(
         session, user_sub, start=range_start, end=range_end

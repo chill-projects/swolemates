@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app import events
-from app.deps import CurrentUser, DbSession
+from app.deps import CurrentUser, DbSession, UserTimezone
 from app.schemas.workouts import (
     ExerciseOut,
     FinishWorkoutRequest,
@@ -68,12 +68,13 @@ async def log_activity(
 async def get_workout_history(
     user_sub: CurrentUser,
     session: DbSession,
+    tz: UserTimezone,
     start: date | None = None,
     end: date | None = None,
     exercise: str | None = None,
 ) -> list[WorkoutOut]:
     workouts = await service.get_workout_history(
-        session, user_sub, start=start, end=end, exercise=exercise
+        session, user_sub, start=start, end=end, exercise=exercise, tz=tz
     )
     return [WorkoutOut.model_validate(w) for w in workouts]
 
@@ -143,8 +144,10 @@ async def delete_workout(workout_id: uuid.UUID, user_sub: CurrentUser, session: 
 
 
 @router.get("/streak", response_model=StreakOut, operation_id="getWorkoutStreak")
-async def get_workout_streak(user_sub: CurrentUser, session: DbSession) -> StreakOut:
-    return StreakOut.model_validate(await service.get_streak(session, user_sub))
+async def get_workout_streak(
+    user_sub: CurrentUser, session: DbSession, tz: UserTimezone
+) -> StreakOut:
+    return StreakOut.model_validate(await service.get_streak(session, user_sub, tz=tz))
 
 
 @router.get("/active", response_model=WorkoutOut | None, operation_id="getActiveWorkout")

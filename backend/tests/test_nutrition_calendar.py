@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,11 +119,11 @@ async def test_calendar_maintain_goal_uses_symmetric_band(session: AsyncSession)
     assert days[0].status == "miss"
 
 
-async def test_calendar_tz_offset_buckets_a_log_under_the_callers_local_day(
+async def test_calendar_tz_buckets_a_log_under_the_callers_local_day(
     session: AsyncSession,
 ) -> None:
-    """Regression: same underlying bug as get_nutrition_day's tz_offset_minutes test —
-    a log at 8pm Pacific is already 2026-08-26 in UTC, so without the offset it buckets
+    """Regression: same underlying bug as get_nutrition_day's tz test — a log at 8pm
+    Pacific is already the next day in UTC, so without the caller's zone it buckets
     under the wrong calendar day entirely."""
     pacific_8pm_in_utc = datetime(2026, 8, 25, 3, 0, tzinfo=UTC)  # 2026-08-24 20:00 PDT
     await service.log_nutrition(
@@ -142,7 +143,11 @@ async def test_calendar_tz_offset_buckets_a_log_under_the_callers_local_day(
     }
 
     local_aware = await service.get_nutrition_calendar(
-        session, TEST_USER, start=date(2026, 8, 24), end=date(2026, 8, 25), tz_offset_minutes=420
+        session,
+        TEST_USER,
+        start=date(2026, 8, 24),
+        end=date(2026, 8, 25),
+        tz=ZoneInfo("America/Los_Angeles"),
     )
     assert {d.date: d.status for d in local_aware} == {
         date(2026, 8, 24): "hit",

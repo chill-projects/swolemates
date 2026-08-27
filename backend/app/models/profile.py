@@ -58,6 +58,11 @@ class UserProfile(Base, TimestampMixin):
 
     user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(200))
+    # IANA timezone name (e.g. "America/Los_Angeles"). Nullable: unset ⇒ UTC day
+    # boundaries, same as before this column existed. Seeded from the browser's
+    # `X-Timezone` on first `whoami`, overridable from Settings; the MCP/chat path
+    # has no live zone and reads this. See `services/timezones.py`.
+    timezone: Mapped[str | None] = mapped_column(String(64))
     weight_unit: Mapped[WeightUnit] = mapped_column(
         Enum(WeightUnit, name="weight_unit"), nullable=False, default=WeightUnit.lbs
     )

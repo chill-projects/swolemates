@@ -9,25 +9,6 @@ type NutritionDayOut = components["schemas"]["NutritionDayOut"];
 const numeric = (values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
 
-/** get_nutrition_day defaults to UTC "today" server-side (day.py: "no per-user timezone
- *  yet") — wrong for hours after the user's local midnight and before UTC's (evening,
- *  west of UTC), when it silently shows an empty day instead of what they just logged.
- *  The date alone isn't enough either — the server also needs the UTC offset to bound
- *  "today" at the caller's actual local midnight, not UTC's, or a log made minutes ago
- *  can still fall outside the window (see day.py's tz_offset_minutes). Both come
- *  straight from the browser. */
-function todayLocalDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function tzOffsetMinutes(): number {
-  return new Date().getTimezoneOffset();
-}
-
 /** Shape the REST response into the same payload the MCP tools return (numbers
  *  instead of the Decimal-as-string REST wire format), so the component can't tell
  *  which host it's running in. */
@@ -176,9 +157,9 @@ export function NutritionPage() {
         default:
           throw new Error(`unknown tool: ${name}`);
       }
-      const { data, error } = await api.GET("/api/nutrition/day", {
-        params: { query: { day: todayLocalDate(), tz_offset_minutes: tzOffsetMinutes() } },
-      });
+      // No `day` param: the server resolves "today" in the caller's zone from the
+      // `X-Timezone` header (see api/client.ts).
+      const { data, error } = await api.GET("/api/nutrition/day", {});
       if (error || !data) throw new Error("day fetch failed");
       return toPayload(data);
     },

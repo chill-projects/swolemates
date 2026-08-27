@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { api } from "../api/client";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
+import { todayIsoInTz, useUserTimezone } from "../lib/datetime";
 import { WorkoutHistoryFeed } from "./WorkoutHistoryFeed";
 
 type WorkoutLiveOut = components["schemas"]["WorkoutLiveOut"];
@@ -86,6 +87,7 @@ const emptyPayload: ToolResultPayload = {
 };
 
 export function WorkoutLivePage() {
+  const tz = useUserTimezone();
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       if (name === "list_workout_exercises") {
@@ -148,7 +150,9 @@ export function WorkoutLivePage() {
           break;
         }
         case "get_todays_plan": {
-          const today = new Date().toISOString().slice(0, 10);
+          // "Today" in the user's zone — a UTC date rolls to tomorrow in the evening
+          // west of UTC, so "today's plan" would show tomorrow's.
+          const today = todayIsoInTz(tz);
           const { data, error } = await api.GET("/api/planned-workouts", {
             params: { query: { start: today, end: today } },
           });
@@ -225,7 +229,7 @@ export function WorkoutLivePage() {
       if (live.error || !live.data) throw new Error("live fetch failed");
       return toLivePayload(live.data, earnedCelebrations, earnedStreak);
     },
-    [],
+    [tz],
   );
 
   return (
