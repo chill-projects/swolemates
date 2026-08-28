@@ -35,12 +35,6 @@ class Settings(BaseSettings):
     # accepted audience alongside PUBLIC_URL. Distinct from workos_client_id, which is
     # the Connect application the SPA authenticates as.
     workos_environment_client_id: str = ""
-    # Set only in Railway (never in local/.env). Required to mint a new access token
-    # from a refresh token — WorkOS's /user_management/authenticate endpoint takes this
-    # as `client_secret` even for a PKCE public-client login. Kept optional here (not in
-    # _production_requires_real_auth) so deploying the refresh endpoint doesn't require
-    # the secret to already exist; POST /api/auth/refresh just 401s until it's set.
-    workos_client_secret: str = ""
 
     # Local-only auth bypass so the dev loop doesn't need an OAuth round trip per call.
     # Ignored unless environment == "local"; see require_user() in app/auth.py.

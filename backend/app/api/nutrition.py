@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -22,6 +22,7 @@ from app.schemas.nutrition import (
     TrackableTypeOut,
     UpdateMealTemplateItemRequest,
     UpdateNutritionLogRequest,
+    WeightEntryOut,
 )
 from app.services import nutrition as service
 
@@ -257,6 +258,18 @@ async def log_meal_template(
 async def get_goals(user_sub: CurrentUser, session: DbSession) -> list[GoalOut]:
     goals = await service.get_goals(session, user_sub)
     return [GoalOut.model_validate(g) for g in goals]
+
+
+@router.get("/weights", response_model=list[WeightEntryOut], operation_id="getWeightHistory")
+async def get_weight_history(
+    user_sub: CurrentUser, session: DbSession, days: int = 90
+) -> list[WeightEntryOut]:
+    """Logged weigh-ins, oldest first — the series behind the Profile page's trend.
+    Weight lives in the same log table as food but in the `body` trackable category,
+    which is why it never shows up in the day's macro bars."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    history = await service.get_trackable_history(session, user_sub, "weight_lbs", since=since)
+    return [WeightEntryOut(logged_at=logged_at, weight_lbs=value) for logged_at, value in history]
 
 
 @router.put("/goals", response_model=list[GoalOut], operation_id="setGoals")

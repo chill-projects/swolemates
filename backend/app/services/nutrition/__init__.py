@@ -24,6 +24,7 @@ from app.services.nutrition.logs import (
     delete_nutrition_log,
     get_latest_trackable_value,
     get_log_values,
+    get_trackable_history,
     log_nutrition,
     update_nutrition_log,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "log_nutrition",
     "get_log_values",
     "get_latest_trackable_value",
+    "get_trackable_history",
     "update_nutrition_log",
     "amend_last_log",
     "delete_nutrition_log",

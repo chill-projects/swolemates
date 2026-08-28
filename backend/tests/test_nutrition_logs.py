@@ -246,3 +246,37 @@ async def test_update_and_amend_nutrition_log_over_rest(client: AsyncClient) -> 
     amended = await client.post("/api/nutrition/logs/amend-last", json={})
     assert amended.status_code == 200
     assert amended.json() == {"deleted": True, "log": None}
+
+
+async def test_weight_history_returns_weigh_ins_oldest_first(client: AsyncClient) -> None:
+    """Ordered by `logged_at`, not insertion order — these go in newest-first to make
+    sure the endpoint sorts rather than echoing the write order back."""
+    for logged_at, value in [
+        ("2026-08-25T08:00:00Z", 149),
+        ("2026-08-04T08:00:00Z", 152),
+        ("2026-08-11T08:00:00Z", 151),
+    ]:
+        await client.post(
+            "/api/nutrition/logs",
+            json={
+                "entries": [{"trackable_key": "weight_lbs", "value": value}],
+                "logged_at": logged_at,
+            },
+        )
+
+    resp = await client.get("/api/nutrition/weights")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [float(w["weight_lbs"]) for w in body] == [152, 151, 149]
+
+
+async def test_weight_history_excludes_food_logs(client: AsyncClient) -> None:
+    await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "calories", "value": 500}]},
+    )
+
+    resp = await client.get("/api/nutrition/weights")
+
+    assert resp.json() == []
