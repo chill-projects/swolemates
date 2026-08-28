@@ -66,6 +66,14 @@ class GoalOut(BaseModel):
     is_streak_target: bool
 
 
+class WeightEntryOut(BaseModel):
+    """One weigh-in. Always pounds, matching how `weight_lbs` is stored — the caller
+    converts for display from their own `weight_unit` preference."""
+
+    logged_at: datetime
+    weight_lbs: Decimal
+
+
 class TrackableTypeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

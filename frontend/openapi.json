@@ -2260,6 +2260,87 @@
         "title": "TargetOut",
         "type": "object"
       },
+      "TdeeEstimateOut": {
+        "description": "The read-only counterpart to CalculateTargetsResponse: the same numbers, but\ncomputed without persisting them, and expressed so an incomplete profile is a\nnormal answer rather than a 400. `missing` names what's still needed.",
+        "properties": {
+          "calories": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories"
+          },
+          "carbs_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbs G"
+          },
+          "fat_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G"
+          },
+          "fiber_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G"
+          },
+          "missing": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "protein_g": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G"
+          },
+          "tdee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tdee"
+          }
+        },
+        "title": "TdeeEstimateOut",
+        "type": "object"
+      },
       "TemplateExerciseOut": {
         "properties": {
           "exercise_id": {
@@ -2912,6 +2993,27 @@
           "template_name"
         ],
         "title": "WeeklyPatternDayOut",
+        "type": "object"
+      },
+      "WeightEntryOut": {
+        "description": "One weigh-in. Always pounds, matching how `weight_lbs` is stored \u2014 the caller\nconverts for display from their own `weight_unit` preference.",
+        "properties": {
+          "logged_at": {
+            "format": "date-time",
+            "title": "Logged At",
+            "type": "string"
+          },
+          "weight_lbs": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Weight Lbs",
+            "type": "string"
+          }
+        },
+        "required": [
+          "logged_at",
+          "weight_lbs"
+        ],
+        "title": "WeightEntryOut",
         "type": "object"
       },
       "WeightUnit": {
@@ -3983,6 +4085,54 @@
         ]
       }
     },
+    "/api/nutrition/weights": {
+      "get": {
+        "description": "Logged weigh-ins, oldest first \u2014 the series behind the Profile page's trend.\nWeight lives in the same log table as food but in the `body` trackable category,\nwhich is why it never shows up in the day's macro bars.",
+        "operationId": "getWeightHistory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeightEntryOut"
+                  },
+                  "title": "Response Getweighthistory",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Weight History",
+        "tags": [
+          "nutrition"
+        ]
+      }
+    },
     "/api/partner": {
       "get": {
         "operationId": "getPartnerSummary",
@@ -4358,6 +4508,28 @@
         "summary": "Complete Onboarding",
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/api/tdee": {
+      "get": {
+        "description": "What the calculator would produce right now, persisting nothing \u2014 the Profile\npage shows this next to the targets you've actually saved, so the estimate can be\ndisplayed without silently overwriting them.",
+        "operationId": "getTdeeEstimate",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TdeeEstimateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Tdee Estimate",
+        "tags": [
+          "tdee"
         ]
       }
     },
