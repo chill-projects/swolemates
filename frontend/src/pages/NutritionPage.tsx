@@ -1,8 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
+import { PageHero, Ring } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
+import { dateFromIso } from "../lib/datetime";
 
 type NutritionDayOut = components["schemas"]["NutritionDayOut"];
 
@@ -70,7 +72,93 @@ function toPayload(day: NutritionDayOut): ToolResultPayload {
   };
 }
 
+/** The subset of the day payload the hero band reads. Same object the component
+ *  inside the iframe is rendering — see AppRenderer's `onResult`. */
+type DayState = {
+  date: string;
+  hero: { unit: string; consumed: number; target: number | null };
+  bars: { trackable_key: string; unit: string; consumed: number; target: number | null }[];
+  logs: unknown[];
+};
+
+function isDayState(value: unknown): value is DayState {
+  return typeof value === "object" && value !== null && "hero" in value && "logs" in value;
+}
+
+const shortfall = (p: { consumed: number; target: number | null }) =>
+  p.target === null ? null : p.target - p.consumed;
+
+/** "23 g of protein short, 460 kcal to spend." — whichever of the two still has
+ *  room, in that order, since protein is the one people actually miss. */
+function directive(day: DayState | null): string {
+  if (!day) return "Today’s food, as it lands.";
+  const protein = day.bars.find((b) => b.trackable_key === "protein_g");
+  const proteinLeft = protein ? shortfall(protein) : null;
+  const kcalLeft = shortfall(day.hero);
+  const parts: string[] = [];
+  if (proteinLeft !== null && proteinLeft > 0) {
+    parts.push(`${Math.round(proteinLeft)} ${protein!.unit} of protein short`);
+  }
+  if (kcalLeft !== null && kcalLeft > 0) {
+    parts.push(`${Math.round(kcalLeft).toLocaleString()} ${day.hero.unit} to spend`);
+  }
+  return parts.length > 0 ? `${parts.join(", ")}.` : "Every target met for today.";
+}
+
+const MACRO_COLORS: Record<string, string> = {
+  protein_g: "var(--teal)",
+  carbs_g: "var(--gold)",
+  fat_g: "var(--plum)",
+  fiber_g: "var(--coral)",
+};
+
+/** The calorie dial and the macro bars, in the band — the shape 3a opens with. The
+ *  component below reads the same payload and drops its own copy of this block when
+ *  it detects the SPA as its host, so the day is only drawn once. */
+function DayRings({ day }: { day: DayState }) {
+  const pct = (p: { consumed: number; target: number | null }) =>
+    p.target === null || p.target <= 0 ? 0 : p.consumed / p.target;
+  return (
+    <div className="hero-rings hero-rings--macros">
+      <Ring
+        label="Calories"
+        value={Math.round(day.hero.consumed).toLocaleString()}
+        sub={day.hero.target === null ? day.hero.unit : `of ${Math.round(day.hero.target).toLocaleString()}`}
+        fraction={pct(day.hero)}
+        color="var(--teal)"
+      />
+      <div className="macro-bars">
+        {day.bars.map((bar) => (
+          <div key={bar.trackable_key}>
+            <div className="macro-bar-label">
+              <span>{macroLabel(bar.trackable_key)}</span>
+              <span>
+                {Math.round(bar.consumed)}
+                {bar.target === null ? "" : ` / ${Math.round(bar.target)}`} {bar.unit}
+              </span>
+            </div>
+            <div className="macro-bar-track">
+              <div
+                className="macro-bar-fill"
+                style={{
+                  width: `${Math.min(pct(bar) * 100, 100)}%`,
+                  background: MACRO_COLORS[bar.trackable_key] ?? "var(--ink-soft)",
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function macroLabel(key: string): string {
+  return key.replace(/_g$/, "").replace(/^./, (c) => c.toUpperCase());
+}
+
 export function NutritionPage() {
+  const [day, setDay] = useState<DayState | null>(null);
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       switch (name) {
@@ -166,15 +254,35 @@ export function NutritionPage() {
     [],
   );
 
+  const entries = day?.logs.length ?? 0;
+  const dayLabel = day
+    ? dateFromIso(day.date).toLocaleDateString(undefined, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    : "Today";
+
   return (
-    <section>
-      <h2>Nutrition</h2>
-      <AppRenderer
-        bundleUrl="/mcp-apps/nutrition-day.html"
-        initialTool="get_nutrition_day"
-        onCallTool={handleTool}
-        eventsUrl="/api/nutrition/events"
+    <>
+      <PageHero
+        eyebrow={`${dayLabel} · ${entries} ${entries === 1 ? "entry" : "entries"} logged`}
+        title={directive(day)}
+        aside={day ? <DayRings day={day} /> : undefined}
       />
-    </section>
+      <div className="page-body">
+        <AppRenderer
+          bundleUrl="/mcp-apps/nutrition-day.html"
+          initialTool="get_nutrition_day"
+          onCallTool={handleTool}
+          // Ignore anything that isn't a day payload — food search comes back
+          // through here too, and it must not blank the header.
+          onResult={(result) => {
+            if (isDayState(result.structuredContent)) setDay(result.structuredContent);
+          }}
+          eventsUrl="/api/nutrition/events"
+        />
+      </div>
+    </>
   );
 }

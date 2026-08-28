@@ -84,6 +84,25 @@ async def get_latest_trackable_value(
     return result.scalar_one_or_none()
 
 
+async def get_trackable_history(
+    session: AsyncSession, user_sub: str, trackable_key: str, *, since: datetime
+) -> list[tuple[datetime, Decimal]]:
+    """Every logged value for one key since `since`, oldest first — the weight series
+    behind the Profile page's trend. Ordered by `logged_at` for the same reason
+    `get_latest_trackable_value` is: a weigh-in belongs to when it happened."""
+    result = await session.execute(
+        select(Log.logged_at, LogValue.value)
+        .join(LogValue, Log.id == LogValue.log_id)
+        .where(
+            Log.user_id == user_sub,
+            LogValue.trackable_key == trackable_key,
+            Log.logged_at >= since,
+        )
+        .order_by(Log.logged_at.asc())
+    )
+    return [(logged_at, value) for logged_at, value in result.all()]
+
+
 async def update_nutrition_log(
     session: AsyncSession,
     user_sub: str,

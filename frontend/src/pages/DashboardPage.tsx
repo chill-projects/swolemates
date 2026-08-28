@@ -7,9 +7,12 @@ import {
   useWorkoutHistory,
   useWorkoutStreak,
 } from "../api/dashboard";
+import { usePartnerSummary } from "../api/partner";
 import type { components } from "../api/generated";
+import { Card, KeyList, PageHero, Ring } from "../components/ui";
 import {
   dateFromIso,
+  formatInstant,
   isoDateInTz,
   isoFromDate,
   todayIsoInTz,
@@ -17,6 +20,7 @@ import {
 } from "../lib/datetime";
 
 type NutritionCalendarDay = components["schemas"]["NutritionCalendarDayOut"];
+type TrackableProgress = components["schemas"]["TrackableProgressOut"];
 type PlannedWorkout = components["schemas"]["PlannedWorkoutOut"];
 type Workout = components["schemas"]["WorkoutOut"];
 
@@ -160,30 +164,194 @@ export function DashboardPage() {
   const history = useWorkoutHistory(isoDate(weekStart), isoDate(weekEnd));
   const streak = useWorkoutStreak();
 
-  return (
-    <div className="dash-stack">
-      <h2>Dashboard</h2>
-      {calendar.isPending && <p className="muted">Loading nutrition…</p>}
-      {calendar.isError && <p className="error">Couldn’t load the nutrition calendar.</p>}
-      {calendar.data && (
-        <NutritionCalendarCard days={calendar.data} today={today} monthStart={monthStart} />
-      )}
+  const todayNutrition = calendar.data?.find((d) => d.date === isoDate(today));
+  const todaysPlan = planned.data?.find(
+    (p) => p.scheduled_for === isoDate(today) && p.status === "planned",
+  );
 
-      {(planned.isPending || history.isPending || streak.isPending) && (
-        <p className="muted">Loading workouts…</p>
-      )}
-      {(planned.isError || history.isError || streak.isError) && (
-        <p className="error">Couldn’t load this week’s workouts.</p>
-      )}
-      {planned.data && history.data && streak.data && (
-        <WorkoutWeekCard
-          planned={planned.data}
-          workouts={history.data}
-          streak={streak.data}
-          weekStart={weekStart}
-          today={today}
-        />
-      )}
+  return (
+    <>
+      <PageHero
+        eyebrow={today.toLocaleDateString(undefined, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })}
+        title={heroTitle(todayNutrition, streak.data)}
+        lead={heroLead(todayNutrition, todaysPlan?.template_name ?? null)}
+        actions={
+          <>
+            <a className="btn--primary" href="/workouts/live">
+              {todaysPlan ? `Start ${todaysPlan.template_name}` : "Start a workout"}
+            </a>
+            <a className="btn--ghost" href="/nutrition">
+              Log food
+            </a>
+          </>
+        }
+        aside={<HeroRings day={todayNutrition} streak={streak.data} />}
+      />
+
+      <div className="page-body">
+        <div className="page-grid page-grid--three">
+          {calendar.isPending && <p className="muted">Loading nutrition…</p>}
+          {calendar.isError && <p className="error">Couldn’t load the nutrition calendar.</p>}
+          {calendar.data && (
+            <NutritionCalendarCard days={calendar.data} today={today} monthStart={monthStart} />
+          )}
+
+          {(planned.isPending || history.isPending || streak.isPending) && (
+            <p className="muted">Loading workouts…</p>
+          )}
+          {(planned.isError || history.isError || streak.isError) && (
+            <p className="error">Couldn’t load this week’s workouts.</p>
+          )}
+          {planned.data && history.data && streak.data && (
+            <WorkoutWeekCard
+              planned={planned.data}
+              workouts={history.data}
+              streak={streak.data}
+              weekStart={weekStart}
+              today={today}
+            />
+          )}
+
+          <SwolemateCard mine={streak.data ?? null} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** The partner column from the mockup. Only aggregates cross this boundary — see
+ *  PartnerSummaryOut — so this shows their week against yours and nothing more. */
+function SwolemateCard({ mine }: { mine: Streak | null }) {
+  const summary = usePartnerSummary();
+  const tz = useUserTimezone();
+
+  if (summary.isPending || summary.isError) return null;
+  if (!summary.data) {
+    return (
+      <Card title="Swolemate">
+        <p className="card-note">
+          No partner yet. <a href="/partner">Invite one</a> and their week shows up here.
+        </p>
+      </Card>
+    );
+  }
+
+  const partner = summary.data;
+  const name = partner.partner_display_name ?? "Your partner";
+  const theirs = partner.streak.this_week;
+  const gap = mine === null ? null : theirs - mine.this_week;
+
+  return (
+    <Card title="Swolemate">
+      <div className="partner-head">
+        <span className="partner-avatar">{initials(name)}</span>
+        <div>
+          <div className="partner-name">{name}</div>
+          <div className="partner-sub">
+            {theirs} of {partner.streak.target}
+            {partner.frequency.last_workout_at
+              ? ` · ${formatInstant(partner.frequency.last_workout_at, tz)}`
+              : " · nothing logged yet"}
+          </div>
+        </div>
+      </div>
+      <p className="card-note">
+        {gap === null || gap === 0
+          ? "You’re level on the week."
+          : gap > 0
+            ? `${gap} ahead of you this week.`
+            : `${-gap} behind you this week.`}{" "}
+        {partner.streak.weeks}-week streak.
+      </p>
+      <a className="btn--ghost partner-action" href="/partner">
+        See {name.split(" ")[0]}
+      </a>
+    </Card>
+  );
+}
+
+/** "Maya Reyes" → "MR"; a single word falls back to its first two letters. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (first === undefined || last === undefined) return "?";
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  return `${first[0]}${last[0]}`.toUpperCase();
+}
+
+/** The directive: whichever of "eat" or "lift" still has ground to cover today. */
+function heroTitle(day: NutritionCalendarDay | undefined, streak: Streak | undefined): string {
+  const kcalLeft = day ? remaining(day.hero) : null;
+  const liftsLeft = streak ? Math.max(streak.target - streak.this_week, 0) : null;
+  const parts: string[] = [];
+  if (kcalLeft !== null && kcalLeft > 0) {
+    parts.push(`${Math.round(kcalLeft).toLocaleString()} ${day!.hero.unit} left`);
+  }
+  if (liftsLeft) parts.push(`${liftsLeft} ${liftsLeft === 1 ? "workout" : "workouts"} to go`);
+  if (parts.length === 0) return "You’re on target for the week.";
+  return `${parts.join(" and ")}.`;
+}
+
+function heroLead(day: NutritionCalendarDay | undefined, plan: string | null): string {
+  const protein = day?.bars.find((b) => b.trackable_key === "protein_g");
+  const proteinLeft = protein ? remaining(protein) : null;
+  const food =
+    proteinLeft === null
+      ? "No targets set yet — the Profile tab can work them out for you."
+      : proteinLeft > 0
+        ? `Protein is ${Math.round(proteinLeft)} ${protein!.unit} short.`
+        : "Every macro is where it should be.";
+  return plan ? `${food} ${plan} is on the plan for today.` : `${food} Nothing planned today.`;
+}
+
+function remaining(p: TrackableProgress): number | null {
+  if (p.target === null) return null;
+  return Number(p.target) - Number(p.consumed);
+}
+
+function fraction(p: TrackableProgress | undefined): number {
+  if (!p || p.target === null || Number(p.target) <= 0) return 0;
+  return Number(p.consumed) / Number(p.target);
+}
+
+/** Calories, protein and the week — the three dials the mockup opens with. */
+function HeroRings({
+  day,
+  streak,
+}: {
+  day: NutritionCalendarDay | undefined;
+  streak: Streak | undefined;
+}) {
+  const protein = day?.bars.find((b) => b.trackable_key === "protein_g");
+  const percent = (p: TrackableProgress | undefined) => `${Math.round(fraction(p) * 100)}%`;
+  return (
+    <div className="hero-rings">
+      <Ring
+        label="Calories"
+        value={percent(day?.hero)}
+        sub={day ? Math.round(Number(day.hero.consumed)).toLocaleString() : "—"}
+        fraction={fraction(day?.hero)}
+        color="var(--teal)"
+      />
+      <Ring
+        label="Protein"
+        value={percent(protein)}
+        sub={protein ? `${Math.round(Number(protein.consumed))} ${protein.unit}` : "—"}
+        fraction={fraction(protein)}
+        color="var(--coral)"
+      />
+      <Ring
+        label="Week"
+        value={streak ? `${streak.this_week}/${streak.target}` : "—"}
+        sub="lifts"
+        fraction={streak && streak.target > 0 ? streak.this_week / streak.target : 0}
+        color="var(--plum)"
+      />
     </div>
   );
 }
@@ -213,12 +381,7 @@ function NutritionCalendarCard({
   ];
 
   return (
-    <div className="dash-card">
-      <div className="dash-card-header">
-        <span className="dash-card-title">
-          {MONTH_NAMES[monthStart.getMonth()]} {monthStart.getFullYear()}
-        </span>
-      </div>
+    <Card title={`${MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()}`}>
       <div className="dash-grid">
         {DOW.map((d, i) => (
           <div key={i} className="dash-dow">{d}</div>
@@ -242,11 +405,13 @@ function NutritionCalendarCard({
           );
         })}
       </div>
-      <div className="dash-legend">
-        <span><i className="dash-swatch" style={{ background: "var(--teal)" }} /> Hit goal</span>
-        <span><i className="dash-swatch" style={{ background: "var(--coral-pale)" }} /> Missed</span>
-        <span><i className="dash-swatch" style={{ background: "var(--sand)" }} /> No data</span>
-      </div>
+      <KeyList
+        items={[
+          { swatch: { background: "var(--teal)" }, text: "Hit your calorie goal" },
+          { swatch: { background: "var(--coral-pale)" }, text: "Missed it" },
+          { swatch: { background: "var(--sand)" }, text: "Nothing logged" },
+        ]}
+      />
       {activeDay && activeDate && (
         <div className="dash-tooltip" role="tooltip" style={style}>
           <div className="dash-tooltip-date">{formatDayHeader(activeDate)}</div>
@@ -284,7 +449,7 @@ function NutritionCalendarCard({
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -344,33 +509,45 @@ function WorkoutWeekCard({
   const active = activeKey ? weekInfo.find((d) => d.key === activeKey) : undefined;
 
   return (
-    <div className="dash-card">
-      <div className="dash-card-header">
-        <span className="dash-card-title">Workouts</span>
-        <span className="dash-badge dash-badge--plum">{streak.weeks}-week streak</span>
-      </div>
+    <Card
+      title="This week’s workouts"
+      meta={<span className="badge badge--plum">{streak.weeks}-week streak</span>}
+    >
       <div className="dash-week-row">
-        {weekInfo.map(({ date, key, isToday, status }, i) => {
+        {weekInfo.map(({ date, key, isToday, status, done, plannedEntry }, i) => {
+          // A logged day keeps its "done" fill even when it's today — the key
+          // reads today's tile as "planned", which a finished workout isn't.
+          const skin = isToday && status !== "done" ? "today" : status;
           return (
-            <div key={key} className="dash-cell-wrap" {...cellProps(key)}>
-              <div className="dash-week-daycell">
-                <div className="dash-week-dow">{WEEK_DOW[i]}</div>
-                <div
-                  className={`dash-week-daynum dash-week-daynum--${status}${isToday ? " dash-week-daynum--today" : ""}`}
-                >
-                  {date.getDate()}
-                </div>
+            <div key={key} className="dash-week-daycell" {...cellProps(key)}>
+              <span className="dash-week-dow">{WEEK_DOW[i]}</span>
+              <div className={`dash-week-daynum dash-week-daynum--${skin}`}>
+                {date.getDate()}
+                <span className="dash-week-tag">
+                  {done[0]
+                    ? (done[0].title ?? "workout")
+                    : (plannedEntry?.template_name ?? "rest")}
+                </span>
               </div>
             </div>
           );
         })}
       </div>
-      <div className="dash-legend">
-        <span><i className="dash-swatch dash-swatch--round" style={{ background: "var(--plum)" }} /> Done</span>
-        <span><i className="dash-swatch dash-swatch--round" style={{ border: "1px dashed var(--plum)" }} /> Planned</span>
-        <span><i className="dash-swatch dash-swatch--round" style={{ border: "1px dashed var(--ink-soft)" }} /> Skipped</span>
-      </div>
-      <p className="dash-week-detail">
+      <KeyList
+        items={[
+          { swatch: { background: "var(--plum)" }, text: "Logged a workout" },
+          { swatch: { background: "var(--teal)" }, text: "Today, planned" },
+          {
+            swatch: { background: "var(--card)", border: "1px dashed var(--plum)" },
+            text: "Planned, still ahead",
+          },
+          {
+            swatch: { background: "var(--sand)", border: "1px solid var(--line-soft)" },
+            text: "Rest or nothing planned",
+          },
+        ]}
+      />
+      <p className="card-note">
         <strong>{streak.this_week} of {streak.target}</strong> workouts this week — any day counts,
         a skipped plan doesn’t break the streak if you make it up before Sunday
       </p>
@@ -413,6 +590,6 @@ function WorkoutWeekCard({
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

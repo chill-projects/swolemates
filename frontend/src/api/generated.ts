@@ -305,6 +305,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nutrition/weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Weight History
+         * @description Logged weigh-ins, oldest first — the series behind the Profile page's trend.
+         *     Weight lives in the same log table as food but in the `body` trackable category,
+         *     which is why it never shows up in the day's macro bars.
+         */
+        get: operations["getWeightHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/partner": {
         parameters: {
             query?: never;
@@ -442,6 +464,28 @@ export interface paths {
         put?: never;
         /** Complete Onboarding */
         post: operations["completeOnboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tdee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tdee Estimate
+         * @description What the calculator would produce right now, persisting nothing — the Profile
+         *     page shows this next to the targets you've actually saved, so the estimate can be
+         *     displayed without silently overwriting them.
+         */
+        get: operations["getTdeeEstimate"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1525,6 +1569,31 @@ export interface components {
             /** Weight */
             weight: string | null;
         };
+        /**
+         * TdeeEstimateOut
+         * @description The read-only counterpart to CalculateTargetsResponse: the same numbers, but
+         *     computed without persisting them, and expressed so an incomplete profile is a
+         *     normal answer rather than a 400. `missing` names what's still needed.
+         */
+        TdeeEstimateOut: {
+            /** Calories */
+            calories?: number | null;
+            /** Carbs G */
+            carbs_g?: number | null;
+            /** Fat G */
+            fat_g?: number | null;
+            /** Fiber G */
+            fiber_g?: number | null;
+            /**
+             * Missing
+             * @default []
+             */
+            missing: string[];
+            /** Protein G */
+            protein_g?: number | null;
+            /** Tdee */
+            tdee?: number | null;
+        };
         /** TemplateExerciseOut */
         TemplateExerciseOut: {
             /**
@@ -1693,6 +1762,20 @@ export interface components {
             template_id: string | null;
             /** Template Name */
             template_name: string | null;
+        };
+        /**
+         * WeightEntryOut
+         * @description One weigh-in. Always pounds, matching how `weight_lbs` is stored — the caller
+         *     converts for display from their own `weight_unit` preference.
+         */
+        WeightEntryOut: {
+            /**
+             * Logged At
+             * Format: date-time
+             */
+            logged_at: string;
+            /** Weight Lbs */
+            weight_lbs: string;
         };
         /**
          * WeightUnit
@@ -2344,6 +2427,37 @@ export interface operations {
             };
         };
     };
+    getWeightHistory: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getPartnerSummary: {
         parameters: {
             query?: never;
@@ -2617,6 +2731,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+        };
+    };
+    getTdeeEstimate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TdeeEstimateOut"];
                 };
             };
         };

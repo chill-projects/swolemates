@@ -120,3 +120,54 @@ async def test_calculate_targets_over_rest(client: AsyncClient) -> None:
 async def test_calculate_targets_over_rest_400s_without_a_profile(client: AsyncClient) -> None:
     resp = await client.post("/api/tdee/calculate-targets")
     assert resp.status_code == 400
+
+
+async def test_tdee_estimate_matches_the_calculation_without_persisting(
+    client: AsyncClient,
+) -> None:
+    """The read endpoint is the whole point of the split: same numbers, no write. A
+    Profile page that showed the estimate by POSTing would silently replace whatever
+    targets the user had set by hand."""
+    await client.patch(
+        "/api/profile",
+        json={
+            "sex": "female",
+            "age": 25,
+            "height_in": "62",
+            "activity_level": "moderate",
+            "goal_type": "recomp",
+        },
+    )
+    await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "weight_lbs", "value": 130}]},
+    )
+    await client.put(
+        "/api/nutrition/goals",
+        json={"goals": [{"trackable_key": "calories", "target_value": 2000}]},
+    )
+
+    resp = await client.get("/api/tdee")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["calories"] == 1697
+    assert body["protein_g"] == 117
+    assert body["missing"] == []
+
+    # The hand-set target survived — nothing was written.
+    goals = await client.get("/api/nutrition/goals")
+    by_key = {g["trackable_key"]: g for g in goals.json()}
+    assert float(by_key["calories"]["target_value"]) == 2000
+
+
+async def test_tdee_estimate_names_what_is_missing_instead_of_erroring(
+    client: AsyncClient,
+) -> None:
+    resp = await client.get("/api/tdee")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["tdee"] is None
+    assert "sex" in body["missing"]
+    assert "a logged weight" in body["missing"]

@@ -27,68 +27,148 @@
            by hand. */
         --ink: #122a2e;
         --accent: #2f9e8f;
+        --page-bg: #f4f1e8;
+        --card-bg: #ffffff;
+        --ink-soft: #4e6367;
+        --dim: #98a3a0;
+        --line: #ddd6c6;
+        --line-soft: #ece8db;
+        --teal: #0e5c56;
+        --teal-pale: #dceae7;
+        --plum: #7c6a9c;
+        --coral: #ff6f59;
+        --on-coral: #241009;
+        --red: #c24a3a;
         --border: color-mix(in srgb, currentColor 14%, transparent);
-        --field-border: color-mix(in srgb, currentColor 35%, transparent);
+        --field-border: var(--line);
+        --font-display: ui-serif, Georgia, "Times New Roman", serif;
+        --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
       }
       @media (prefers-color-scheme: dark) {
-        :root { --ink: #f2ede1; }
+        :root {
+          --ink: #f2ede1;
+          --page-bg: #16211f;
+          --card-bg: #1c2926;
+          --ink-soft: #a9b8b7;
+          --dim: #7d8f8d;
+          --line: #33443f;
+          --line-soft: #26332f;
+          --teal: #2bb3a3;
+          --teal-pale: #1c3d38;
+          --plum: #9b87c4;
+          --coral: #ff8b76;
+          --red: #e2695a;
+        }
       }
-      body { margin: 0; padding: 0.85rem; color: var(--ink); }
-      .muted { opacity: 0.65; }
-      .error { color: #d33; }
+      body { margin: 0; padding: 0.85rem; background: var(--page-bg); color: var(--ink); }
+      .muted { color: var(--ink-soft); }
+      .error { color: var(--red); }
+
+      section {
+        background: var(--card-bg); border: 1px solid var(--line); border-radius: 0.75rem;
+        padding: 0.9rem 1rem;
+      }
+      section + section { margin-top: 0.75rem; }
+      .section-head {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
       h2 {
-        font-size: 0.65rem; letter-spacing: 0.05em; text-transform: uppercase;
-        opacity: 0.6; margin: 0 0 0.5rem;
+        font-family: var(--font-display);
+        font-size: 1rem; font-weight: 600; letter-spacing: 0; text-transform: none;
+        color: var(--ink); margin: 0;
       }
-      section { margin-bottom: 1rem; }
-      button {
-        padding: 0.35rem 0.65rem; border: 1px solid var(--field-border);
-        border-radius: 0.375rem; background: transparent; color: inherit; cursor: pointer;
-        font-size: 0.8rem;
-      }
-      select {
-        padding: 0.3rem 0.4rem; border: 1px solid var(--field-border);
-        border-radius: 0.375rem; background: transparent; color: inherit; font-size: 0.8rem;
+      .section-meta { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft); }
+      /* The muted strip a card closes on, spanning the card's padding. */
+      .section-foot {
+        margin: 0.75rem -1rem -0.9rem; padding: 0.7rem 1rem;
+        border-top: 1px solid var(--line-soft); background: var(--page-bg);
+        border-radius: 0 0 0.7rem 0.7rem;
       }
 
-      #status { margin: 0 0 0.75rem; }
+      button {
+        padding: 0.4rem 0.7rem; border: 1px solid var(--line);
+        border-radius: 0.45rem; background: var(--card-bg); color: var(--ink-soft);
+        cursor: pointer; font-size: 0.78rem; font-weight: 600;
+      }
+      button:hover { border-color: var(--teal); color: var(--teal); }
+      .btn-primary {
+        background: var(--coral); border-color: var(--coral); color: var(--on-coral);
+      }
+      .btn-danger:hover { border-color: var(--red); color: var(--red); }
+      select {
+        padding: 0.4rem 0.5rem; border: 1px solid var(--line);
+        border-radius: 0.45rem; background: var(--page-bg); color: inherit; font-size: 0.8rem;
+      }
+
+      #status { font-family: var(--font-mono); font-size: 0.72rem; margin: 0 0 0.75rem; }
 
       .pattern-row {
         display: flex; align-items: center; justify-content: space-between;
-        gap: 0.5rem; padding: 0.3rem 0;
+        gap: 0.5rem; padding: 0.35rem 0;
+      }
+      .pattern-row span {
+        font-family: var(--font-mono); font-size: 0.68rem;
+        letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft);
       }
       .pattern-row select { flex: 1; max-width: 12rem; }
 
+      /* Next seven days: date on the left, what it is in the middle, its one
+         action on the right. */
       #planned-list { list-style: none; margin: 0; padding: 0; }
       .planned-entry {
-        border: 1px solid var(--border); border-radius: 0.6rem;
-        padding: 0.6rem; margin-bottom: 0.5rem;
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.6rem 0; border-bottom: 1px solid var(--line-soft);
       }
-      .planned-header { display: flex; align-items: center; gap: 0.5rem; }
-      .planned-date { font-size: 0.75rem; opacity: 0.7; min-width: 4.5rem; }
-      .planned-header strong { flex: 1; }
+      .planned-entry:last-child { border-bottom: none; }
+      .planned-date {
+        font-family: var(--font-mono);
+        font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--plum); width: 5.5rem; flex-shrink: 0;
+      }
+      .planned-main { flex: 1; min-width: 0; }
+      .planned-main strong { font-size: 0.88rem; }
+      .planned-entry--skipped .planned-main strong {
+        text-decoration: line-through; color: var(--dim);
+      }
+      .planned-entry--done .planned-main strong { color: var(--dim); }
+      .planned-exercises {
+        font-family: var(--font-mono); font-size: 0.66rem; color: var(--dim);
+        margin-top: 0.15rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .planned-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
       .badge {
-        font-size: 0.65rem; border: 1px solid var(--field-border);
-        border-radius: 999px; padding: 0.05rem 0.5rem;
+        font-family: var(--font-mono);
+        font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+        border: none; border-radius: 0.3rem; padding: 0.18rem 0.4rem;
+        background: var(--line-soft); color: var(--dim);
       }
-      .badge.status-planned { color: var(--accent); }
-      .badge.status-done { color: var(--accent); opacity: 0.7; }
-      .badge.status-skipped { opacity: 0.5; }
-      .planned-exercises { font-size: 0.78rem; margin-top: 0.3rem; }
-      .planned-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+      .badge.status-done { background: var(--teal-pale); color: var(--teal); }
     </style>
   </head>
   <body>
     <p id="status" class="muted">Connecting…</p>
 
-    <section>
-      <h2>Weekly pattern</h2>
+    <!-- The SPA edits the pattern in its page hero band, so this section is dropped
+         in that host and kept everywhere else, where this component owns it. -->
+    <section id="pattern-section">
+      <div class="section-head">
+        <h2>Weekly pattern</h2>
+        <span class="section-meta">saves as you change it</span>
+      </div>
       <div id="pattern-days"></div>
     </section>
 
     <section>
-      <h2>Coming up</h2>
+      <div class="section-head">
+        <h2>Next seven days</h2>
+        <span class="section-meta">from the pattern</span>
+      </div>
       <ul id="planned-list"></ul>
+      <div class="section-foot">
+        <span class="section-meta">Skipping a day doesn't change the pattern</span>
+      </div>
     </section>
 
     <script type="module" src="./main.ts"></script>

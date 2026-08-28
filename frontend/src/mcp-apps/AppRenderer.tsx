@@ -26,6 +26,7 @@ export function AppRenderer({
   bundleUrl,
   initialTool,
   onCallTool,
+  onResult,
   eventsUrl,
   height = 320,
 }: {
@@ -34,6 +35,10 @@ export function AppRenderer({
    *  originating tool's result into the iframe. */
   initialTool: string;
   onCallTool: ToolHandler;
+  /** Every payload pushed into the iframe, handed to the page as well — so a page
+   *  header can read the same live state the component is rendering without
+   *  fetching it a second time and drifting out of sync. */
+  onResult?: (result: ToolResultPayload) => void;
   /** Optional SSE endpoint. Each `changed` event re-runs initialTool and pushes the
    *  fresh result into the app — live updates without the component ever polling. */
   eventsUrl?: string;
@@ -46,6 +51,10 @@ export function AppRenderer({
   // its real size — bundles opt into this via useAutoResize/autoResize (on by
   // default), which watches document.body with a ResizeObserver.
   const [contentHeight, setContentHeight] = useState(height);
+  // Held in a ref, not a dependency: an unmemoized callback would otherwise tear
+  // down and re-seed the iframe on every render of the host page.
+  const onResultRef = useRef(onResult);
+  onResultRef.current = onResult;
 
   useEffect(() => {
     let cancelled = false;
@@ -90,11 +99,13 @@ export function AppRenderer({
           params.name,
           (params.arguments ?? {}) as Record<string, unknown>,
         );
+        onResultRef.current?.(result);
         return result;
       };
       const pushCurrent = async () => {
         if (!bridge || closed) return;
         const result = await onCallTool(initialTool, {});
+        onResultRef.current?.(result);
         await bridge.sendToolResult(result);
       };
 
@@ -140,8 +151,15 @@ export function AppRenderer({
     };
 
     const abort = new AbortController();
-    iframe.addEventListener("load", start, { once: true });
-    iframe.srcdoc = html;
+    // Connect the host side *before* handing the iframe its document. The bundle's
+    // module script runs while the srcdoc is parsed — well before `load` fires — and
+    // `App.connect()` posts a `ui/initialize` request that it then awaits with no
+    // retry. Setting srcdoc first meant that request landed before this side was
+    // listening, and both ends waited forever ("Connecting…"). `contentWindow` is the
+    // same WindowProxy across the srcdoc navigation, so it's safe to bind early.
+    void start().then(() => {
+      if (!closed) iframe.srcdoc = html;
+    });
 
     return () => {
       closed = true;

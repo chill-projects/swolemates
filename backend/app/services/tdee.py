@@ -96,12 +96,13 @@ def calculate_targets(inputs: TdeeInputs) -> tuple[NutritionTargets, float]:
     return targets, tdee
 
 
-async def calculate_and_apply_targets(
+async def gather_inputs(
     session: AsyncSession, user_sub: str
-) -> tuple[NutritionTargets, float]:
-    """Raises ValueError naming whatever's missing — an incomplete profile or no
-    weight logged yet — rather than guessing. Never touches `is_streak_target`;
-    that stays the user's own separate, explicit choice (#6, resolved)."""
+) -> tuple[TdeeInputs | None, list[str]]:
+    """The read half of the calculation: the caller's profile plus their latest logged
+    weight, or the list of what's still missing. Returns rather than raises so a
+    read-only caller (the Profile page's estimate) can render "what's left to fill in"
+    instead of treating an incomplete profile as an error."""
     profile = await profile_service.get_or_create_profile(session, user_sub)
     missing = [
         label
@@ -120,18 +121,44 @@ async def calculate_and_apply_targets(
     if weight is None:
         missing.append("a logged weight")
     if missing:
+        return None, missing
+
+    return (
+        TdeeInputs(
+            sex=profile.sex,
+            age=profile.age,
+            height_in=float(profile.height_in),
+            weight_lbs=float(weight),
+            activity_level=profile.activity_level,
+            goal_type=profile.goal_type,
+        ),
+        [],
+    )
+
+
+async def estimate_targets(
+    session: AsyncSession, user_sub: str
+) -> tuple[NutritionTargets, float] | None:
+    """What `calculate_and_apply_targets` would produce, without writing anything.
+    `None` when the profile isn't complete enough to compute it yet."""
+    inputs, _missing = await gather_inputs(session, user_sub)
+    if inputs is None:
+        return None
+    return calculate_targets(inputs)
+
+
+async def calculate_and_apply_targets(
+    session: AsyncSession, user_sub: str
+) -> tuple[NutritionTargets, float]:
+    """Raises ValueError naming whatever's missing — an incomplete profile or no
+    weight logged yet — rather than guessing. Never touches `is_streak_target`;
+    that stays the user's own separate, explicit choice (#6, resolved)."""
+    inputs, missing = await gather_inputs(session, user_sub)
+    if inputs is None:
         raise ValueError(
             "Need a bit more info before I can calculate targets: " + ", ".join(missing) + "."
         )
 
-    inputs = TdeeInputs(
-        sex=profile.sex,
-        age=profile.age,
-        height_in=float(profile.height_in),
-        weight_lbs=float(weight),
-        activity_level=profile.activity_level,
-        goal_type=profile.goal_type,
-    )
     targets, tdee = calculate_targets(inputs)
 
     await nutrition_service.set_goals(

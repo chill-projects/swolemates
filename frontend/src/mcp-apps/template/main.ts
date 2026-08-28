@@ -284,7 +284,7 @@ function renderGroup(g: Group, index: number, groups: Group[]): HTMLDivElement {
     toggle.appendChild(badge);
   }
   const targetsSummary = document.createElement("span");
-  targetsSummary.className = "muted";
+  targetsSummary.className = "group-summary";
   targetsSummary.style.marginLeft = "auto";
   targetsSummary.textContent = g.exercises.map((e) => `${e.sets}×${targetLabel(e)}`).join(", ");
   toggle.appendChild(targetsSummary);
