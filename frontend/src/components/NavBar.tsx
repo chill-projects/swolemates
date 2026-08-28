@@ -1,40 +1,44 @@
-import type { ReactNode } from "react";
-
-import {
-  CalendarIcon,
-  DumbbellIcon,
-  HeartHandshakeIcon,
-  LayoutTemplateIcon,
-  SettingsIcon,
-  UtensilsIcon,
-} from "./icons";
+import { usePathname } from "../lib/routing";
 
 interface NavItem {
   href: string;
   label: string;
-  Icon: (props: { className?: string }) => ReactNode;
 }
 
-// No Dashboard entry: it's the home page now (the "Swolemates" wordmark links
-// there), not a nav-bar destination.
 const NAV_ITEMS: NavItem[] = [
-  { href: "/nutrition", label: "Nutrition", Icon: UtensilsIcon },
-  { href: "/workouts/live", label: "Workout", Icon: DumbbellIcon },
-  { href: "/templates", label: "Templates", Icon: LayoutTemplateIcon },
-  { href: "/planned", label: "Planned", Icon: CalendarIcon },
-  { href: "/partner", label: "Partner", Icon: HeartHandshakeIcon },
-  { href: "/profile", label: "Profile", Icon: SettingsIcon },
+  { href: "/", label: "Today" },
+  { href: "/nutrition", label: "Nutrition" },
+  { href: "/workouts/live", label: "Workout" },
+  // Planned and Templates merged into one tab: the pattern sets which template runs
+  // on which day, so they were never really two things.
+  { href: "/plan", label: "Plan" },
+  { href: "/partner", label: "Partner" },
+  { href: "/profile", label: "Profile" },
 ];
 
-/** Plain anchors, not client-side routing — App.tsx reads `window.location.pathname`
- *  once per load, so a normal navigation (full reload) is what actually works today. */
+// Old bookmarks still land on the merged tab, so Plan stays lit for them.
+const PLAN_PATHS = ["/plan", "/planned", "/templates"];
+
+/** Still plain anchors — real hrefs that cmd-click and copy properly — but the
+ *  document-level handler in lib/routing turns an ordinary click into a pushState,
+ *  so switching tabs no longer reloads the app.
+ *  Renders into the top bar on desktop and as a fixed tab bar on phones; the split
+ *  lives entirely in CSS (see `.nav-bar` in index.css). */
 export function NavBar() {
-  const pathname = window.location.pathname;
+  const pathname = usePathname();
 
   return (
     <nav className="nav-bar" aria-label="Main">
       {NAV_ITEMS.map((item) => {
-        const active = pathname === item.href;
+        // "Today" is the home page, and anything unrecognized falls through to it
+        // in App.tsx — so match it the same way rather than on an exact "/".
+        const active =
+          item.href === "/plan"
+            ? PLAN_PATHS.includes(pathname)
+            : item.href === "/"
+              ? !NAV_ITEMS.some((other) => other.href !== "/" && other.href === pathname) &&
+                !PLAN_PATHS.includes(pathname)
+              : pathname === item.href;
         return (
           <a
             key={item.href}
@@ -42,7 +46,7 @@ export function NavBar() {
             className={active ? "nav-bar-item active" : "nav-bar-item"}
             aria-current={active ? "page" : undefined}
           >
-            <item.Icon className="nav-bar-icon" />
+            <span className="nav-bar-dot" />
             <span>{item.label}</span>
           </a>
         );

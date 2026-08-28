@@ -103,7 +103,12 @@ const ringTargetEl = $<HTMLSpanElement>("ring-target");
 const barsEl = $<HTMLDivElement>("bars");
 const remainingGridEl = $<HTMLDivElement>("remaining-grid");
 const remainingTipEl = $<HTMLDivElement>("remaining-tip");
-const templatesEl = $<HTMLDivElement>("templates");
+const templatesEl = $<HTMLUListElement>("templates");
+const templatesCountEl = $<HTMLSpanElement>("templates-count");
+const dayHeroEl = $<HTMLDivElement>("day-hero");
+const mealFilterEl = $<HTMLInputElement>("meal-filter");
+const mealChipsEl = $<HTMLDivElement>("meal-chips");
+const saveTemplateCountEl = $<HTMLSpanElement>("save-template-count");
 const logsEl = $<HTMLUListElement>("logs");
 const saveBarEl = $<HTMLDivElement>("save-template-bar");
 const templateNameInput = $<HTMLInputElement>("template-name");
@@ -115,6 +120,16 @@ const foodSearchResultsEl = $<HTMLUListElement>("food-search-results");
 // Selection state for "save these as a template" — lives outside render() so it
 // survives the re-renders every tool call triggers.
 const selectedLogIds = new Set<string>();
+
+// Saved-meals filters, kept outside render() for the same reason. `null` meal type
+// means "All".
+let mealTypeFilter: string | null = null;
+let mealNameFilter = "";
+const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
+
+// The last payload the host pushed, so a filter change can re-render from it
+// without asking the server for the day again.
+let currentPayload: NutritionDayPayload | null = null;
 
 const app = new App({ name: "Swolemates Nutrition", version: "1.0.0" });
 
@@ -188,6 +203,36 @@ function renderBar(progress: TrackableProgress): HTMLDivElement {
   return row;
 }
 
+/** The four meal types get their own chip color, matching the tags in the mockups.
+ *  Anything else (or nothing) falls back to the neutral chip. */
+function mealChip(mealType: string | null): HTMLSpanElement | null {
+  if (!mealType) return null;
+  const chip = document.createElement("span");
+  const known = ["breakfast", "lunch", "dinner", "snack"];
+  const key = mealType.toLowerCase();
+  chip.className = known.includes(key) ? `chip chip--${key}` : "chip";
+  chip.textContent = mealType;
+  return chip;
+}
+
+function timeLabel(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/** The macro summary under a log row. Falls back to the raw values so a log with
+ *  no P/C/F (a weight entry, a calories-only quick add) still shows what it holds. */
+function logDetail(values: Record<string, number>): string {
+  const macros = macroLine(values);
+  if (macros) return macros;
+  return Object.entries(values)
+    .filter(([key]) => key !== "calories")
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(", ");
+}
+
 function macroLine(totals: Record<string, number>): string {
   const parts: string[] = [];
   if (totals.protein_g !== undefined) parts.push(`P ${Math.round(totals.protein_g)}g`);
@@ -215,6 +260,14 @@ function renderRemaining(payload: NutritionDayPayload): void {
           : p.trackable_key === "calories"
             ? Math.round(remaining).toLocaleString()
             : `${Math.round(remaining)}${p.unit}`;
+      // Calories carry the teal accent as the headline figure; a target already met
+      // dims rather than shouting a zero.
+      n.style.color =
+        remaining === null || remaining === 0
+          ? "var(--dim)"
+          : p.trackable_key === "calories"
+            ? "var(--teal)"
+            : "var(--ink)";
       const l = document.createElement("div");
       l.className = "l";
       l.textContent = p.label;
@@ -319,23 +372,25 @@ function renderTemplateItem(templateId: string, item: MealTemplateItem): HTMLLIE
   return li;
 }
 
-function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
-  const card = document.createElement("div");
-  card.className = "template-card";
+function renderTemplate(template: MealTemplateSummary): HTMLLIElement {
+  const card = document.createElement("li");
+  card.className = "template-row";
 
   const body = document.createElement("div");
 
-  const name = document.createElement("strong");
+  const name = document.createElement("span");
   name.className = "template-name";
   name.textContent = template.name;
 
-  const total = document.createElement("div");
+  const total = document.createElement("span");
   total.className = "template-total";
-  total.textContent = `${Math.round(template.totals.calories ?? 0)} cal`;
+  total.textContent = String(Math.round(template.totals.calories ?? 0));
 
   const macros = document.createElement("div");
-  macros.className = "muted template-macros";
-  macros.textContent = macroLine(template.totals);
+  macros.className = "template-macros";
+  const itemCount = `${template.items.length} item${template.items.length === 1 ? "" : "s"}`;
+  const macroText = macroLine(template.totals);
+  macros.textContent = macroText ? `${macroText} · ${itemCount}` : itemCount;
 
   const itemsList = document.createElement("ul");
   itemsList.className = "template-items";
@@ -348,6 +403,7 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
   actions.className = "template-actions";
   const logBtn = document.createElement("button");
   logBtn.type = "button";
+  logBtn.className = "btn-outline";
   logBtn.textContent = "Log";
   logBtn.onclick = () => void callAndRender("log_meal_template", { template_id: template.id });
   const itemsBtn = document.createElement("button");
@@ -358,7 +414,18 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
   };
   actions.append(logBtn, itemsBtn);
 
-  body.append(name, total, macros, actions, itemsList);
+  // Name and chip on the left, the calorie figure and the two actions hard right —
+  // the saved-meal row from the mockup.
+  const top = document.createElement("div");
+  top.className = "template-top";
+  const chip = mealChip(template.default_meal_type);
+  top.append(name);
+  if (chip) top.append(chip);
+  const spacer = document.createElement("span");
+  spacer.className = "log-spacer";
+  top.append(spacer, total, actions);
+
+  body.append(top, macros, itemsList);
 
   // Delete lives behind a confirm step, in the card itself rather than a separate
   // management list — deleting a saved template is unrecoverable (no undo), so a
@@ -404,7 +471,49 @@ function renderTemplate(template: MealTemplateSummary): HTMLDivElement {
 
 function updateSaveBar(): void {
   saveBarEl.hidden = selectedLogIds.size === 0;
-  saveTemplateBtn.textContent = `Save ${selectedLogIds.size} as template`;
+  const n = selectedLogIds.size;
+  saveTemplateCountEl.textContent = `${n} ${n === 1 ? "entry" : "entries"} selected`;
+}
+
+/** Name box + meal-type chips over the saved-meals list. Counts come from the
+ *  unfiltered set, so a chip still tells you what's behind it while a filter is on. */
+function renderMealFilters(templates: MealTemplateSummary[]): void {
+  const countFor = (meal: string | null) =>
+    meal === null
+      ? templates.length
+      : templates.filter((t) => (t.default_meal_type ?? "").toLowerCase() === meal).length;
+
+  const chip = (label: string, meal: string | null) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "meal-chip";
+    btn.setAttribute("aria-pressed", String(mealTypeFilter === meal));
+    const text = document.createElement("span");
+    text.textContent = label;
+    const n = document.createElement("span");
+    n.className = "n";
+    n.textContent = String(countFor(meal));
+    btn.append(text, n);
+    btn.onclick = () => {
+      mealTypeFilter = mealTypeFilter === meal ? null : meal;
+      if (currentPayload) render(currentPayload);
+    };
+    return btn;
+  };
+
+  mealChipsEl.replaceChildren(
+    chip("All", null),
+    // Only offer a meal type that something is actually filed under.
+    ...MEAL_TYPES.filter((m) => countFor(m) > 0).map((m) => chip(m, m)),
+  );
+}
+
+function visibleTemplates(templates: MealTemplateSummary[]): MealTemplateSummary[] {
+  const needle = mealNameFilter.trim().toLowerCase();
+  return templates.filter((t) => {
+    if (mealTypeFilter && (t.default_meal_type ?? "").toLowerCase() !== mealTypeFilter) return false;
+    return needle === "" || t.name.toLowerCase().includes(needle);
+  });
 }
 
 function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
@@ -419,21 +528,30 @@ function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
   const label = document.createElement("span");
   label.textContent = log.name ?? "Meal";
   toggle.append(arrow, label);
-  if (log.meal_type) {
-    const meta = document.createElement("span");
-    meta.className = "log-meta";
-    meta.textContent = ` · ${log.meal_type}`;
-    toggle.appendChild(meta);
-  }
+
+  const kcal = document.createElement("span");
+  kcal.className = "log-kcal";
+  kcal.textContent = String(Math.round(log.values.calories ?? 0));
+
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.textContent = timeLabel(log.logged_at);
+
+  const spacer = document.createElement("span");
+  spacer.className = "log-spacer";
+
   const header = document.createElement("div");
-  header.className = "log-name";
-  header.appendChild(toggle);
+  header.className = "log-top log-name";
+  const chip = mealChip(log.meal_type);
+  header.append(toggle);
+  if (chip) header.append(chip);
+  header.append(time, spacer, kcal);
 
   const values = document.createElement("div");
   values.className = "log-values";
-  values.textContent = Object.entries(log.values)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(", ");
+  const count = `${log.items.length} item${log.items.length === 1 ? "" : "s"}`;
+  const detail = logDetail(log.values);
+  values.textContent = detail ? `${detail} · ${count}` : count;
 
   const items = document.createElement("ul");
   items.className = "grouped-log-items";
@@ -525,22 +643,28 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
   const name = document.createElement("span");
   name.className = "log-name";
   name.textContent = log.name ?? "Entry";
-  if (log.meal_type) {
-    const meta = document.createElement("span");
-    meta.className = "log-meta";
-    meta.textContent = ` · ${log.meal_type}`;
-    name.appendChild(meta);
-  }
 
   const values = document.createElement("div");
   values.className = "log-values";
-  values.textContent = Object.entries(log.values)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(", ");
+  values.textContent = logDetail(log.values);
+
+  const kcal = document.createElement("span");
+  kcal.className = "log-kcal";
+  kcal.textContent = String(Math.round(log.values.calories ?? 0));
+
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.textContent = timeLabel(log.logged_at);
+
+  const spacer = document.createElement("span");
+  spacer.className = "log-spacer";
 
   const top = document.createElement("div");
   top.className = "log-top";
+  const chip = mealChip(log.meal_type);
   top.append(checkbox, name);
+  if (chip) top.append(chip);
+  top.append(time, spacer, kcal);
 
   const body = document.createElement("div");
   body.append(top, values);
@@ -553,6 +677,7 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
 }
 
 function render(payload: NutritionDayPayload): void {
+  currentPayload = payload;
   statusEl.textContent = payload.summary;
 
   ringValueEl.textContent = Math.round(payload.hero.consumed).toLocaleString();
@@ -566,10 +691,22 @@ function render(payload: NutritionDayPayload): void {
   barsEl.replaceChildren(...payload.bars.map(renderBar));
   renderRemaining(payload);
 
+  templatesCountEl.textContent = payload.templates.length
+    ? `${payload.templates.length} saved`
+    : "";
+  renderMealFilters(payload.templates);
+  const shown = visibleTemplates(payload.templates);
   templatesEl.replaceChildren(
-    ...(payload.templates.length
-      ? payload.templates.map(renderTemplate)
-      : [Object.assign(document.createElement("p"), { className: "muted", textContent: "No saved meals yet." })]),
+    ...(shown.length
+      ? shown.map(renderTemplate)
+      : [
+          Object.assign(document.createElement("li"), {
+            className: "muted",
+            textContent: payload.templates.length
+              ? "Nothing matches that filter."
+              : "No saved meals yet.",
+          }),
+        ]),
   );
 
   // Drop selections for entries that no longer exist (e.g. after a refresh).
@@ -718,6 +855,11 @@ templateNameInput.onkeydown = (event) => {
   if (event.key === "Enter") saveTemplateBtn.click();
 };
 
+mealFilterEl.oninput = () => {
+  mealNameFilter = mealFilterEl.value;
+  if (currentPayload) render(currentPayload);
+};
+
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
 // one (a chat widget) at least get freshness whenever the user returns to the tab.
 // No interval polling: in chat hosts every server call may prompt for approval.
@@ -733,4 +875,11 @@ app.ontoolresult = (result) => {
 };
 
 await app.connect();
+
+// The SPA draws the ring and the macro bars itself, in the page hero band above
+// this iframe (it reads the same payload — see AppRenderer's `onResult`). Drawing
+// them here too would show the day twice, so the block is dropped in that host and
+// kept everywhere else, where this component is the only thing on screen.
+if (app.getHostVersion()?.name === "swolemates-web") dayHeroEl.hidden = true;
+
 statusEl.textContent = "Loading…";

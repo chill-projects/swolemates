@@ -46,6 +46,7 @@ const $ = <T extends Element>(id: string): T => {
 
 const statusEl = $<HTMLParagraphElement>("status");
 const patternDaysEl = $<HTMLDivElement>("pattern-days");
+const patternSectionEl = $<HTMLElement>("pattern-section");
 const plannedListEl = $<HTMLUListElement>("planned-list");
 
 let templatesCatalog: CatalogTemplate[] = [];
@@ -144,39 +145,47 @@ async function saveWholePattern(): Promise<void> {
   }
 }
 
+/** One row of "Next seven days": the date, what's on it, and its one action. */
 function renderPlannedEntry(p: PlannedEntry): HTMLLIElement {
   const li = document.createElement("li");
-  li.className = "planned-entry";
+  li.className = `planned-entry planned-entry--${p.status}`;
 
-  const header = document.createElement("div");
-  header.className = "planned-header";
   const dateEl = document.createElement("span");
   dateEl.className = "planned-date";
   dateEl.textContent = formatDate(p.scheduled_for);
+
+  const main = document.createElement("div");
+  main.className = "planned-main";
   const nameEl = document.createElement("strong");
   nameEl.textContent = p.template_name;
-  const badge = document.createElement("span");
-  badge.className = `badge status-${p.status}`;
-  badge.textContent = p.status;
-  header.append(dateEl, nameEl, badge);
-  li.appendChild(header);
-
-  if (p.exercise_names.length > 0) {
-    const exercisesEl = document.createElement("div");
-    exercisesEl.className = "muted planned-exercises";
-    exercisesEl.textContent = p.exercise_names.join(", ");
-    li.appendChild(exercisesEl);
+  main.appendChild(nameEl);
+  if (p.status === "done") {
+    const badge = document.createElement("span");
+    badge.className = "badge status-done";
+    badge.textContent = "done";
+    nameEl.insertAdjacentElement("afterend", badge);
   }
+  const exercisesEl = document.createElement("div");
+  exercisesEl.className = "planned-exercises";
+  exercisesEl.textContent =
+    p.status === "skipped"
+      ? "skipped"
+      : p.exercise_names.length > 0
+        ? p.exercise_names.join(", ")
+        : "";
+  main.appendChild(exercisesEl);
 
   const actions = document.createElement("div");
   actions.className = "planned-actions";
   if (p.status === "planned" && !p.workout_id) {
     const startBtn = document.createElement("button");
     startBtn.type = "button";
+    startBtn.className = "btn-primary";
     startBtn.textContent = "Start";
     startBtn.onclick = () => void startFromPlanned(p.id);
     const skipBtn = document.createElement("button");
     skipBtn.type = "button";
+    skipBtn.className = "btn-danger";
     skipBtn.textContent = "Skip";
     skipBtn.onclick = () =>
       void callAndRefreshPlanned("update_planned_workout", { planned_id: p.id, action: "skip" });
@@ -189,8 +198,8 @@ function renderPlannedEntry(p: PlannedEntry): HTMLLIElement {
       void callAndRefreshPlanned("update_planned_workout", { planned_id: p.id, action: "unskip" });
     actions.append(unskipBtn);
   }
-  if (actions.childElementCount > 0) li.appendChild(actions);
 
+  li.append(dateEl, main, actions);
   return li;
 }
 
@@ -274,5 +283,12 @@ app.ontoolresult = (result) => {
 };
 
 await app.connect();
+
+// The SPA edits the weekly pattern itself, in the page hero band above this iframe,
+// so the pattern section is dropped in that host and kept everywhere else — in a
+// chat host this component is the only thing on screen and owns it.
+const inSpa = app.getHostVersion()?.name === "swolemates-web";
+if (inSpa) patternSectionEl.hidden = true;
+
 statusEl.textContent = "Loading…";
 void loadPatternAndCatalog();

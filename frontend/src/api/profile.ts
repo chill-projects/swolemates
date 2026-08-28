@@ -50,6 +50,33 @@ export function useCalculateTargets() {
   });
 }
 
+/** What the calculator *would* produce, read-only. Deliberately not the POST: that one
+ *  overwrites saved goals as a side effect, so it can't be used just to show a number. */
+export function useTdeeEstimate() {
+  return useQuery({
+    queryKey: ["tdeeEstimate"] as const,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/tdee");
+      if (error) throw new Error("Failed to load your TDEE estimate");
+      return data;
+    },
+  });
+}
+
+/** Logged weigh-ins, oldest first, always in pounds — callers convert for display. */
+export function useWeightHistory(days = 90) {
+  return useQuery({
+    queryKey: ["weightHistory", days] as const,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/nutrition/weights", {
+        params: { query: { days } },
+      });
+      if (error) throw new Error("Failed to load your weight history");
+      return data;
+    },
+  });
+}
+
 export function useCompleteOnboarding() {
   const queryClient = useQueryClient();
   return useMutation({
