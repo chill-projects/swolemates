@@ -106,6 +106,13 @@ h1 {
   z-index: 10;
   background: var(--card);
   border-bottom: 1px solid var(--line);
+  /* Installed to the home screen, index.html asks for `viewport-fit=cover` and a
+     translucent status bar, so the page runs edge to edge and the wordmark ends up
+     under the clock and the Dynamic Island. The inset goes on the bar rather than
+     its inner row so the white surface extends up behind the status bar instead of
+     leaving a sand-coloured strip above it. Zero in a browser tab, where the
+     browser's own chrome already reserves the space. */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .app-bar-inner {
