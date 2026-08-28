@@ -3,6 +3,7 @@ import { useState } from "react";
 import { usePartnerSummary } from "../api/partner";
 import type { components } from "../api/generated";
 import { PartnerInviteInfo } from "../components/PartnerInviteInfo";
+import { formatInstant, useUserTimezone } from "../lib/datetime";
 import { takeInviteRedeemError } from "./InvitePreviewPage";
 
 type PartnerSummary = components["schemas"]["PartnerSummaryOut"];
@@ -40,6 +41,7 @@ function InviteView() {
 }
 
 function LinkedPartnerView({ summary }: { summary: PartnerSummary }) {
+  const tz = useUserTimezone();
   return (
     <>
       <div className="dash-card">
@@ -75,7 +77,7 @@ function LinkedPartnerView({ summary }: { summary: PartnerSummary }) {
         </div>
         <p className="muted">
           {summary.frequency.last_workout_at
-            ? `Last workout: ${new Date(summary.frequency.last_workout_at).toLocaleDateString()}`
+            ? `Last workout: ${formatInstant(summary.frequency.last_workout_at, tz)}`
             : "No workouts logged yet."}
         </p>
       </div>

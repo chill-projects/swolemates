@@ -46,6 +46,30 @@ async def test_complete_onboarding_sets_timestamp_once(client: AsyncClient) -> N
     assert second.json()["onboarding_completed_at"] == first_timestamp
 
 
+async def test_update_profile_sets_and_validates_timezone(client: AsyncClient) -> None:
+    ok = await client.patch("/api/profile", json={"timezone": "America/Los_Angeles"})
+    assert ok.status_code == 200
+    assert ok.json()["timezone"] == "America/Los_Angeles"
+
+    bad = await client.patch("/api/profile", json={"timezone": "PST"})
+    assert bad.status_code == 400
+    # the invalid write left the good value in place
+    assert (await client.get("/api/profile")).json()["timezone"] == "America/Los_Angeles"
+
+
+async def test_whoami_seeds_timezone_from_header_only_while_unset(client: AsyncClient) -> None:
+    await client.get("/api/whoami", headers={"X-Timezone": "Europe/Berlin"})
+    assert (await client.get("/api/profile")).json()["timezone"] == "Europe/Berlin"
+
+    # a later, different header does not overwrite the user's stored value
+    await client.get("/api/whoami", headers={"X-Timezone": "Asia/Tokyo"})
+    assert (await client.get("/api/profile")).json()["timezone"] == "Europe/Berlin"
+
+    # a garbage header is ignored, not stored
+    await client.get("/api/whoami", headers={"X-Timezone": "Mars/Olympus"})
+    assert (await client.get("/api/profile")).json()["timezone"] == "Europe/Berlin"
+
+
 async def test_users_have_independent_profiles(session: AsyncSession) -> None:
     """The whole permission model, asserted directly against the service layer."""
     await service.update_profile(session, OTHER_USER, weight_unit=WeightUnit.kg)

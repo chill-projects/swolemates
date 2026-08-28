@@ -69,7 +69,20 @@ describe("ProfileForm", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     expect(mutateUpdate).toHaveBeenCalledWith(
-      { weight_unit: "kg", coach_notes: "bad left knee" },
+      expect.objectContaining({ weight_unit: "kg", coach_notes: "bad left knee" }),
+      expect.anything(),
+    );
+  });
+
+  it("submits a timezone override chosen from the dropdown", async () => {
+    const user = userEvent.setup();
+    render(<ProfileForm profile={{ weight_unit: "lbs", coach_notes: null }} />);
+
+    await user.selectOptions(screen.getByLabelText(/timezone/i), "Europe/London");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(mutateUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: "Europe/London" }),
       expect.anything(),
     );
   });

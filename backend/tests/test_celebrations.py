@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -132,6 +133,26 @@ async def test_get_streak_this_week_counts_any_workout_type(session: AsyncSessio
     streak = await service.get_streak(session, TEST_USER, as_of=today)
 
     assert streak.this_week == 2
+
+
+async def test_get_streak_week_boundary_is_the_callers_local_week(session: AsyncSession) -> None:
+    """A workout at 23:00 Sunday in Los Angeles is already Monday in UTC. With the
+    caller's zone it belongs to the week that Sunday closes; bucketed in UTC it would
+    slip into the next week and vanish from that week's count."""
+    la = ZoneInfo("America/Los_Angeles")
+    sunday = date(2026, 8, 30)  # a Sunday; the week runs Mon 8-24 .. Sun 8-30
+    sunday_2300_utc = datetime(2026, 8, 31, 6, 0, tzinfo=UTC)  # 2026-08-30 23:00 PDT
+    await workouts.log_activity(
+        session,
+        TEST_USER,
+        activity_type="yoga",
+        duration_minutes=30,
+        logged_at=sunday_2300_utc,
+    )
+
+    assert (await service.get_streak(session, TEST_USER, as_of=sunday, tz=la)).this_week == 1
+    utc = ZoneInfo("UTC")
+    assert (await service.get_streak(session, TEST_USER, as_of=sunday, tz=utc)).this_week == 0
 
 
 async def test_get_streak_current_week_counts_as_a_bonus_once_target_is_met(

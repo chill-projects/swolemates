@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.deps import CurrentUser, DbSession
 from app.schemas.profile import ProfileOut, ProfileUpdate
@@ -17,17 +17,21 @@ async def get_profile(user_sub: CurrentUser, session: DbSession) -> ProfileOut:
 async def update_profile(
     body: ProfileUpdate, user_sub: CurrentUser, session: DbSession
 ) -> ProfileOut:
-    profile = await service.update_profile(
-        session,
-        user_sub,
-        weight_unit=body.weight_unit,
-        coach_notes=body.coach_notes,
-        sex=body.sex,
-        age=body.age,
-        height_in=body.height_in,
-        activity_level=body.activity_level,
-        goal_type=body.goal_type,
-    )
+    try:
+        profile = await service.update_profile(
+            session,
+            user_sub,
+            weight_unit=body.weight_unit,
+            coach_notes=body.coach_notes,
+            sex=body.sex,
+            age=body.age,
+            height_in=body.height_in,
+            activity_level=body.activity_level,
+            goal_type=body.goal_type,
+            timezone=body.timezone,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ProfileOut.model_validate(profile)
 
 

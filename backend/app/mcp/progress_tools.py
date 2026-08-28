@@ -5,12 +5,16 @@ model food per the proposal ("deliberately no UI: this is model food") — no `u
 component, same shape as `get_goals`/`search_food_facts`.
 """
 
+from zoneinfo import ZoneInfo
+
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
+from app.services import profile as profile_service
 from app.services import progress as progress_service
 from app.services import workouts as workouts_service
 from app.services.progress import LiftTrend, NutritionProgress, ProgressOut, WorkoutProgress
+from app.services.timezones import local_date
 from app.services.workouts import ExerciseHistoryOut
 
 
@@ -49,7 +53,7 @@ def _format_progress(p: ProgressOut) -> str:
     return "\n".join(lines)
 
 
-def _format_history(h: ExerciseHistoryOut) -> str:
+def _format_history(h: ExerciseHistoryOut, tz: ZoneInfo) -> str:
     if not h.sessions:
         return f"No history for {h.exercise_name} yet."
     lines = [f"{h.exercise_name} — {len(h.sessions)} recent session(s):"]
@@ -58,7 +62,7 @@ def _format_history(h: ExerciseHistoryOut) -> str:
             f"{set_.weight}lb x{set_.reps}" if set_.reps is not None else f"{set_.work_seconds}s"
             for set_ in s.sets
         )
-        line = f"- {s.date.date().isoformat()}: {sets_text}"
+        line = f"- {local_date(s.date, tz).isoformat()}: {sets_text}"
         if s.notes:
             line += f" ({s.notes})"
         lines.append(line)
@@ -102,4 +106,5 @@ async def get_exercise_history(exercise: str, limit: int = 5) -> str:
         history = await workouts_service.get_exercise_history(
             session, user_sub, exercise=exercise, limit=limit
         )
-    return _format_history(history)
+        tz = await profile_service.get_user_timezone(session, user_sub)
+    return _format_history(history, tz)

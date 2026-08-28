@@ -6,12 +6,14 @@ defaults haven't been written yet, not that the caller asked for something inval
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.profile import ActivityLevel, BiologicalSex, GoalType, UserProfile, WeightUnit
+from app.services.timezones import resolve_timezone, validate_timezone_name
 
 
 async def get_or_create_profile(session: AsyncSession, user_sub: str) -> UserProfile:
@@ -35,10 +37,13 @@ async def update_profile(
     height_in: Decimal | None = None,
     activity_level: ActivityLevel | None = None,
     goal_type: GoalType | None = None,
+    timezone: str | None = None,
 ) -> UserProfile:
     profile = await get_or_create_profile(session, user_sub)
     if weight_unit is not None:
         profile.weight_unit = weight_unit
+    if timezone is not None:
+        profile.timezone = validate_timezone_name(timezone)
     if coach_notes is not None:
         profile.coach_notes = coach_notes.strip() or None
     if sex is not None:
@@ -66,6 +71,28 @@ async def sync_display_name(session: AsyncSession, user_sub: str, display_name: 
     if profile.display_name != display_name:
         profile.display_name = display_name
         await session.flush()
+
+
+async def sync_timezone(session: AsyncSession, user_sub: str, tz_name: str) -> None:
+    """Seed `timezone` from the browser's `X-Timezone` on `whoami` (every authenticated
+    SPA load) — but only when it's still unset. An existing value is the user's own
+    choice (Settings) or an earlier seed; overwriting it on every load would also make
+    it flap while travelling. Like `sync_display_name`, this is incidental upkeep, so
+    it doesn't publish a profile-changed event."""
+    profile = await get_or_create_profile(session, user_sub)
+    if profile.timezone is None:
+        try:
+            profile.timezone = validate_timezone_name(tz_name)
+        except ValueError:
+            return
+        await session.flush()
+
+
+async def get_user_timezone(session: AsyncSession, user_sub: str) -> ZoneInfo:
+    """The stored per-user zone (UTC if unset/invalid) — the fallback for paths with no
+    live `X-Timezone` header: MCP tools and partner-summary reads."""
+    profile = await get_or_create_profile(session, user_sub)
+    return resolve_timezone(profile.timezone)
 
 
 async def complete_onboarding(session: AsyncSession, user_sub: str) -> UserProfile:

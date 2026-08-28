@@ -14,6 +14,7 @@ class ProfileUpdate(BaseModel):
     height_in: Decimal | None = None
     activity_level: ActivityLevel | None = None
     goal_type: GoalType | None = None
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class ProfileOut(BaseModel):
@@ -27,3 +28,4 @@ class ProfileOut(BaseModel):
     height_in: Decimal | None
     activity_level: ActivityLevel | None
     goal_type: GoalType | None
+    timezone: str | None

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useGenerateInvite } from "../api/partner";
+import { formatInstant, useUserTimezone } from "../lib/datetime";
 import { InfoPopover } from "./InfoPopover";
 
 /** Info icon next to the Partner heading, shown only while unlinked. Click reveals
@@ -11,6 +12,7 @@ export function PartnerInviteInfo() {
   const generate = useGenerateInvite();
   const triggered = useRef(false);
   const [copied, setCopied] = useState(false);
+  const tz = useUserTimezone();
 
   useEffect(() => {
     if (triggered.current) return;
@@ -45,7 +47,7 @@ export function PartnerInviteInfo() {
             </button>
           </div>
           <p className="muted info-popover-footer">
-            Expires {new Date(generate.data.expires_at).toLocaleDateString()}
+            Expires {formatInstant(generate.data.expires_at, tz)}
           </p>
         </>
       ) : (

@@ -1772,6 +1772,17 @@
               }
             ]
           },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
           "weight_unit": {
             "$ref": "#/components/schemas/WeightUnit"
           }
@@ -1784,7 +1795,8 @@
           "age",
           "height_in",
           "activity_level",
-          "goal_type"
+          "goal_type",
+          "timezone"
         ],
         "title": "ProfileOut",
         "type": "object"
@@ -1860,6 +1872,18 @@
                 "type": "null"
               }
             ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
           },
           "weight_unit": {
             "anyOf": [
@@ -3368,16 +3392,6 @@
               "title": "End",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "tz_offset_minutes",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "title": "Tz Offset Minutes",
-              "type": "integer"
-            }
           }
         ],
         "responses": {
@@ -3431,16 +3445,6 @@
                 }
               ],
               "title": "Day"
-            }
-          },
-          {
-            "in": "query",
-            "name": "tz_offset_minutes",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "title": "Tz Offset Minutes",
-              "type": "integer"
             }
           }
         ],
@@ -4624,7 +4628,7 @@
     },
     "/api/whoami": {
       "get": {
-        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.\n\nemail/first_name/last_name come from the environment's JWT template \u2014 they're custom\nclaims, not defaults, so a missing email means the template got dropped in WorkOS.\n\nAlso syncs `UserProfile.display_name` from these same claims (#5, Partner v1) \u2014\nevery authenticated SPA session calls this on load, which is the only place a\nuser's own current name is available to persist for a future partner to read.",
+        "description": "The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.\n\nemail/first_name/last_name come from the environment's JWT template \u2014 they're custom\nclaims, not defaults, so a missing email means the template got dropped in WorkOS.\n\nAlso syncs `UserProfile.display_name` from these same claims (#5, Partner v1) \u2014\nevery authenticated SPA session calls this on load, which is the only place a\nuser's own current name is available to persist for a future partner to read.\nSame load is where we seed `UserProfile.timezone` from the browser's `X-Timezone`\n(once, while unset) so the MCP/chat path has a zone to work from.",
         "operationId": "whoami",
         "responses": {
           "200": {

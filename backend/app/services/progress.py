@@ -6,14 +6,17 @@ none of which import back.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import SetType
+from app.services import profile as profile_service
 from app.services.celebrations import FrequencyOut, StreakOut, get_streak, get_workout_frequency
+from app.services.timezones import local_date, today_in
 from app.services.workouts import (
     PersonalRecordSummary,
     get_workout_history,
@@ -112,27 +115,29 @@ async def get_progress(
     period: Period = "month",
     focus: Focus = "all",
     as_of: date | None = None,
+    tz: ZoneInfo | None = None,
 ) -> ProgressOut:
     if period not in _WINDOW_DAYS:
         raise ValueError(f"period must be one of week/month/quarter, got {period!r}")
     if focus not in ("workouts", "nutrition", "all"):
         raise ValueError(f"focus must be one of workouts/nutrition/all, got {focus!r}")
 
-    # UTC, not date.today(): nutrition (log_nutrition/get_nutrition_streak/
-    # get_nutrition_calendar) bounds every day in UTC with no per-user timezone yet
-    # (nutrition/day.py), so a local `as_of` can disagree with a just-logged entry's
-    # UTC date whenever local time and UTC fall on different calendar days.
-    as_of = as_of or datetime.now(UTC).date()
+    # "Today" and every day boundary below are computed in the caller's zone (stored
+    # profile value by default) so the rolling window and a just-logged entry agree.
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    as_of = as_of or today_in(tz)
     window_start = as_of - timedelta(days=_WINDOW_DAYS[period])
 
     workouts = None
     if focus in ("workouts", "all"):
         prs = await list_personal_records(session, user_sub)
-        history = await get_workout_history(session, user_sub, start=window_start, end=as_of)
+        history = await get_workout_history(session, user_sub, start=window_start, end=as_of, tz=tz)
         workouts = WorkoutProgress(
-            streak=await get_streak(session, user_sub, as_of=as_of),
-            frequency=await get_workout_frequency(session, user_sub, as_of=as_of),
-            recent_prs=[pr for pr in prs if window_start <= pr.achieved_at.date() <= as_of],
+            streak=await get_streak(session, user_sub, as_of=as_of, tz=tz),
+            frequency=await get_workout_frequency(session, user_sub, as_of=as_of, tz=tz),
+            recent_prs=[
+                pr for pr in prs if window_start <= local_date(pr.achieved_at, tz) <= as_of
+            ],
             trends=_compute_trends(history),
         )
 
@@ -141,7 +146,7 @@ async def get_progress(
         from app.services.nutrition.day import get_nutrition_calendar, get_nutrition_streak
         from app.services.nutrition.goals import get_goals
 
-        streak = await get_nutrition_streak(session, user_sub, as_of=as_of)
+        streak = await get_nutrition_streak(session, user_sub, as_of=as_of, tz=tz)
         goals = await get_goals(session, user_sub)
         has_calorie_goal = any(g.trackable_key == "calories" for g in goals)
 
@@ -150,7 +155,7 @@ async def get_progress(
         total_days = 0
         if has_calorie_goal:
             calendar = await get_nutrition_calendar(
-                session, user_sub, start=window_start, end=as_of
+                session, user_sub, start=window_start, end=as_of, tz=tz
             )
             # `_day_status` reports "hit" unconditionally when no target is set, so a
             # day with no calorie goal would falsely count as adherence — the

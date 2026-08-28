@@ -1,6 +1,7 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
@@ -293,6 +294,24 @@ async def test_get_workout_history_filters_by_date_range(session: AsyncSession) 
 
     assert len(history) == 1
     assert float(history[0].exercises[0].sets[0].weight) == 310
+
+
+async def test_get_workout_history_date_range_is_bounded_in_the_callers_zone(
+    session: AsyncSession,
+) -> None:
+    """An 11pm-Pacific workout is already the next day in UTC; a range ending on the
+    local date must still include it."""
+    la = ZoneInfo("America/Los_Angeles")
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Deadlift", "sets": [{"weight": 315, "reps": 3}]}],
+        logged_at=datetime(2026, 8, 13, 5, 0, tzinfo=UTC),  # 2026-08-12 22:00 PDT
+    )
+
+    end = date(2026, 8, 12)
+    assert await service.get_workout_history(session, TEST_USER, end=end, tz=la)
+    assert not await service.get_workout_history(session, TEST_USER, end=end, tz=ZoneInfo("UTC"))
 
 
 async def test_get_workout_history_filters_by_exercise_and_is_scoped_to_owner(

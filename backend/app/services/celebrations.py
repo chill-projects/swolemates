@@ -1,14 +1,16 @@
 """Streaks + PR celebrations service (#3, resolved — slice 4).
 
 No circular-import risk, unlike workout_templates.py/planned_workouts.py: this
-module only needs app.models.workouts (plain table defs, no service logic) plus its
-own PersonalRecord — workouts.py imports it normally at module level, one direction.
+module needs app.models.workouts (plain table defs, no service logic) plus its own
+PersonalRecord, and app.services.profile (leaf: models + events only) for the
+per-user timezone — workouts.py imports this module at module level, one direction.
 """
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,8 @@ from app.models.workouts import (
     WorkoutExercise,
     WorkoutSet,
 )
+from app.services import profile as profile_service
+from app.services.timezones import local_day_bounds_utc, today_in
 
 WEEK_TARGET_FALLBACK = 3
 # A sanity bound on the backward walk in get_streak, not a real limit anyone should
@@ -176,20 +180,26 @@ async def _week_target(session: AsyncSession, user_sub: str, start: date, end: d
     return count if count > 0 else WEEK_TARGET_FALLBACK
 
 
-async def _completed_count(session: AsyncSession, user_sub: str, start: date, end: date) -> int:
+async def _completed_count(
+    session: AsyncSession, user_sub: str, start: date, end: date, tz: ZoneInfo
+) -> int:
+    """`start`/`end` are local calendar dates (inclusive); the window is their span in
+    `tz`, converted to the UTC instants stored on the row."""
+    start_dt, _ = local_day_bounds_utc(start, tz)
+    _, end_dt = local_day_bounds_utc(end, tz)
     result = await session.execute(
         select(func.count(Workout.id)).where(
             Workout.user_id == user_sub,
             Workout.completed_at.isnot(None),
-            Workout.completed_at >= datetime.combine(start, time.min, tzinfo=UTC),
-            Workout.completed_at <= datetime.combine(end, time.max, tzinfo=UTC),
+            Workout.completed_at >= start_dt,
+            Workout.completed_at < end_dt,
         )
     )
     return result.scalar_one()
 
 
 async def get_streak(
-    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None, tz: ZoneInfo | None = None
 ) -> StreakOut:
     """`this_week` counts completed workouts of any type (strength or activity) —
     "any day, any order, an unplanned bonus session counts too," per the resolved
@@ -198,17 +208,18 @@ async def get_streak(
     walk through fully-elapsed prior weeks, stopping at the first that fell short
     of *its own* target.
     """
-    as_of = as_of or date.today()
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    as_of = as_of or today_in(tz)
     this_start, this_end = _week_bounds(as_of)
     target = await _week_target(session, user_sub, this_start, this_end)
-    this_week = await _completed_count(session, user_sub, this_start, this_end)
+    this_week = await _completed_count(session, user_sub, this_start, this_end, tz)
 
     weeks = 1 if this_week >= target else 0
     week_start = this_start - timedelta(days=7)
     for _ in range(MAX_STREAK_WEEKS_LOOKBACK):
         week_end = week_start + timedelta(days=6)
         target_for_week = await _week_target(session, user_sub, week_start, week_end)
-        completed = await _completed_count(session, user_sub, week_start, week_end)
+        completed = await _completed_count(session, user_sub, week_start, week_end, tz)
         if completed < target_for_week:
             break
         weeks += 1
@@ -218,14 +229,15 @@ async def get_streak(
 
 
 async def get_workout_frequency(
-    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None, tz: ZoneInfo | None = None
 ) -> FrequencyOut:
     """7/30-day counts, total, and last-workout date — the partner-summary stats,
     ported from legacy's `get_partner_workout_summary`. Reuses `_completed_count`
     windowed twice rather than a new query shape."""
-    as_of = as_of or date.today()
-    last_7 = await _completed_count(session, user_sub, as_of - timedelta(days=6), as_of)
-    last_30 = await _completed_count(session, user_sub, as_of - timedelta(days=29), as_of)
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    as_of = as_of or today_in(tz)
+    last_7 = await _completed_count(session, user_sub, as_of - timedelta(days=6), as_of, tz)
+    last_30 = await _completed_count(session, user_sub, as_of - timedelta(days=29), as_of, tz)
 
     result = await session.execute(
         select(func.count(Workout.id), func.max(Workout.completed_at)).where(

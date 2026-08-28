@@ -8,17 +8,20 @@ day pattern). `update_workout_entry`/`list_workout_exercises` are app-only — d
 the component's own buttons, no chat use case.
 """
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
+from app.services import profile as profile_service
 from app.services import workouts as service
+from app.services.timezones import local_date, parse_local_datetime
 
 WORKOUT_LIVE_URI = "ui://swolemates/workout-live.html"
 
@@ -36,9 +39,9 @@ def _format_set(s: service.SetOut) -> str:
     return f"{base} (warmup)" if s.is_warmup else base
 
 
-def _format_workout(w: service.WorkoutOut) -> str:
+def _format_workout(w: service.WorkoutOut, tz: ZoneInfo) -> str:
     header = w.title or (w.activity_type or "Workout")
-    when = w.started_at.date().isoformat()
+    when = local_date(w.started_at, tz).isoformat()
     if w.workout_type == service.WorkoutType.activity:
         base = f"{when} — {header}: {w.duration_minutes} min of {w.activity_type}"
     else:
@@ -231,15 +234,17 @@ async def log_workout(
             "arms", "shoulders", "back", "core", "chest"; ask the user which if
             they've chosen to add it as a new custom exercise, don't guess.
         title: e.g. "Leg day".
-        date: ISO date/datetime if backdating; defaults to now.
+        date: ISO date/datetime if backdating; defaults to now. A bare date is taken
+            as that day in the user's timezone.
     """
     user_sub = mcp_user_sub()
-    when = datetime.fromisoformat(date) if date else None
     async with tool_session() as session:
+        tz = await profile_service.get_user_timezone(session, user_sub)
+        when = parse_local_datetime(date, tz) if date else None
         workout = await service.log_workout(
             session, user_sub, exercises=exercises, title=title, logged_at=when
         )
-    return f"Logged: {_format_workout(workout)}"
+    return f"Logged: {_format_workout(workout, tz)}"
 
 
 @mcp.tool
@@ -259,11 +264,13 @@ async def log_activity(
         duration_minutes: how long, in minutes.
         title: optional label.
         notes: optional freeform notes.
-        date: ISO date/datetime if backdating; defaults to now.
+        date: ISO date/datetime if backdating; defaults to now. A bare date is taken
+            as that day in the user's timezone.
     """
     user_sub = mcp_user_sub()
-    when = datetime.fromisoformat(date) if date else None
     async with tool_session() as session:
+        tz = await profile_service.get_user_timezone(session, user_sub)
+        when = parse_local_datetime(date, tz) if date else None
         workout = await service.log_activity(
             session,
             user_sub,
@@ -273,7 +280,7 @@ async def log_activity(
             notes=notes,
             logged_at=when,
         )
-    return f"Logged: {_format_workout(workout)}"
+    return f"Logged: {_format_workout(workout, tz)}"
 
 
 @mcp.tool
@@ -291,16 +298,18 @@ async def get_workout_history(
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        tz = await profile_service.get_user_timezone(session, user_sub)
         workouts = await service.get_workout_history(
             session,
             user_sub,
             start=date.fromisoformat(start) if start else None,
             end=date.fromisoformat(end) if end else None,
             exercise=exercise,
+            tz=tz,
         )
     if not workouts:
         return "No workouts found."
-    return "\n".join(_format_workout(w) for w in workouts)
+    return "\n".join(_format_workout(w, tz) for w in workouts)
 
 
 @mcp.tool
@@ -332,7 +341,8 @@ async def update_workout(
             exercise_updates=exercise_updates,
             notes=notes,
         )
-    return f"Updated: {_format_workout(workout)}"
+        tz = await profile_service.get_user_timezone(session, user_sub)
+    return f"Updated: {_format_workout(workout, tz)}"
 
 
 @mcp.tool(app=AppConfig(resource_uri=WORKOUT_LIVE_URI, visibility=["model", "app"]))

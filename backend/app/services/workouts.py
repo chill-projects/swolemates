@@ -4,9 +4,10 @@
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from app.models.workouts import (
     WorkoutSet,
     WorkoutType,
 )
+from app.services import profile as profile_service
 from app.services.celebrations import (
     CelebrationOut,
     StreakOut,
@@ -30,6 +32,7 @@ from app.services.celebrations import (
     recompute_pr,
 )
 from app.services.errors import NotFoundError
+from app.services.timezones import local_date, local_day_bounds_utc
 
 # log_set auto-continues an open workout within this window of its last set with no
 # question asked; past it, Claude asks rather than guesses (#3/#6, resolved).
@@ -601,7 +604,8 @@ async def log_workout(
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
     details[0].celebrations = celebrations
-    details[0].streak = await get_streak(session, user_sub, as_of=when.date())
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    details[0].streak = await get_streak(session, user_sub, as_of=local_date(when, tz), tz=tz)
     return details[0]
 
 
@@ -641,7 +645,8 @@ async def log_activity(
     await session.flush()
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
-    details[0].streak = await get_streak(session, user_sub, as_of=when.date())
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    details[0].streak = await get_streak(session, user_sub, as_of=local_date(when, tz), tz=tz)
     return details[0]
 
 
@@ -652,14 +657,18 @@ async def get_workout_history(
     start: date | None = None,
     end: date | None = None,
     exercise: str | None = None,
+    tz: ZoneInfo | None = None,
 ) -> list[WorkoutOut]:
     """Most-recent-first, optionally filtered to a date range and/or workouts that
-    included a given exercise (by name, case-insensitive)."""
+    included a given exercise (by name, case-insensitive). `start`/`end` are local
+    calendar dates in `tz` (stored profile zone by default)."""
     conditions = [Workout.user_id == user_sub]
+    if start is not None or end is not None:
+        tz = tz or await profile_service.get_user_timezone(session, user_sub)
     if start is not None:
-        conditions.append(Workout.started_at >= datetime.combine(start, time.min, tzinfo=UTC))
+        conditions.append(Workout.started_at >= local_day_bounds_utc(start, tz)[0])
     if end is not None:
-        conditions.append(Workout.started_at <= datetime.combine(end, time.max, tzinfo=UTC))
+        conditions.append(Workout.started_at < local_day_bounds_utc(end, tz)[1])
     if exercise is not None:
         matching = (
             select(WorkoutExercise.workout_id)
@@ -965,7 +974,10 @@ async def finish_workout(
 
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
-    details[0].streak = await get_streak(session, user_sub, as_of=workout.completed_at.date())
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    details[0].streak = await get_streak(
+        session, user_sub, as_of=local_date(workout.completed_at, tz), tz=tz
+    )
     return details[0]
 
 
