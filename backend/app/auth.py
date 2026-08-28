@@ -7,6 +7,7 @@ JWKS. Everything downstream takes `user_sub: str` and never knows which door it 
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import lru_cache
 from typing import Annotated
 
@@ -59,6 +60,10 @@ def verify_bearer_token(token: str, settings: Settings) -> Principal:
             algorithms=["RS256"],
             audience=audiences,
             issuer=settings.authkit_domain.rstrip("/"),
+            # A little slack for clock skew between us and AuthKit — without it a
+            # client whose clock runs a few seconds fast gets a spurious 401 right
+            # after minting a token, and the SPA reads that as "signed out".
+            leeway=timedelta(seconds=30),
         )
     except jwt.PyJWTError as exc:
         log.warning("rejected bearer token: %s", exc)

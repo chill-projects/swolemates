@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AccessTokenOut": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "AccessTokenOut",
+        "type": "object"
+      },
       "ActivityLevel": {
         "enum": [
           "sedentary",
@@ -1912,37 +1925,6 @@
         "title": "RedeemInviteRequest",
         "type": "object"
       },
-      "RefreshIn": {
-        "properties": {
-          "refresh_token": {
-            "title": "Refresh Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "refresh_token"
-        ],
-        "title": "RefreshIn",
-        "type": "object"
-      },
-      "RefreshOut": {
-        "properties": {
-          "access_token": {
-            "title": "Access Token",
-            "type": "string"
-          },
-          "refresh_token": {
-            "title": "Refresh Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token",
-          "refresh_token"
-        ],
-        "title": "RefreshOut",
-        "type": "object"
-      },
       "SaveMealTemplateRequest": {
         "properties": {
           "default_meal_type": {
@@ -1987,6 +1969,19 @@
           "log_ids"
         ],
         "title": "SaveMealTemplateRequest",
+        "type": "object"
+      },
+      "SessionIn": {
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "SessionIn",
         "type": "object"
       },
       "SetGoalsRequest": {
@@ -3258,29 +3253,59 @@
         ]
       }
     },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Drop the refresh cookie. Unauthenticated on purpose \u2014 a dead access token must\nstill be able to complete a sign-out.",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/refresh": {
       "post": {
-        "description": "Exchange a refresh token for a new access token, server-side.\n\nUnauthenticated by design \u2014 the caller doesn't have a live access token yet, that's\nthe point of calling this. Trust is carried by the refresh token itself, which\nWorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA\ntreats it exactly like any other failed auth and falls back to sign-in.",
+        "description": "Rotate the refresh cookie and return a new access token.\n\n- 401: no cookie, or WorkOS rejected the token \u2192 the client signs out.\n- 502: WorkOS unreachable or erroring on its side \u2192 the client keeps the session\n  and retries later.\n- 500: `client_secret` unconfigured \u2192 an ops problem; must *not* read as signed-out.",
         "operationId": "authRefresh",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/session": {
+      "post": {
+        "description": "Seal a freshly-issued refresh token into the httpOnly cookie. `CurrentUser` ties\nit to a verified access token so a session can't be planted in someone's browser.",
+        "operationId": "createSession",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RefreshIn"
+                "$ref": "#/components/schemas/SessionIn"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RefreshOut"
-                }
-              }
-            },
+          "204": {
             "description": "Successful Response"
           },
           "422": {
@@ -3294,7 +3319,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Auth Refresh",
+        "summary": "Create Session",
         "tags": [
           "auth"
         ]

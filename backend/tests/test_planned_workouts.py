@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
@@ -7,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import planned_workouts as service
 from app.services import workout_templates as templates
 from app.services import workouts
+from app.services.timezones import today_in
 from tests.conftest import OTHER_USER, TEST_USER
+
+# `get_today_planned` resolves "today" in a timezone; pin one so the tests don't depend
+# on where the machine running them happens to be relative to UTC's date boundary.
+TZ = ZoneInfo("America/Los_Angeles")
 
 
 async def _make_template(session: AsyncSession, user: str, name: str) -> templates.TemplateOut:
@@ -116,10 +122,10 @@ async def test_get_today_planned_is_none_with_nothing_scheduled(session: AsyncSe
 async def test_get_today_planned_returns_todays_unstarted_entry(session: AsyncSession) -> None:
     legs = await _make_template(session, TEST_USER, "Legs")
     planned = await service.plan_workout(
-        session, TEST_USER, template_id=legs.id, scheduled_for=date.today()
+        session, TEST_USER, template_id=legs.id, scheduled_for=today_in(TZ)
     )
 
-    today_planned = await service.get_today_planned(session, TEST_USER)
+    today_planned = await service.get_today_planned(session, TEST_USER, tz=TZ)
 
     assert today_planned is not None
     assert today_planned.id == planned.id
@@ -129,27 +135,27 @@ async def test_get_today_planned_returns_todays_unstarted_entry(session: AsyncSe
 async def test_get_today_planned_ignores_a_future_entry(session: AsyncSession) -> None:
     legs = await _make_template(session, TEST_USER, "Legs")
     await service.plan_workout(
-        session, TEST_USER, template_id=legs.id, scheduled_for=date.today() + timedelta(days=1)
+        session, TEST_USER, template_id=legs.id, scheduled_for=today_in(TZ) + timedelta(days=1)
     )
 
-    assert await service.get_today_planned(session, TEST_USER) is None
+    assert await service.get_today_planned(session, TEST_USER, tz=TZ) is None
 
 
 async def test_get_today_planned_is_none_once_skipped(session: AsyncSession) -> None:
     legs = await _make_template(session, TEST_USER, "Legs")
     planned = await service.plan_workout(
-        session, TEST_USER, template_id=legs.id, scheduled_for=date.today()
+        session, TEST_USER, template_id=legs.id, scheduled_for=today_in(TZ)
     )
     await service.update_planned_workout(session, TEST_USER, planned_id=planned.id, action="skip")
 
-    assert await service.get_today_planned(session, TEST_USER) is None
+    assert await service.get_today_planned(session, TEST_USER, tz=TZ) is None
 
 
 async def test_get_today_planned_is_scoped_to_the_caller(session: AsyncSession) -> None:
     legs = await _make_template(session, OTHER_USER, "Legs")
-    await service.plan_workout(session, OTHER_USER, template_id=legs.id, scheduled_for=date.today())
+    await service.plan_workout(session, OTHER_USER, template_id=legs.id, scheduled_for=today_in(TZ))
 
-    assert await service.get_today_planned(session, TEST_USER) is None
+    assert await service.get_today_planned(session, TEST_USER, tz=TZ) is None
 
 
 async def test_get_planned_workouts_skips_rest_days(session: AsyncSession) -> None:

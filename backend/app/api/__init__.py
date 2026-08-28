@@ -1,9 +1,10 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.api import (
+    auth,
     food_facts,
     nutrition,
     partner,
@@ -14,12 +15,12 @@ from app.api import (
     workouts,
 )
 from app.deps import AppSettings, CurrentPrincipal, DbSession
-from app.services import auth as auth_service
 from app.services import profile as profile_service
 
 log = logging.getLogger(__name__)
 
 api_router = APIRouter()
+api_router.include_router(auth.router)
 api_router.include_router(profile.router)
 api_router.include_router(nutrition.router)
 api_router.include_router(food_facts.router)
@@ -94,29 +95,6 @@ async def auth_config(settings: AppSettings) -> AuthConfigOut:
     )
 
 
-class RefreshIn(BaseModel):
-    refresh_token: str
-
-
-class RefreshOut(BaseModel):
-    access_token: str
-    refresh_token: str
-
-
-@api_router.post("/auth/refresh", tags=["auth"], operation_id="authRefresh")
-async def auth_refresh(body: RefreshIn, settings: AppSettings) -> RefreshOut:
-    """Exchange a refresh token for a new access token, server-side.
-
-    Unauthenticated by design — the caller doesn't have a live access token yet, that's
-    the point of calling this. Trust is carried by the refresh token itself, which
-    WorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA
-    treats it exactly like any other failed auth and falls back to sign-in.
-    """
-    try:
-        result = await auth_service.refresh_session(settings, body.refresh_token)
-    except auth_service.RefreshFailed as exc:
-        # WorkOS's rejection body carries an error code/description, not a secret — the
-        # same reasoning app/auth.py uses for aud/iss on a rejected bearer token.
-        log.warning("refresh rejected: %s", exc)
-        raise HTTPException(status_code=401, detail="Refresh token invalid or expired") from exc
-    return RefreshOut(**result)
+# The browser session endpoints (`/auth/session`, `/auth/refresh`, `/auth/logout`)
+# live in `app/api/auth.py` — the refresh token is an httpOnly cookie now, not a
+# request/response body.
