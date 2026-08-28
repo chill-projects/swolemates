@@ -49,7 +49,7 @@ api.use({
     if (result !== "ok") {
       // "rejected": performRefresh already tore down local state and the server
       //   cleared its cookie — the caller's 401 will surface as WhoamiError("anonymous").
-      // "error": WorkOS blip / misconfig — the session may still be fine, so don't sign
+      // "error": WorkOS blip / ops misconfig — the session may still be fine, so don't sign
       //   out; surface the 401 and let a later request retry the refresh.
       return response;
     }

@@ -4,12 +4,14 @@
  * Public client, so the login leg has no secret — PKCE is what binds the code to this
  * browser. Two tokens come out of it:
  *
- * - the **access token** (5 min) lives in `sessionStorage` and dies with the tab;
+ * - the **access token** (short-lived) lives in `sessionStorage` and dies with the tab;
  *   losing it just costs a refresh round-trip.
  * - the **refresh token** (7 days) is never touched by JS. Right after login the SPA
  *   hands it to `POST /api/auth/session`, which seals it into an httpOnly cookie.
- *   `POST /api/auth/refresh` reads that cookie, exchanges it via WorkOS (the backend
- *   holds the `client_secret`), rotates the cookie, and returns a fresh access token.
+ *   `POST /api/auth/refresh` reads that cookie and exchanges it at the same AuthKit
+ *   `/oauth2/token` login used — same public client, no secret — then rotates the
+ *   cookie and returns a fresh access token. That leg is server-side to keep the
+ *   refresh token out of JS, not because it needs a credential the browser lacks.
  *
  * Refreshing is coordinated three ways so a rotated (single-use) token is never
  * replayed: coalesced within a tab, serialized across tabs via the Web Locks API, and
@@ -37,6 +39,17 @@ const VERIFIER_KEY = "swolemates.pkce_verifier";
 /** Refresh this many ms before the access token actually expires. authkit-nextjs uses
  *  the same margin for ≤5-minute tokens. */
 const REFRESH_BUFFER_MS = 30_000;
+
+/** Overshoot the computed wake-up by this much. A timer that fires even a millisecond
+ *  early leaves the token still *fresh* by `REFRESH_BUFFER_MS`, so `refreshSession()`
+ *  short-circuits on its freshness check and returns "ok" without storing anything —
+ *  and since only `storeAccessToken()` re-arms, the chain would die right there. */
+const REFRESH_SLOP_MS = 1_000;
+
+/** Backoff for a transient failure. Doubles up to the cap and keeps going: a WorkOS
+ *  blip lasting longer than one retry must not end background refresh for the tab. */
+const RETRY_BASE_MS = 30_000;
+const RETRY_MAX_MS = 300_000;
 
 export type RefreshResult = "ok" | "rejected" | "error";
 
@@ -76,6 +89,29 @@ function clearRefreshTimer(): void {
   }
 }
 
+/** One link in the refresh chain: wait `delayMs`, refresh, then re-arm from the
+ *  outcome. Every branch either re-arms or deliberately stops, so the chain can't be
+ *  ended by a no-op refresh or by a second consecutive failure. */
+function armRefreshTimer(delayMs: number, retryMs: number): void {
+  clearRefreshTimer();
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    void refreshSession().then((result) => {
+      if (result === "rejected") return; // signed out — nothing left to refresh.
+      if (result === "ok") {
+        // Re-arm here rather than relying on storeAccessToken(): a refresh that was a
+        // no-op — the token was already fresh, or another tab won the lock and stored
+        // it — never calls that, and the chain would stop silently.
+        const token = getToken();
+        if (token) scheduleRefresh(token);
+        return;
+      }
+      // "error" is transient (WorkOS blip, network). Keep retrying with backoff.
+      armRefreshTimer(retryMs, Math.min(retryMs * 2, RETRY_MAX_MS));
+    });
+  }, delayMs);
+}
+
 /** Background refresh a little before expiry, so an idle open tab never has to wait
  *  out a failed request to recover. Just a convenience now — the per-request check in
  *  api/client.ts is what actually guarantees a live token, since browsers throttle
@@ -84,18 +120,10 @@ function scheduleRefresh(accessToken: string): void {
   clearRefreshTimer();
   const expiresAt = tokenExpiryMs(accessToken);
   if (expiresAt === null) return;
-  const delay = Math.max(expiresAt - Date.now() - REFRESH_BUFFER_MS, 0);
-  refreshTimer = setTimeout(() => {
-    refreshTimer = null;
-    void refreshSession().then((result) => {
-      // "ok" re-arms via storeAccessToken; "rejected" means signed out, so stop.
-      // "error" is transient (WorkOS blip) — retry soon rather than let the chain die.
-      if (result === "error") {
-        clearRefreshTimer();
-        refreshTimer = setTimeout(() => void refreshSession(), 30_000);
-      }
-    });
-  }, delay);
+  // The slop also floors the delay at REFRESH_SLOP_MS, so an already-stale token
+  // re-arming itself can't spin.
+  const delay = Math.max(expiresAt - Date.now() - REFRESH_BUFFER_MS, 0) + REFRESH_SLOP_MS;
+  armRefreshTimer(delay, RETRY_BASE_MS);
 }
 
 function storeAccessToken(accessToken: string): void {
@@ -175,15 +203,20 @@ async function performRefresh(): Promise<RefreshResult> {
   }
 
   if (res.status === 401) {
-    // No session, or WorkOS rejected the refresh token. The server has already cleared
-    // its cookie; drop our local state to match.
-    clearLocalAuth();
+    // Two different things arrive as 401, and only one of them is a credential dying.
+    // `no_session`: no cookie was sent, so nothing was rejected — report signed-out so
+    // the shell shows sign-in, but leave local state alone rather than tearing down an
+    // access token that may still be perfectly good. `session_expired` (or an older
+    // backend that sends no `code` at all — the safe default): WorkOS rejected the
+    // refresh token and the server already cleared its cookie, so match it locally.
+    const body = (await res.json().catch(() => null)) as { code?: string } | null;
+    if (body?.code !== "no_session") clearLocalAuth();
     lastRefresh = { result: "rejected", at: Date.now() };
     return "rejected";
   }
 
-  // 500 (misconfigured secret) / 502 (WorkOS down) / anything else — transient. The
-  // session may well still be valid; don't sign the user out over it.
+  // 500 (client id / AuthKit domain unconfigured) / 502 (WorkOS down) / anything else —
+  // transient. The session may well still be valid; don't sign the user out over it.
   lastRefresh = { result: "error", at: Date.now() };
   return "error";
 }
