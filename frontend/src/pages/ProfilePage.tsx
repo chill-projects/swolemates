@@ -192,23 +192,32 @@ export function ProfilePage({ profile }: { profile: Profile }) {
         eyebrow={whoami.data?.display_name ?? whoami.data?.email ?? "Your profile"}
         title="Six numbers set every target in the app."
         lead="Weight, sex, age, height, activity and goal produce your TDEE. Everything below is editable afterwards — the estimate is a starting point, not a rule."
+        // A figure only appears once there's something to put in it — an empty band
+        // with two placeholder dashes reads as broken rather than as "not yet", and
+        // the line below the band already says what's missing.
         aside={
-          <div className="profile-figures">
-            <div>
-              <div className="profile-figure profile-figure--teal">
-                {tdee.data?.tdee ? tdee.data.tdee.toLocaleString() : "—"}
-              </div>
-              <div className="profile-figure-label">est. TDEE · kcal/day</div>
+          tdee.data?.tdee || latest ? (
+            <div className="profile-figures">
+              {tdee.data?.tdee ? (
+                <div>
+                  <div className="profile-figure profile-figure--teal">
+                    {tdee.data.tdee.toLocaleString()}
+                  </div>
+                  <div className="profile-figure-label">est. TDEE · kcal/day</div>
+                </div>
+              ) : null}
+              {latest ? (
+                <div className={tdee.data?.tdee ? "profile-figure-divider" : undefined}>
+                  <div className="profile-figure">
+                    {formatWeight(Number(latest.weight_lbs), weightUnit)}
+                  </div>
+                  <div className="profile-figure-label">
+                    {weightUnit} · logged {shortDate(latest.logged_at)}
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <div className="profile-figure-divider">
-              <div className="profile-figure">
-                {latest ? formatWeight(Number(latest.weight_lbs), weightUnit) : "—"}
-              </div>
-              <div className="profile-figure-label">
-                {latest ? `${weightUnit} · logged ${shortDate(latest.logged_at)}` : "no weight yet"}
-              </div>
-            </div>
-          </div>
+          ) : undefined
         }
       />
 
@@ -488,7 +497,12 @@ function WeightTrend({
   const span = max - min || 1;
 
   return (
-    <div className="weight-trend">
+    // Columns track the number of points, not a fixed four — two weigh-ins should
+    // span the card, not huddle in the left quarter of it.
+    <div
+      className="weight-trend"
+      style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
+    >
       {points.map((p, i) => (
         <div key={p.logged_at} className="weight-trend-col">
           <div className="weight-trend-value">

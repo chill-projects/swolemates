@@ -465,7 +465,7 @@ h1 {
    see WeightTrend in ProfilePage for why. */
 .weight-trend {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Column count is set inline from the number of points — see WeightTrend. */
   gap: 0.6rem;
   margin-top: 1rem;
 }
@@ -1015,6 +1015,10 @@ h1 a {
     flex: 0 0 auto;
     flex-direction: row;
     gap: 0;
+    /* Reset the phone tab bar's min-width: here it padded short labels ("Plan")
+       out to 3.5rem and left long ones ("Nutrition") at their natural width, so
+       the gap between words varied. Natural width + the row gap spaces them evenly. */
+    min-width: 0;
     padding: 0 0 0.2rem;
     font-size: 0.72rem;
     text-transform: none;
