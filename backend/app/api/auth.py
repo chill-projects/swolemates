@@ -2,17 +2,19 @@
 
 The refresh token is a 7-day credential. It lives in an **httpOnly** cookie, never in
 JS: an XSS on the page can't read it, and one tab can't wipe another tab's session.
-The short-lived (5-minute) access token still rides in the SPA's `sessionStorage` —
-losing that one just means a refresh round-trip.
+The short-lived access token still rides in the SPA's `sessionStorage` — losing that
+one just means a refresh round-trip.
 
 Flow:
 - `POST /auth/session` right after login — the SPA did the PKCE code exchange itself
   (public client, no secret) and hands the resulting refresh token here to be sealed
   into the cookie. Requires the matching access token, so nobody can plant a session.
-- `POST /auth/refresh` — reads the cookie, exchanges via WorkOS (needs `client_secret`,
-  hence server-side), rotates the cookie, returns the new access token. Status codes
-  are load-bearing: 401 means "signed out", 5xx means "try again", and the client must
-  only clear its own state on the former.
+- `POST /auth/refresh` — reads the cookie, exchanges it at AuthKit's `/oauth2/token`
+  (same public client as login, no secret), rotates the cookie, returns the new access
+  token. It lives server-side so the refresh token can stay in the httpOnly cookie, not
+  because the exchange needs a credential the browser lacks. Status codes are
+  load-bearing: 401 means "signed out", 5xx means "try again", and the client must only
+  clear its own state on the former.
 - `POST /auth/logout` — drops the cookie.
 """
 
@@ -80,15 +82,19 @@ async def create_session(body: SessionIn, user_sub: CurrentUser, settings: AppSe
 async def refresh(request: Request, settings: AppSettings) -> Response:
     """Rotate the refresh cookie and return a new access token.
 
-    - 401: no cookie, or WorkOS rejected the token → the client signs out.
+    - 401: the client signs out. `code` splits the two ways that happens — `no_session`
+      (no cookie was sent) from `session_expired` (WorkOS rejected the token). Only the
+      latter means a live credential died, so only it should tear down client state.
     - 502: WorkOS unreachable or erroring on its side → the client keeps the session
       and retries later.
-    - 500: `client_secret` unconfigured → an ops problem; must *not* read as signed-out.
+    - 500: client id / AuthKit domain unconfigured → an ops problem; must *not* read as
+      signed-out.
     """
     cookie = request.cookies.get(REFRESH_COOKIE)
     if not cookie:
         return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "No session"}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "No session", "code": "no_session"},
         )
 
     try:
@@ -96,7 +102,8 @@ async def refresh(request: Request, settings: AppSettings) -> Response:
     except auth_service.RefreshRejected as exc:
         log.info("refresh rejected, clearing session: %s", exc)
         rejected = JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Session expired"}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Session expired", "code": "session_expired"},
         )
         _clear_refresh_cookie(rejected, settings)
         return rejected
@@ -104,13 +111,13 @@ async def refresh(request: Request, settings: AppSettings) -> Response:
         log.error("refresh misconfigured: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Auth not configured"},
+            content={"detail": "Auth not configured", "code": "not_configured"},
         )
     except auth_service.RefreshUpstreamError as exc:
         log.warning("refresh upstream error: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            content={"detail": "Auth provider unavailable"},
+            content={"detail": "Auth provider unavailable", "code": "upstream_error"},
         )
 
     ok = JSONResponse(content={"access_token": result["access_token"]})

@@ -3270,7 +3270,7 @@
     },
     "/api/auth/refresh": {
       "post": {
-        "description": "Rotate the refresh cookie and return a new access token.\n\n- 401: no cookie, or WorkOS rejected the token \u2192 the client signs out.\n- 502: WorkOS unreachable or erroring on its side \u2192 the client keeps the session\n  and retries later.\n- 500: `client_secret` unconfigured \u2192 an ops problem; must *not* read as signed-out.",
+        "description": "Rotate the refresh cookie and return a new access token.\n\n- 401: the client signs out. `code` splits the two ways that happens \u2014 `no_session`\n  (no cookie was sent) from `session_expired` (WorkOS rejected the token). Only the\n  latter means a live credential died, so only it should tear down client state.\n- 502: WorkOS unreachable or erroring on its side \u2192 the client keeps the session\n  and retries later.\n- 500: client id / AuthKit domain unconfigured \u2192 an ops problem; must *not* read as\n  signed-out.",
         "operationId": "authRefresh",
         "responses": {
           "200": {

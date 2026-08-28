@@ -74,6 +74,31 @@ describe("refreshSession", () => {
     expect(getToken()).toBeNull();
   });
 
+  it("clears local state on a 401 the server coded 'session_expired'", async () => {
+    const { refreshSession, getToken } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(-1));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { detail: "Session expired", code: "session_expired" }),
+    );
+
+    expect(await refreshSession()).toBe("rejected");
+    expect(getToken()).toBeNull();
+  });
+
+  it("keeps local state on a 401 the server coded 'no_session'", async () => {
+    // No cookie was sent, so nothing was rejected — reporting signed-out is right, but
+    // tearing down a token that was never refused is not.
+    const { refreshSession, getToken } = await loadAuthkit();
+    const live = fakeToken(-1);
+    sessionStorage.setItem("swolemates.access_token", live);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { detail: "No session", code: "no_session" }),
+    );
+
+    expect(await refreshSession()).toBe("rejected");
+    expect(getToken()).toBe(live);
+  });
+
   it("returns 'error' (not 'rejected') on a 502 and keeps the token", async () => {
     const { refreshSession } = await loadAuthkit();
     const live = fakeToken(-1);
@@ -150,5 +175,82 @@ describe("clearSession", () => {
       "/api/auth/logout",
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
+  });
+});
+
+describe("the background refresh chain", () => {
+  /** Drives fake timers far enough to run the chain, letting each tick's promises
+   *  settle so the next `setTimeout` is armed before time advances again. */
+  async function advance(ms: number, steps = 6): Promise<void> {
+    for (let i = 0; i < steps; i++) {
+      await vi.advanceTimersByTimeAsync(Math.ceil(ms / steps));
+    }
+  }
+
+  it("wakes up after the token goes stale, not exactly on the boundary", async () => {
+    // The regression: the wake-up was scheduled at exactly `expiry - buffer`, the
+    // instant the token stops being fresh. Fire a hair early — which real timers do —
+    // and refreshSession() still saw a fresh token, no-opped, and returned "ok"
+    // without storing anything; since only storeAccessToken() re-armed, background
+    // refresh silently died for the life of the tab. The slop is what guarantees the
+    // token is genuinely stale by the time the callback runs.
+    vi.useFakeTimers();
+    const { bootstrapSession } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(60));
+    fetchMock.mockResolvedValue(jsonResponse(200, { access_token: fakeToken(60) }));
+
+    await bootstrapSession();
+
+    // 60s life - 30s buffer: the old code fired right here, on the knife edge.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("keeps re-arming across many refresh cycles", async () => {
+    vi.useFakeTimers();
+    const { bootstrapSession } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(60));
+    fetchMock.mockResolvedValue(jsonResponse(200, { access_token: fakeToken(60) }));
+
+    await bootstrapSession();
+    await advance(200_000, 40);
+
+    // ~31s per cycle — several cycles' worth, so a chain that dies after one shows up.
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(3);
+  });
+
+  it("keeps retrying after more than one consecutive failure", async () => {
+    // The backoff used to be one-shot: a second failure ended the chain for good.
+    vi.useFakeTimers();
+    const { bootstrapSession } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(60));
+    fetchMock.mockResolvedValue(jsonResponse(502, { detail: "Auth provider unavailable" }));
+
+    await bootstrapSession();
+    await advance(45_000);
+    const afterFirst = fetchMock.mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    await advance(300_000, 30);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(afterFirst + 1);
+  });
+
+  it("stops the chain once the session is genuinely rejected", async () => {
+    vi.useFakeTimers();
+    const { bootstrapSession } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(60));
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, { detail: "Session expired", code: "session_expired" }),
+    );
+
+    await bootstrapSession();
+    await advance(60_000);
+    const afterRejection = fetchMock.mock.calls.length;
+
+    await advance(600_000, 30);
+    expect(fetchMock.mock.calls.length).toBe(afterRejection);
   });
 });

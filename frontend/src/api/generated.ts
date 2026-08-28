@@ -62,10 +62,13 @@ export interface paths {
          * Refresh
          * @description Rotate the refresh cookie and return a new access token.
          *
-         *     - 401: no cookie, or WorkOS rejected the token → the client signs out.
+         *     - 401: the client signs out. `code` splits the two ways that happens — `no_session`
+         *       (no cookie was sent) from `session_expired` (WorkOS rejected the token). Only the
+         *       latter means a live credential died, so only it should tear down client state.
          *     - 502: WorkOS unreachable or erroring on its side → the client keeps the session
          *       and retries later.
-         *     - 500: `client_secret` unconfigured → an ops problem; must *not* read as signed-out.
+         *     - 500: client id / AuthKit domain unconfigured → an ops problem; must *not* read as
+         *       signed-out.
          */
         post: operations["authRefresh"];
         delete?: never;
