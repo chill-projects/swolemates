@@ -21,7 +21,9 @@ from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import planned_workouts as service
+from app.services import profile as profile_service
 from app.services import workout_templates
+from app.services.timezones import today_in
 
 PLANNED_UI_URI = "ui://swolemates/planned.html"
 
@@ -118,9 +120,13 @@ async def get_planned_workouts(start: str | None = None, end: str | None = None)
         end: ISO date, inclusive. Defaults to 6 days after start.
     """
     user_sub = mcp_user_sub()
-    range_start = date.fromisoformat(start) if start else date.today()
-    range_end = date.fromisoformat(end) if end else range_start + timedelta(days=6)
     async with tool_session() as session:
+        if start:
+            range_start = date.fromisoformat(start)
+        else:
+            tz = await profile_service.get_user_timezone(session, user_sub)
+            range_start = today_in(tz)
+        range_end = date.fromisoformat(end) if end else range_start + timedelta(days=6)
         planned = await service.get_planned_workouts(
             session, user_sub, start=range_start, end=range_end
         )

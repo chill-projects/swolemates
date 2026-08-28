@@ -4,9 +4,10 @@ meal templates; nothing else in the nutrition package depends on this module.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from app.services import profile as profile_service
 from app.services.nutrition.goals import get_goals
 from app.services.nutrition.templates import MealTemplateSummary, list_meal_templates
 from app.services.nutrition.trackables import list_trackable_types
+from app.services.timezones import local_day_bounds_utc, today_in
 
 DayStatus = Literal["hit", "miss", "no-data"]
 
@@ -68,30 +70,26 @@ class NutritionDay:
 
 
 async def get_nutrition_day(
-    session: AsyncSession, user_sub: str, day: date | None = None, tz_offset_minutes: int = 0
+    session: AsyncSession, user_sub: str, day: date | None = None, tz: ZoneInfo | None = None
 ) -> NutritionDay:
     """The day-vs-goals view (#4, resolved): the calorie ring is always the hero, and
     every other goal-eligible trackable always renders as a bar, whether or not a
     target's been set for it (matching the legacy TodaySummary.tsx reference this
     generalizes — `target` is just None until the caller sets one).
 
-    `tz_offset_minutes` matches JS's `Date.getTimezoneOffset()` (UTC minus local, in
-    minutes — positive west of UTC, e.g. Pacific is +420): a caller's local midnight is
-    UTC midnight *plus* this many minutes, not the same instant. Without it, "day" only
-    lines up with the UTC calendar date, and anything logged after the caller's local
-    midnight but before UTC's (evening, west of UTC) reads as missing until UTC catches
-    up. Defaults to 0 (UTC) — chat/MCP has no timezone context to supply this with yet,
-    so that path still has the gap this fixes for the web app (#19-adjacent, not fully
-    resolved: still no *stored* per-user timezone, just a per-call offset).
+    `tz` is the caller's IANA zone — "today" and the day window are computed in it, so
+    a meal logged at 8pm local (already tomorrow in UTC) still lands under the local
+    day. Defaults to the caller's stored `UserProfile.timezone` (UTC if unset); the
+    REST path passes the live `X-Timezone` header instead. See `services/timezones.py`.
     """
-    day = day or (datetime.now(UTC) - timedelta(minutes=tz_offset_minutes)).date()
-    start = datetime.combine(day, time.min, tzinfo=UTC) + timedelta(minutes=tz_offset_minutes)
-    end = start + timedelta(days=1) - timedelta(microseconds=1)
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    day = day or today_in(tz)
+    start, end = local_day_bounds_utc(day, tz)
 
     result = await session.execute(
         select(Log, LogValue)
         .outerjoin(LogValue, LogValue.log_id == Log.id)
-        .where(Log.user_id == user_sub, Log.logged_at >= start, Log.logged_at <= end)
+        .where(Log.user_id == user_sub, Log.logged_at >= start, Log.logged_at < end)
         .order_by(Log.logged_at)
     )
 
@@ -216,7 +214,7 @@ def _day_status(
 
 
 async def get_nutrition_calendar(
-    session: AsyncSession, user_sub: str, *, start: date, end: date, tz_offset_minutes: int = 0
+    session: AsyncSession, user_sub: str, *, start: date, end: date, tz: ZoneInfo | None = None
 ) -> list[NutritionCalendarDay]:
     """One entry per day in `[start, end]` inclusive — the dashboard's nutrition
     calendar. `status` mirrors legacy's `ConsistencyCalendar`, never ported until
@@ -225,23 +223,23 @@ async def get_nutrition_calendar(
     that date." Goals/targets/goal-direction are read once for the whole range
     (matching legacy, which also had no historical-target tracking).
 
-    `tz_offset_minutes`: see get_nutrition_day — same reasoning, applied to both the
-    query window and which calendar day each log buckets into.
+    `tz`: see get_nutrition_day — same zone, applied to both the query window and
+    which calendar day each log buckets into.
     """
-    offset = timedelta(minutes=tz_offset_minutes)
-    start_dt = datetime.combine(start, time.min, tzinfo=UTC) + offset
-    end_dt = datetime.combine(end, time.max, tzinfo=UTC) + offset
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    start_dt, _ = local_day_bounds_utc(start, tz)
+    _, end_dt = local_day_bounds_utc(end, tz)
 
     result = await session.execute(
         select(Log, LogValue)
         .outerjoin(LogValue, LogValue.log_id == Log.id)
-        .where(Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at <= end_dt)
+        .where(Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at < end_dt)
     )
 
     logged_dates: set[date] = set()
     totals_by_date: dict[date, dict[str, Decimal]] = {}
     for log, value in result.all():
-        d = (log.logged_at - offset).date()
+        d = log.logged_at.astimezone(tz).date()
         logged_dates.add(d)
         if value is not None:
             day_totals = totals_by_date.setdefault(d, {})
@@ -291,25 +289,28 @@ async def get_nutrition_calendar(
 
 
 async def get_nutrition_streak(
-    session: AsyncSession, user_sub: str, *, as_of: date | None = None
+    session: AsyncSession, user_sub: str, *, as_of: date | None = None, tz: ZoneInfo | None = None
 ) -> int:
     """Consecutive *logged* days walking back from `as_of` (today by default) — the
     partner-summary nutrition streak. Matches legacy's `computeStreak()`: any status
     counts (logged, not hit), so a logged-but-missed day keeps the streak alive; only
     a day with zero logs breaks it. A single distinct-dates query over a bounded
-    lookback window, not one query per day."""
-    as_of = as_of or datetime.now(UTC).date()
-    start_dt = datetime.combine(
-        as_of - timedelta(days=MAX_NUTRITION_STREAK_LOOKBACK_DAYS), time.min, tzinfo=UTC
-    )
-    end_dt = datetime.combine(as_of, time.max, tzinfo=UTC)
+    lookback window, not one query per day.
+
+    Day membership is bucketed in `tz` (the caller's zone, stored profile value by
+    default) so the walk lines up with the user's local calendar, not UTC's."""
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    as_of = as_of or today_in(tz)
+    lookback_start = as_of - timedelta(days=MAX_NUTRITION_STREAK_LOOKBACK_DAYS)
+    start_dt, _ = local_day_bounds_utc(lookback_start, tz)
+    _, end_dt = local_day_bounds_utc(as_of, tz)
 
     result = await session.execute(
         select(Log.logged_at).where(
-            Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at <= end_dt
+            Log.user_id == user_sub, Log.logged_at >= start_dt, Log.logged_at < end_dt
         )
     )
-    logged_dates = {row[0].date() for row in result.all()}
+    logged_dates = {row[0].astimezone(tz).date() for row in result.all()}
 
     streak = 0
     d = as_of

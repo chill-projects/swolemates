@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.api import (
@@ -49,7 +49,7 @@ class AuthConfigOut(BaseModel):
 
 
 @api_router.get("/whoami", tags=["auth"], operation_id="whoami")
-async def whoami(principal: CurrentPrincipal, session: DbSession) -> WhoamiOut:
+async def whoami(request: Request, principal: CurrentPrincipal, session: DbSession) -> WhoamiOut:
     """The auth spike's REST half. If this returns your WorkOS sub, the browser flow works.
 
     email/first_name/last_name come from the environment's JWT template — they're custom
@@ -58,11 +58,16 @@ async def whoami(principal: CurrentPrincipal, session: DbSession) -> WhoamiOut:
     Also syncs `UserProfile.display_name` from these same claims (#5, Partner v1) —
     every authenticated SPA session calls this on load, which is the only place a
     user's own current name is available to persist for a future partner to read.
+    Same load is where we seed `UserProfile.timezone` from the browser's `X-Timezone`
+    (once, while unset) so the MCP/chat path has a zone to work from.
     """
     claims = principal.claims
     name = " ".join(p for p in (claims.get("first_name"), claims.get("last_name")) if p)
     if name:
         await profile_service.sync_display_name(session, principal.sub, name)
+    tz_header = request.headers.get("X-Timezone")
+    if tz_header:
+        await profile_service.sync_timezone(session, principal.sub, tz_header)
     return WhoamiOut(
         user_sub=principal.sub,
         email=claims.get("email"),

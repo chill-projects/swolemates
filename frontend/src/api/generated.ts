@@ -566,6 +566,8 @@ export interface paths {
          *     Also syncs `UserProfile.display_name` from these same claims (#5, Partner v1) —
          *     every authenticated SPA session calls this on load, which is the only place a
          *     user's own current name is available to persist for a future partner to read.
+         *     Same load is where we seed `UserProfile.timezone` from the browser's `X-Timezone`
+         *     (once, while unset) so the MCP/chat path has a zone to work from.
          */
         get: operations["whoami"];
         put?: never;
@@ -1398,6 +1400,8 @@ export interface components {
             /** Onboarding Completed At */
             onboarding_completed_at: string | null;
             sex: components["schemas"]["BiologicalSex"] | null;
+            /** Timezone */
+            timezone: string | null;
             weight_unit: components["schemas"]["WeightUnit"];
         };
         /** ProfileUpdate */
@@ -1411,6 +1415,8 @@ export interface components {
             /** Height In */
             height_in?: number | string | null;
             sex?: components["schemas"]["BiologicalSex"] | null;
+            /** Timezone */
+            timezone?: string | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
         };
         /** RedeemInviteRequest */
@@ -1921,7 +1927,6 @@ export interface operations {
             query: {
                 start: string;
                 end: string;
-                tz_offset_minutes?: number;
             };
             header?: never;
             path?: never;
@@ -1953,7 +1958,6 @@ export interface operations {
         parameters: {
             query?: {
                 day?: string | null;
-                tz_offset_minutes?: number;
             };
             header?: never;
             path?: never;

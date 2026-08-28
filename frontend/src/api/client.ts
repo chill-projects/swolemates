@@ -29,6 +29,15 @@ api.use({
       token = getToken();
     }
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
+    // The browser's live IANA zone. The backend uses it for every "which day is it"
+    // decision (nutrition day, streaks, today's plan) and seeds UserProfile.timezone
+    // from it on the first whoami so the Claude/MCP path has a zone too.
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) request.headers.set("X-Timezone", tz);
+    } catch {
+      // Intl unavailable — the backend falls back to the stored profile zone / UTC.
+    }
     return request;
   },
   async onResponse({ request, response }) {

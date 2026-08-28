@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app import events
-from app.deps import CurrentUser, DbSession
+from app.deps import CurrentUser, DbSession, UserTimezone
 from app.schemas.nutrition import (
     AmendLastLogOut,
     GoalOut,
@@ -114,13 +114,11 @@ async def amend_last_log(
 async def get_nutrition_day(
     user_sub: CurrentUser,
     session: DbSession,
+    tz: UserTimezone,
     day: date | None = None,
-    tz_offset_minutes: int = 0,
 ) -> NutritionDayOut:
     return NutritionDayOut.model_validate(
-        await service.get_nutrition_day(
-            session, user_sub, day=day, tz_offset_minutes=tz_offset_minutes
-        )
+        await service.get_nutrition_day(session, user_sub, day=day, tz=tz)
     )
 
 
@@ -130,13 +128,11 @@ async def get_nutrition_day(
 async def get_nutrition_calendar(
     user_sub: CurrentUser,
     session: DbSession,
+    tz: UserTimezone,
     start: date,
     end: date,
-    tz_offset_minutes: int = 0,
 ) -> list[NutritionCalendarDayOut]:
-    days = await service.get_nutrition_calendar(
-        session, user_sub, start=start, end=end, tz_offset_minutes=tz_offset_minutes
-    )
+    days = await service.get_nutrition_calendar(session, user_sub, start=start, end=end, tz=tz)
     return [NutritionCalendarDayOut.model_validate(d) for d in days]
 
 

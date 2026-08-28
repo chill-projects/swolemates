@@ -8,6 +8,13 @@ import {
   useWorkoutStreak,
 } from "../api/dashboard";
 import type { components } from "../api/generated";
+import {
+  dateFromIso,
+  isoDateInTz,
+  isoFromDate,
+  todayIsoInTz,
+  useUserTimezone,
+} from "../lib/datetime";
 
 type NutritionCalendarDay = components["schemas"]["NutritionCalendarDayOut"];
 type PlannedWorkout = components["schemas"]["PlannedWorkoutOut"];
@@ -30,12 +37,10 @@ const MACRO_COLORS: Record<string, string> = {
   fiber_g: "var(--coral)",
 };
 
-function isoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+// Calendar-date anchors (month/week grid cells, "today") are local-midnight Dates
+// whose Y/M/D already carry the user's zone — see `today` in DashboardPage. `isoDate`
+// just reads those parts back out; instants get bucketed with `isoDateInTz` instead.
+const isoDate = isoFromDate;
 
 function isSameDate(a: Date, b: Date): boolean {
   return isoDate(a) === isoDate(b);
@@ -131,7 +136,10 @@ function useDayTooltip(width: number) {
  * Both surface a hover/tap detail of what actually happened that day, matching the
  * legacy ConsistencyCalendar tooltip. */
 export function DashboardPage() {
-  const today = useMemo(() => new Date(), []);
+  const tz = useUserTimezone();
+  // A local-midnight anchor whose Y/M/D is *today in the user's zone* — every
+  // calendar computation below is date-only arithmetic hung off this.
+  const today = useMemo(() => dateFromIso(todayIsoInTz(tz)), [tz]);
   const monthStart = useMemo(
     () => new Date(today.getFullYear(), today.getMonth(), 1),
     [today],
@@ -192,7 +200,7 @@ function NutritionCalendarCard({
   const byDate = useMemo(() => new Map(days.map((d) => [d.date, d])), [days]);
   const { activeKey, style, cellProps } = useDayTooltip(192);
   const activeDay = activeKey ? byDate.get(activeKey) : undefined;
-  const activeDate = activeKey ? new Date(`${activeKey}T00:00:00`) : null;
+  const activeDate = activeKey ? dateFromIso(activeKey) : null;
 
   const firstDow = monthStart.getDay();
   const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
@@ -297,6 +305,7 @@ function WorkoutWeekCard({
   today: Date;
 }) {
   const { activeKey, style, cellProps } = useDayTooltip(168);
+  const tz = useUserTimezone();
 
   const plannedByDate = useMemo(() => {
     const map = new Map<string, PlannedWorkout>();
@@ -308,13 +317,13 @@ function WorkoutWeekCard({
     const map = new Map<string, Workout[]>();
     for (const w of workouts) {
       if (!w.completed_at) continue;
-      const key = isoDate(new Date(w.completed_at));
+      const key = isoDateInTz(w.completed_at, tz);
       const list = map.get(key) ?? [];
       list.push(w);
       map.set(key, list);
     }
     return map;
-  }, [workouts]);
+  }, [workouts, tz]);
 
   const weekInfo = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(weekStart);

@@ -11,13 +11,16 @@ if all three were module-level imports.
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
+from app.services import profile as profile_service
 from app.services import workout_templates
 from app.services.errors import NotFoundError
+from app.services.timezones import today_in
 
 
 @dataclass
@@ -228,12 +231,15 @@ async def get_planned_workouts(
     return out
 
 
-async def get_today_planned(session: AsyncSession, user_sub: str) -> PlannedWorkoutOut | None:
+async def get_today_planned(
+    session: AsyncSession, user_sub: str, *, tz: ZoneInfo | None = None
+) -> PlannedWorkoutOut | None:
     """Today's planned entry, only if it's still unstarted (status "planned") — lets
     the in-workout view's "Start workout" offer starting from today's plan alongside
     starting from scratch. None once the day's plan is done, skipped, or there was
-    never one."""
-    today = date.today()
+    never one. "Today" is the caller's local date (stored profile zone by default)."""
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
+    today = today_in(tz)
     planned = await get_planned_workouts(session, user_sub, start=today, end=today)
     return next((p for p in planned if p.status == PlannedWorkoutStatus.planned), None)
 
