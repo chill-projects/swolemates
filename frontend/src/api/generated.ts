@@ -28,6 +28,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Drop the refresh cookie. Unauthenticated on purpose — a dead access token must
+         *     still be able to complete a sign-out.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/refresh": {
         parameters: {
             query?: never;
@@ -38,15 +59,36 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Auth Refresh
-         * @description Exchange a refresh token for a new access token, server-side.
+         * Refresh
+         * @description Rotate the refresh cookie and return a new access token.
          *
-         *     Unauthenticated by design — the caller doesn't have a live access token yet, that's
-         *     the point of calling this. Trust is carried by the refresh token itself, which
-         *     WorkOS validates; a rejected or unconfigured exchange comes back as a 401 so the SPA
-         *     treats it exactly like any other failed auth and falls back to sign-in.
+         *     - 401: no cookie, or WorkOS rejected the token → the client signs out.
+         *     - 502: WorkOS unreachable or erroring on its side → the client keeps the session
+         *       and retries later.
+         *     - 500: `client_secret` unconfigured → an ops problem; must *not* read as signed-out.
          */
         post: operations["authRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Session
+         * @description Seal a freshly-issued refresh token into the httpOnly cookie. `CurrentUser` ties
+         *     it to a verified access token so a session can't be planted in someone's browser.
+         */
+        post: operations["createSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -783,6 +825,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessTokenOut */
+        AccessTokenOut: {
+            /** Access Token */
+            access_token: string;
+        };
         /**
          * ActivityLevel
          * @enum {string}
@@ -1371,18 +1418,6 @@ export interface components {
             /** Code */
             code: string;
         };
-        /** RefreshIn */
-        RefreshIn: {
-            /** Refresh Token */
-            refresh_token: string;
-        };
-        /** RefreshOut */
-        RefreshOut: {
-            /** Access Token */
-            access_token: string;
-            /** Refresh Token */
-            refresh_token: string;
-        };
         /** SaveMealTemplateRequest */
         SaveMealTemplateRequest: {
             /** Default Meal Type */
@@ -1393,6 +1428,11 @@ export interface components {
             name: string;
             /** Template Id */
             template_id?: string | null;
+        };
+        /** SessionIn */
+        SessionIn: {
+            /** Refresh Token */
+            refresh_token: string;
         };
         /** SetGoalsRequest */
         SetGoalsRequest: {
@@ -1775,7 +1815,45 @@ export interface operations {
             };
         };
     };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     authRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenOut"];
+                };
+            };
+        };
+    };
+    createSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -1784,18 +1862,16 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RefreshIn"];
+                "application/json": components["schemas"]["SessionIn"];
             };
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["RefreshOut"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

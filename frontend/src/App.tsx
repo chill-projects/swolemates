@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRedeemInvite } from "./api/partner";
 import { useProfile } from "./api/profile";
 import { SignIn } from "./auth/SignIn";
-import { bootstrapSession, completeLogin, fetchAuthConfig, login, useWhoami } from "./auth/authkit";
+import {
+  bootstrapSession,
+  completeLogin,
+  fetchAuthConfig,
+  login,
+  useWhoami,
+  WhoamiError,
+} from "./auth/authkit";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
 import { McpConnectInfo } from "./components/McpConnectInfo";
 import { NavBar } from "./components/NavBar";
@@ -68,8 +75,11 @@ export function App() {
       if (result === "failed") {
         setLoginError("Sign-in didn’t complete. Details are in the browser console.");
       }
+      // reset, not invalidate: whoami already ran (and 401'd) on the bare /callback
+      // mount before there was a token. Resetting puts it back to `pending` so the
+      // shell shows "Signing in…" through the refetch instead of flashing SignIn.
+      void queryClient.resetQueries({ queryKey: ["whoami"] });
       setReturningFromLogin(false);
-      queryClient.invalidateQueries({ queryKey: ["whoami"] });
 
       // A code stashed by InvitePreviewPage before this login started (#5, Partner
       // v1) — completeLogin() always resets the URL to "/" on success, so this is
@@ -99,6 +109,15 @@ export function App() {
   const onInviteRoute = window.location.pathname.startsWith("/invite/");
   const busy = config.isPending || !sessionReady || whoami.isPending || returningFromLogin;
 
+  // Three states, not two. Collapsing "still checking" and "reach-the-server failed"
+  // into "not authenticated" is what made a transient whoami blip look like being
+  // logged out — only a genuine 401 (WhoamiError "anonymous") is signed-out.
+  const authState: "unknown" | "authenticated" | "anonymous" = whoami.data
+    ? "authenticated"
+    : whoami.error instanceof WhoamiError && whoami.error.kind === "anonymous"
+      ? "anonymous"
+      : "unknown";
+
   return (
     <main>
       <IOSInstallBanner />
@@ -116,12 +135,25 @@ export function App() {
       ) : (
         <>
           {busy && <p className="muted">Signing in…</p>}
-          {!busy && config.isError && (
-            <p className="error">Couldn’t reach the server. Is the backend running?</p>
+          {!busy && (config.isError || authState === "unknown") && (
+            <p className="error">
+              Couldn’t reach the server.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void config.refetch();
+                  void whoami.refetch();
+                }}
+              >
+                Retry
+              </button>
+            </p>
           )}
-          {!busy && loginError && !whoami.data && <p className="error">{loginError}</p>}
-          {!busy && config.data && !whoami.data && <SignIn config={config.data} />}
-          {!busy && whoami.data && <AuthenticatedApp />}
+          {!busy && loginError && authState !== "authenticated" && (
+            <p className="error">{loginError}</p>
+          )}
+          {!busy && config.data && authState === "anonymous" && <SignIn config={config.data} />}
+          {!busy && authState === "authenticated" && <AuthenticatedApp />}
         </>
       )}
     </main>
