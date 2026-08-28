@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useInvitePreview, useRedeemInvite } from "../api/partner";
 import { type AuthConfig, login, useWhoami } from "../auth/authkit";
+import { navigate } from "../lib/routing";
 
 const PENDING_INVITE_KEY = "swolemates.pending_invite_code";
 const REDEEM_ERROR_KEY = "swolemates.invite_redeem_error";
@@ -65,7 +66,7 @@ export function InvitePreviewPage({ code, config }: { code: string; config: Auth
           type="button"
           disabled={redeem.isPending}
           onClick={() => {
-            redeem.mutate(code, { onSuccess: () => window.location.assign("/partner") });
+            redeem.mutate(code, { onSuccess: () => navigate("/partner") });
           }}
         >
           {redeem.isPending ? "Linking…" : "Accept invite"}

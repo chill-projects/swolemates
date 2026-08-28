@@ -15,7 +15,7 @@ export function SignIn({ config }: { config: AuthConfig }) {
   if (!config.configured) {
     return (
       <div className="signin-screen">
-        <section className="dash-card signin-card">
+        <section className="card signin-card">
           <h2>Sign-in isn’t set up yet</h2>
           <p className="muted">
             This deployment is running with <code>ENVIRONMENT={config.environment}</code> and
@@ -34,7 +34,7 @@ export function SignIn({ config }: { config: AuthConfig }) {
 
   return (
     <div className="signin-screen">
-      <section className="dash-card signin-card">
+      <section className="card signin-card">
         <h2>Sign in</h2>
         <p className="muted">You’ll be sent to WorkOS and returned here.</p>
         {error && <p className="error">{error}</p>}

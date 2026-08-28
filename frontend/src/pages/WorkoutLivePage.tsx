@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
+import { PageHero } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
 import { todayIsoInTz, useUserTimezone } from "../lib/datetime";
@@ -86,8 +87,28 @@ const emptyPayload: ToolResultPayload = {
   structuredContent: { active: false, summary: "No active workout." },
 };
 
+/** The subset of the live payload the hero band reads. Same object the component
+ *  inside the iframe is rendering — see AppRenderer's `onResult`. */
+type LiveState = {
+  active: boolean;
+  summary: string;
+  groups?: { exercises: { exercise_name: string; sets: unknown[] }[] }[];
+};
+
+function isLiveState(value: unknown): value is LiveState {
+  return typeof value === "object" && value !== null && "active" in value && "summary" in value;
+}
+
+type PlanState = { planned: { template_name: string } | null };
+
+function isPlanState(value: unknown): value is PlanState {
+  return typeof value === "object" && value !== null && "planned" in value;
+}
+
 export function WorkoutLivePage() {
   const tz = useUserTimezone();
+  const [live, setLive] = useState<LiveState | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       if (name === "list_workout_exercises") {
@@ -158,8 +179,29 @@ export function WorkoutLivePage() {
           });
           if (error || !data) throw new Error("planned fetch failed");
           const entry = data.find((p) => p.status === "planned");
+          // exercise_names comes along so the idle screen can show what the plan
+          // actually is, rather than just its name.
           const payload = {
-            planned: entry ? { id: entry.id, template_name: entry.template_name } : null,
+            planned: entry
+              ? {
+                  id: entry.id,
+                  template_name: entry.template_name,
+                  exercise_names: entry.exercise_names,
+                }
+              : null,
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
+        }
+        case "list_templates_catalog": {
+          const { data, error } = await api.GET("/api/templates");
+          if (error || !data) throw new Error("templates fetch failed");
+          const payload = {
+            templates: data.map((t) => ({
+              id: t.id,
+              name: t.name,
+              exercise_count: t.exercises.length,
+              set_count: t.exercises.reduce((n, e) => n + (e.sets ?? 0), 0),
+            })),
           };
           return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
         }
@@ -232,16 +274,53 @@ export function WorkoutLivePage() {
     [tz],
   );
 
+  const exercises = live?.groups?.flatMap((g) => g.exercises) ?? [];
+  const sets = exercises.reduce((n, e) => n + e.sets.length, 0);
+  // The one you're on is the last one you've actually logged against — not the last
+  // in the list, which for a template-started workout is the whole plan sitting
+  // there empty. Falls back to the first exercise before any set exists.
+  const current =
+    exercises.filter((e) => e.sets.length > 0).at(-1)?.exercise_name ??
+    exercises[0]?.exercise_name;
+
   return (
-    <section>
-      <h2>Workout</h2>
-      <AppRenderer
-        bundleUrl="/mcp-apps/workout-live.html"
-        initialTool="get_active_workout"
-        onCallTool={handleTool}
-        eventsUrl="/api/workouts/events"
+    <>
+      <PageHero
+        eyebrow={
+          live?.active
+            ? `In progress · ${sets} ${sets === 1 ? "set" : "sets"} logged`
+            : "Nothing running"
+        }
+        title={
+          live?.active && current
+            ? `Mid-session on ${current.toLowerCase()}.`
+            : plan
+              ? `${plan} is on the plan for today.`
+              : "Nothing on the plan for today."
+        }
+        // No lead while a workout is running: the eyebrow already carries the set
+        // count, and the component below prints its own summary line.
+        lead={
+          live?.active
+            ? undefined
+            : "Start from the plan, pick a template, or log an activity instead."
+        }
       />
-      <WorkoutHistoryFeed />
-    </section>
+      <div className="page-body">
+        <AppRenderer
+          bundleUrl="/mcp-apps/workout-live.html"
+          initialTool="get_active_workout"
+          onCallTool={handleTool}
+          // Every tool result comes through here; keep whichever shape each one is.
+          onResult={(result) => {
+            const payload = result.structuredContent;
+            if (isLiveState(payload)) setLive(payload);
+            else if (isPlanState(payload)) setPlan(payload.planned?.template_name ?? null);
+          }}
+          eventsUrl="/api/workouts/events"
+        />
+        <WorkoutHistoryFeed />
+      </div>
+    </>
   );
 }

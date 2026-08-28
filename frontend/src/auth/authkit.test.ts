@@ -85,6 +85,20 @@ describe("refreshSession", () => {
     expect(getToken()).toBeNull();
   });
 
+  it("drops the persisted identity cache when the session is rejected", async () => {
+    // Otherwise the cached profile outlives the token and the next load paints the
+    // old account for a beat before whoami corrects it.
+    const { refreshSession } = await loadAuthkit();
+    sessionStorage.setItem("swolemates.access_token", fakeToken(-1));
+    sessionStorage.setItem("swolemates.identity_cache", JSON.stringify([{ key: ["profile"] }]));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { detail: "Session expired", code: "session_expired" }),
+    );
+
+    expect(await refreshSession()).toBe("rejected");
+    expect(sessionStorage.getItem("swolemates.identity_cache")).toBeNull();
+  });
+
   it("keeps local state on a 401 the server coded 'no_session'", async () => {
     // No cookie was sent, so nothing was rejected — reporting signed-out is right, but
     // tearing down a token that was never refused is not.

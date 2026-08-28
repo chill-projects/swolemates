@@ -21,6 +21,8 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
+import { clearPersistedCache } from "../api/queryPersistence";
+import { navigate } from "../lib/routing";
 
 export interface AuthConfig {
   configured: boolean;
@@ -137,6 +139,9 @@ function storeAccessToken(accessToken: string): void {
 function clearLocalAuth(): void {
   sessionStorage.removeItem(TOKEN_KEY);
   clearRefreshTimer();
+  // The cached profile/whoami outlive the token otherwise, and the next load would
+  // paint the old account for a beat before whoami corrected it.
+  clearPersistedCache();
 }
 
 /** Full sign-out: also tells the backend to drop the refresh cookie. */
@@ -289,7 +294,7 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
   const oauthError = params.get("error");
   if (oauthError) {
     console.error("AuthKit returned an error:", oauthError, params.get("error_description"));
-    window.history.replaceState({}, "", "/");
+    navigate("/", { replace: true });
     return "failed";
   }
 
@@ -314,7 +319,7 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
   });
   if (!res.ok) {
     console.error("Token exchange failed:", res.status, await res.text().catch(() => ""));
-    window.history.replaceState({}, "", "/");
+    navigate("/", { replace: true });
     return "failed";
   }
 
@@ -345,7 +350,7 @@ export async function completeLogin(config: AuthConfig): Promise<CallbackResult>
   }
 
   // Drop ?code= from the URL so a refresh doesn't retry a spent authorization code.
-  window.history.replaceState({}, "", "/");
+  navigate("/", { replace: true });
   return "ok";
 }
 

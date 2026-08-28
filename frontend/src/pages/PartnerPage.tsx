@@ -18,8 +18,10 @@ export function PartnerPage() {
   const [redeemError] = useState(() => takeInviteRedeemError());
   const unlinked = summary.data !== undefined && !summary.data;
 
+  // App.tsx already supplies the .page-body padding around this route; .page-grid
+  // only adds the stacking gap between the cards below.
   return (
-    <div className="dash-stack">
+    <div className="page-grid">
       <h2>
         Partner {unlinked && <PartnerInviteInfo />}
       </h2>
@@ -34,7 +36,7 @@ export function PartnerPage() {
 
 function InviteView() {
   return (
-    <div className="dash-card">
+    <div className="card">
       <p className="muted">No partner added yet — tap the info icon above to invite one.</p>
     </div>
   );
@@ -44,12 +46,12 @@ function LinkedPartnerView({ summary }: { summary: PartnerSummary }) {
   const tz = useUserTimezone();
   return (
     <>
-      <div className="dash-card">
-        <div className="dash-card-header">
-          <span className="dash-card-title">{summary.partner_display_name ?? "Your partner"}</span>
-          <span className="dash-badge dash-badge--plum">{summary.streak.weeks}-week streak</span>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">{summary.partner_display_name ?? "Your partner"}</span>
+          <span className="badge badge--plum">{summary.streak.weeks}-week streak</span>
         </div>
-        <p className="dash-week-detail">
+        <p className="card-note">
           <strong>
             {summary.streak.this_week} of {summary.streak.target}
           </strong>{" "}
@@ -57,9 +59,9 @@ function LinkedPartnerView({ summary }: { summary: PartnerSummary }) {
         </p>
       </div>
 
-      <div className="dash-card">
-        <div className="dash-card-header">
-          <span className="dash-card-title">Frequency</span>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Frequency</span>
         </div>
         <div className="partner-stat-row">
           <div className="partner-stat">
@@ -82,17 +84,17 @@ function LinkedPartnerView({ summary }: { summary: PartnerSummary }) {
         </p>
       </div>
 
-      <div className="dash-card">
-        <div className="dash-card-header">
-          <span className="dash-card-title">Nutrition</span>
-          <span className="dash-badge dash-badge--teal">{summary.nutrition_streak}-day streak</span>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Nutrition</span>
+          <span className="badge badge--teal">{summary.nutrition_streak}-day streak</span>
         </div>
       </div>
 
       {summary.personal_records.length > 0 && (
-        <div className="dash-card">
-          <div className="dash-card-header">
-            <span className="dash-card-title">Personal records</span>
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Personal records</span>
           </div>
           <ul>
             {summary.personal_records.map((pr, i) => (

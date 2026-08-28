@@ -130,7 +130,12 @@ const muscleMapEl = $<HTMLDivElement>("muscle-map");
 const emptyEl = $<HTMLDivElement>("empty");
 const todayPlanBtn = $<HTMLButtonElement>("today-plan-btn");
 const startBtn = $<HTMLButtonElement>("start-btn");
-const logActivityBtn = $<HTMLButtonElement>("log-activity-btn");
+const todayPlanSectionEl = $<HTMLElement>("today-plan-section");
+const todayPlanTitleEl = $<HTMLHeadingElement>("today-plan-title");
+const todayPlanMetaEl = $<HTMLSpanElement>("today-plan-meta");
+const todayPlanListEl = $<HTMLUListElement>("today-plan-list");
+const templateListEl = $<HTMLUListElement>("template-list");
+const templatesMetaEl = $<HTMLSpanElement>("templates-meta");
 const activityFormEl = $<HTMLDivElement>("activity-form");
 const activityTypeChipsEl = $<HTMLDivElement>("activity-type-chips");
 const activityTypeOtherEl = $<HTMLInputElement>("activity-type-other");
@@ -176,7 +181,9 @@ let selectedEquipment: string | null = null;
 let selectedActivityType: string | null = null;
 // Today's still-unstarted planned workout, if any — lets the empty state offer
 // "start today's plan" alongside "start from scratch" instead of only the latter.
-let todayPlanned: { id: string; template_name: string } | null = null;
+let todayPlanned: { id: string; template_name: string; exercise_names?: string[] } | null = null;
+type TemplateSummary = { id: string; name: string; exercise_count: number; set_count: number };
+let templateCatalog: TemplateSummary[] = [];
 
 const app = new App({ name: "Swolemates Workouts", version: "1.0.0" });
 
@@ -249,10 +256,14 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
   wrap.appendChild(header);
 
   if (e.target) {
-    const target = document.createElement("div");
-    target.className = "muted last-time";
-    target.textContent = `Target: ${formatTarget(e.target)}`;
-    wrap.appendChild(target);
+    // The prescription reads as a chip beside the name, the way the mockup puts
+    // "4 × 6 · 82.5" against the exercise you're on.
+    const target = document.createElement("span");
+    target.className = "target-chip";
+    target.textContent = formatTarget(e.target);
+    // After the name, not at the end — the header's trailing slots belong to the
+    // remove and superset buttons.
+    name.insertAdjacentElement("afterend", target);
   }
 
   if (e.last_time) {
@@ -313,6 +324,7 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
 
     const logBtn = document.createElement("button");
     logBtn.type = "button";
+    logBtn.className = "btn-primary";
     logBtn.textContent = "Log set";
     logBtn.onclick = () => {
       if (!weightInput || !mainInput || !warmupInput) return;
@@ -368,8 +380,11 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
         s.set_type === "time"
           ? `${s.work_seconds}s`
           : `${s.weight ?? "—"}lbs × ${s.reps}`;
+      // Warmups get the dashed, dimmed pill; working sets the filled teal one —
+      // the two set states the mockup distinguishes at a glance.
+      if (s.is_warmup) li.className = "is-warmup";
       const label = document.createElement("span");
-      label.textContent = s.is_warmup ? `${base} (warmup)` : base;
+      label.textContent = s.is_warmup ? `${base} · warmup` : base;
       li.appendChild(label);
 
       if (!finished && i === mostRecentIndex && weightInput && mainInput && warmupInput) {
@@ -503,11 +518,16 @@ function renderCelebrations(celebrations: Celebration[] | undefined): void {
     ...celebrations.map((c) => {
       const div = document.createElement("div");
       div.className = "celebration";
+      const tag = document.createElement("span");
+      tag.className = "celebration-tag";
+      tag.textContent = "PR";
       const label = c.kind === "e1rm" ? "e1RM" : "weight";
-      div.textContent =
+      const text = document.createElement("span");
+      text.textContent =
         c.previous != null
-          ? `New PR: ${c.exercise_name} ${label} ${c.value}lbs — up from ${c.previous}`
-          : `New PR: ${c.exercise_name} ${label} ${c.value}lbs`;
+          ? `${c.exercise_name} ${label} ${c.value}lbs — up from ${c.previous}`
+          : `${c.exercise_name} ${label} ${c.value}lbs`;
+      div.append(tag, text);
       return div;
     }),
   );
@@ -548,7 +568,9 @@ function render(payload: LivePayload): void {
     emptyEl.hidden = false;
     workoutEl.hidden = true;
     updateStartButtons();
+    renderTemplateList();
     void loadTodaysPlan();
+    void loadTemplates();
     return;
   }
   emptyEl.hidden = true;
@@ -573,20 +595,77 @@ function render(payload: LivePayload): void {
   groupsEl.replaceChildren(...groups.map((g) => renderGroup(g, finished)));
 }
 
-/** Reflects `todayPlanned` onto the empty-state buttons: a second "start today's
- *  plan" button appears (and "Start workout" relabels to "Start from scratch")
- *  only when today has an unstarted planned entry. */
+/** Reflects `todayPlanned` onto the idle screen: the plan card only exists when
+ *  today has an unstarted planned entry, and whichever button is the obvious next
+ *  move carries the coral fill while the other steps back. */
 function updateStartButtons(): void {
   if (todayPlanned) {
     const planned = todayPlanned;
-    todayPlanBtn.hidden = false;
-    todayPlanBtn.textContent = `Start today's plan: ${planned.template_name}`;
+    todayPlanSectionEl.hidden = false;
+    todayPlanTitleEl.textContent = `Today's plan · ${planned.template_name}`;
+    const names = planned.exercise_names ?? [];
+    todayPlanMetaEl.textContent = names.length
+      ? `${names.length} exercise${names.length === 1 ? "" : "s"}`
+      : "";
+    todayPlanListEl.replaceChildren(
+      ...names.map((name) => {
+        const li = document.createElement("li");
+        const main = document.createElement("div");
+        main.className = "row-main";
+        const label = document.createElement("div");
+        label.className = "row-name";
+        label.textContent = name;
+        main.appendChild(label);
+        li.appendChild(main);
+        return li;
+      }),
+    );
+    todayPlanBtn.textContent = `Start ${planned.template_name}`;
     todayPlanBtn.onclick = () => void callAndRender("start_workout", { planned_id: planned.id });
-    startBtn.textContent = "Start from scratch";
+    startBtn.textContent = "Start empty workout";
+    startBtn.className = "";
   } else {
-    todayPlanBtn.hidden = true;
-    startBtn.textContent = "Start workout";
+    todayPlanSectionEl.hidden = true;
+    startBtn.textContent = "Start empty workout";
+    startBtn.className = "btn-primary";
   }
+}
+
+/** "Start something else" — every saved template with a one-tap start. */
+function renderTemplateList(): void {
+  templatesMetaEl.textContent = templateCatalog.length
+    ? `${templateCatalog.length} template${templateCatalog.length === 1 ? "" : "s"}`
+    : "";
+  templateListEl.replaceChildren(
+    ...(templateCatalog.length
+      ? templateCatalog.map((t) => {
+          const li = document.createElement("li");
+          const main = document.createElement("div");
+          main.className = "row-main";
+          const name = document.createElement("div");
+          name.className = "row-name";
+          name.textContent = t.name;
+          const detail = document.createElement("div");
+          detail.className = "row-detail";
+          detail.textContent = `${t.exercise_count} exercise${t.exercise_count === 1 ? "" : "s"}${
+            t.set_count ? ` · ${t.set_count} sets` : ""
+          }`;
+          main.append(name, detail);
+          const start = document.createElement("button");
+          start.type = "button";
+          start.className = "btn-outline";
+          start.textContent = "Start";
+          start.onclick = () => void callAndRender("start_workout", { template_id: t.id });
+          li.append(main, start);
+          return li;
+        })
+      : [
+          Object.assign(document.createElement("li"), {
+            className: "muted",
+            textContent: "No templates saved yet.",
+          }),
+        ]),
+  );
 }
 
 async function loadTodaysPlan(): Promise<void> {
@@ -600,6 +679,19 @@ async function loadTodaysPlan(): Promise<void> {
     todayPlanned = null;
   }
   updateStartButtons();
+}
+
+/** The saved templates behind "Start something else". Failure is quiet — the idle
+ *  screen still works without it, you just don't get the shortcuts. */
+async function loadTemplates(): Promise<void> {
+  try {
+    const result = await app.callServerTool({ name: "list_templates_catalog", arguments: {} });
+    const structured = result.structuredContent as { templates?: TemplateSummary[] } | undefined;
+    templateCatalog = structured?.templates ?? [];
+  } catch {
+    templateCatalog = [];
+  }
+  renderTemplateList();
 }
 
 async function loadCatalog(): Promise<void> {
@@ -776,7 +868,11 @@ function buildActivityTypeChips(): void {
     btn.textContent = type;
     btn.onclick = () => {
       selectedActivityType = selectedActivityType === type ? null : type;
+      // The chips are the entry point now — picking one reveals the minutes/notes
+      // fields, deselecting puts them away again.
+      activityFormEl.hidden = selectedActivityType === null;
       refreshActivityChips();
+      if (selectedActivityType !== null) activityDurationEl.focus();
     };
     return btn;
   });
@@ -792,21 +888,12 @@ function resetActivityForm(): void {
   refreshActivityChips();
 }
 
-function openActivityForm(): void {
-  resetActivityForm();
-  activityFormEl.hidden = false;
-}
-
 function closeActivityForm(): void {
   activityFormEl.hidden = true;
   resetActivityForm();
 }
 
 startBtn.onclick = () => void callAndRender("start_workout", {});
-logActivityBtn.onclick = () => {
-  if (activityFormEl.hidden) openActivityForm();
-  else closeActivityForm();
-};
 activityCancelBtn.onclick = () => closeActivityForm();
 activityLogBtn.onclick = () => {
   const activityType =

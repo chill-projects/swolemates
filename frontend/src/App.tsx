@@ -8,12 +8,15 @@ import {
   bootstrapSession,
   completeLogin,
   fetchAuthConfig,
+  getToken,
+  isTokenFresh,
   login,
   useWhoami,
   WhoamiError,
 } from "./auth/authkit";
+import { isShellBusy, resolveAuthState } from "./auth/sessionState";
 import { IOSInstallBanner } from "./components/IOSInstallBanner";
-import { McpConnectInfo } from "./components/McpConnectInfo";
+import { navigate, usePathname } from "./lib/routing";
 import { NavBar } from "./components/NavBar";
 import { DashboardPage } from "./pages/DashboardPage";
 import {
@@ -24,19 +27,19 @@ import {
 } from "./pages/InvitePreviewPage";
 import { NutritionPage } from "./pages/NutritionPage";
 import { PartnerPage } from "./pages/PartnerPage";
-import { PlannedPage } from "./pages/PlannedPage";
+import { PlanPage } from "./pages/PlanPage";
 import { ProfileForm } from "./pages/ProfileForm";
-import { TemplatesPage } from "./pages/TemplatesPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { WorkoutLivePage } from "./pages/WorkoutLivePage";
 
 /**
- * A real router lands once more than one feature needs a route. For now it gates the
- * single authenticated screen behind auth + onboarding.
+ * Routing is still a pathname switch, but a reactive one (see lib/routing) — the shell
+ * stays mounted across a tab change, so `config`/`whoami` and the query cache survive
+ * it and there's no cold-boot gap to paper over.
  */
 export function App() {
-  const [returningFromLogin, setReturningFromLogin] = useState(
-    () => window.location.pathname === "/callback",
-  );
+  const pathname = usePathname();
+  const [returningFromLogin, setReturningFromLogin] = useState(pathname === "/callback");
   const [loginError, setLoginError] = useState<string | null>(null);
   // The callback exchange must run exactly once — effect re-runs (query state changes
   // re-render constantly) and a spent OAuth code would make retries fail anyway.
@@ -45,7 +48,7 @@ export function App() {
   // visitor with no live access token doesn't get bounced to sign-in for a tab-lifetime
   // reason that no longer applies. Skipped on /callback — completeLogin() below handles
   // that session directly.
-  const [sessionReady, setSessionReady] = useState(() => window.location.pathname === "/callback");
+  const [sessionReady, setSessionReady] = useState(pathname === "/callback");
 
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["authConfig"], queryFn: fetchAuthConfig, retry: false });
@@ -93,7 +96,7 @@ export function App() {
           clearPendingInviteCode();
           redeemInvite.mutate(pendingCode, {
             onError: (err) => setInviteRedeemError(err.message),
-            onSettled: () => window.location.assign("/partner"),
+            onSettled: () => navigate("/partner"),
           });
         }
       }
@@ -106,58 +109,85 @@ export function App() {
     });
   }, [returningFromLogin, config.data, queryClient]);
 
-  const onInviteRoute = window.location.pathname.startsWith("/invite/");
-  const busy = config.isPending || !sessionReady || whoami.isPending || returningFromLogin;
+  const onInviteRoute = pathname.startsWith("/invite/");
 
-  // Three states, not two. Collapsing "still checking" and "reach-the-server failed"
-  // into "not authenticated" is what made a transient whoami blip look like being
-  // logged out — only a genuine 401 (WhoamiError "anonymous") is signed-out.
-  const authState: "unknown" | "authenticated" | "anonymous" = whoami.data
-    ? "authenticated"
-    : whoami.error instanceof WhoamiError && whoami.error.kind === "anonymous"
-      ? "anonymous"
-      : "unknown";
+  // Read the token live rather than latching it at mount, so it lapses with the token
+  // instead of outliving it. See auth/sessionState for why it counts at all.
+  const authState = resolveAuthState({
+    hasWhoami: Boolean(whoami.data),
+    whoamiSaysAnonymous: whoami.error instanceof WhoamiError && whoami.error.kind === "anonymous",
+    tokenLooksLive: isTokenFresh(getToken()),
+  });
+  const busy = isShellBusy({
+    authState,
+    returningFromLogin,
+    checksPending: config.isPending || !sessionReady || whoami.isPending,
+  });
 
   return (
-    <main>
+    <>
       <IOSInstallBanner />
-      <header>
-        <h1>
-          <a href="/">Swolemates</a>
-        </h1>
+      <header className="app-bar">
+        <div className="app-bar-inner">
+          <a className="app-brand" href="/">
+            Swolemates
+          </a>
+          {/* The nav only exists once there's an onboarded account behind it — the
+              top bar carries just the wordmark until then. */}
+          {authState === "authenticated" && <OnboardedNav />}
+        </div>
       </header>
 
-      {onInviteRoute ? (
-        <InvitePreviewPage
-          code={window.location.pathname.slice("/invite/".length).split("/")[0] ?? ""}
-          config={config.data ?? null}
-        />
-      ) : (
-        <>
-          {busy && <p className="muted">Signing in…</p>}
-          {!busy && (config.isError || authState === "unknown") && (
-            <p className="error">
-              Couldn’t reach the server.{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  void config.refetch();
-                  void whoami.refetch();
-                }}
-              >
-                Retry
-              </button>
-            </p>
-          )}
-          {!busy && loginError && authState !== "authenticated" && (
-            <p className="error">{loginError}</p>
-          )}
-          {!busy && config.data && authState === "anonymous" && <SignIn config={config.data} />}
-          {!busy && authState === "authenticated" && <AuthenticatedApp />}
-        </>
-      )}
-    </main>
+      <main className="app-main">
+        {/* Pages own their own padding, so that a full-bleed hero band can run
+            edge to edge across the content column. Everything else gets wrapped. */}
+        {!onInviteRoute && !busy && authState === "authenticated" ? (
+          <AuthenticatedApp />
+        ) : (
+          <div className="page-body">
+            {onInviteRoute ? (
+              <InvitePreviewPage
+                code={pathname.slice("/invite/".length).split("/")[0] ?? ""}
+                config={config.data ?? null}
+              />
+            ) : (
+              <>
+                {busy && <p className="muted">Signing in…</p>}
+                {!busy && (config.isError || authState === "unknown") && (
+                  <p className="error">
+                    Couldn’t reach the server.{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void config.refetch();
+                        void whoami.refetch();
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </p>
+                )}
+                {!busy && loginError && authState !== "authenticated" && (
+                  <p className="error">{loginError}</p>
+                )}
+                {!busy && config.data && authState === "anonymous" && (
+                  <SignIn config={config.data} />
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </main>
+    </>
   );
+}
+
+/** The nav lives in the top bar, but whether to show it depends on onboarding —
+ *  which is `AuthenticatedApp`'s call, a level down. Both read the same cached
+ *  profile query, so asking here costs nothing extra. */
+function OnboardedNav() {
+  const profile = useProfile();
+  return profile.data?.onboarding_completed_at ? <NavBar /> : null;
 }
 
 /**
@@ -167,53 +197,56 @@ export function App() {
  */
 function AuthenticatedApp() {
   const profile = useProfile();
-  const onSettingsRoute = window.location.pathname === "/profile";
-  const onWorkoutsLiveRoute = window.location.pathname === "/workouts/live";
-  const onTemplatesRoute = window.location.pathname === "/templates";
-  const onPlannedRoute = window.location.pathname === "/planned";
-  const onPartnerRoute = window.location.pathname === "/partner";
-  const onNutritionRoute = window.location.pathname === "/nutrition";
+  const pathname = usePathname();
+  const onSettingsRoute = pathname === "/profile";
+  const onWorkoutsLiveRoute = pathname === "/workouts/live";
+  // /templates and /planned were separate tabs before they merged into Plan; both
+  // still resolve here so existing links and bookmarks keep working.
+  const onPlanRoute = ["/plan", "/templates", "/planned"].includes(pathname);
+  const onPartnerRoute = pathname === "/partner";
+  const onNutritionRoute = pathname === "/nutrition";
 
-  if (profile.isPending) return <p className="muted">Loading your profile…</p>;
-  if (profile.isError) return <p className="error">Couldn’t load your profile.</p>;
+  if (profile.isPending) {
+    return (
+      <div className="page-body">
+        <p className="muted">Loading your profile…</p>
+      </div>
+    );
+  }
+  if (profile.isError) {
+    return (
+      <div className="page-body">
+        <p className="error">Couldn’t load your profile.</p>
+      </div>
+    );
+  }
 
   if (!profile.data.onboarding_completed_at) {
     return (
-      <>
+      <div className="page-body">
         <h2>Welcome to Swolemates</h2>
         <p className="muted">
           A couple of quick preferences, then you're in — nothing else to set up.
         </p>
         <ProfileForm profile={profile.data} completeOnboardingOnSave />
-      </>
+      </div>
     );
   }
 
-  return (
-    <>
-      <NavBar />
-      {onSettingsRoute ? (
-        <>
-          <h2>
-            Profile settings <McpConnectInfo />
-          </h2>
-          <ProfileForm profile={profile.data} />
-        </>
-      ) : onPartnerRoute ? (
+  // Nutrition, Workout and the dashboard open with a full-bleed hero band, so they
+  // lay themselves out. The rest are plain stacks inside .page-body's padding.
+  if (onWorkoutsLiveRoute) return <WorkoutLivePage />;
+  if (onNutritionRoute) return <NutritionPage />;
+  if (onPlanRoute) return <PlanPage />;
+  if (onSettingsRoute) return <ProfilePage profile={profile.data} />;
+  if (onPartnerRoute) {
+    return (
+      <div className="page-body">
         <PartnerPage />
-      ) : onWorkoutsLiveRoute ? (
-        <WorkoutLivePage />
-      ) : onTemplatesRoute ? (
-        <TemplatesPage />
-      ) : onPlannedRoute ? (
-        <PlannedPage />
-      ) : onNutritionRoute ? (
-        <NutritionPage />
-      ) : (
-        // Home ("/", and anything unrecognized) — the dashboard, per the user's
-        // request that "Swolemates" in the header link somewhere real.
-        <DashboardPage />
-      )}
-    </>
-  );
+      </div>
+    );
+  }
+  // Home ("/", and anything unrecognized) — the dashboard, per the user's
+  // request that "Swolemates" in the header link somewhere real.
+  return <DashboardPage />;
 }
