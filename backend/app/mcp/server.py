@@ -8,10 +8,10 @@ unauthenticated and app.auth.mcp_user_sub() falls back to DEV_USER_SUB.
 import logging
 
 from fastmcp import FastMCP
-from mcp.types import Icon
 
 from app.auth import mcp_user_sub
 from app.config import get_settings
+from app.mcp._icons import app_icons
 
 log = logging.getLogger(__name__)
 
@@ -39,34 +39,12 @@ def _auth_provider():
     )
 
 
-def _icons() -> list[Icon]:
-    """The mark Claude shows beside the connector, from `initialize`'s serverInfo.
-
-    Declaring nothing here is why the connector rendered Railway's logo: with no
-    serverInfo.icons a host falls back to whatever it can derive from the hostname,
-    which for *.up.railway.app is Railway.
-
-    These are the same PNGs the browser tab and the web manifest use, served from
-    PUBLIC_URL by the SPA static handler — one file per size, so the mark only ever
-    changes in one place. URLs rather than data: URIs deliberately: the transport is
-    stateless, so a client is free to re-`initialize` on every request, and inlining
-    ~14 kB of base64 into each of those responses is real weight for an image the
-    client will cache after one fetch.
-
-    Both paths are public — an icon is fetched before the OAuth handshake, so an
-    authenticated URL would render as a broken image.
-    """
-    origin = settings.public_url.rstrip("/")
-    return [
-        Icon(src=f"{origin}/icon-192.png", mimeType="image/png", sizes=["192x192"]),
-        Icon(src=f"{origin}/icon-512.png", mimeType="image/png", sizes=["512x512"]),
-    ]
-
-
+# icons/website_url ride along in `initialize`'s serverInfo — the mark and link Claude
+# shows for the connector itself. See app.mcp._icons for why they're URLs.
 mcp: FastMCP = FastMCP(
     name="Swolemates",
     website_url=settings.public_url.rstrip("/"),
-    icons=_icons(),
+    icons=app_icons(),
     auth=_auth_provider(),
 )
 

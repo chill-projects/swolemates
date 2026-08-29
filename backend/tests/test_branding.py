@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from app.config import get_settings
 from app.main import ROOT_ASSETS
+from app.mcp._icons import app_icons
 from app.mcp.server import mcp
 
 FRONTEND_PUBLIC = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "public"
@@ -50,3 +51,16 @@ def test_mcp_icon_paths_are_guarded_against_the_spa_catch_all() -> None:
     to be in it, or the guard doesn't cover the path Claude fetches."""
     for icon in mcp.icons:
         assert urlsplit(icon.src).path.lstrip("/") in ROOT_ASSETS, icon.src
+
+
+async def test_every_ui_component_carries_the_app_mark() -> None:
+    """The ui:// resources are the MCP Apps Claude renders as embedded components, and
+    each gets its own icon in the host's UI — the server's icons don't cover them. A
+    component registered without one falls back the same way the connector did."""
+    components = [r for r in await mcp.list_resources() if str(r.uri).startswith("ui://")]
+
+    assert components, "no ui:// components registered"
+    for resource in components:
+        assert [icon.src for icon in resource.icons or []] == [icon.src for icon in app_icons()], (
+            resource.uri
+        )
