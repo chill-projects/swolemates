@@ -130,6 +130,10 @@ export function App() {
       <header className="app-bar">
         <div className="app-bar-inner">
           <a className="app-brand" href="/">
+            {/* Decorative: the wordmark right beside it already names the app, so a
+                screen reader shouldn't read the logo out as well. Same file the PWA
+                and the browser tab use, so the mark only ever changes in one place. */}
+            <img className="app-brand-mark" src="/icon-192.png" alt="" width={28} height={28} />
             Swolemates
           </a>
           {/* The nav only exists once there's an onboarded account behind it — the

@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#111827" />
+    <!-- Tints the browser/OS chrome around the app, so it wants to match the app bar
+         (--card), not the page. Two of them because the app has a dark theme: a single
+         value would be wrong in one of them. Kept in sync with :root in index.css. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c2926" media="(prefers-color-scheme: dark)" />
     <!-- iOS never reads the web manifest for install/standalone behavior — these are
          the only way it picks up an app title and a standalone (no browser chrome)
          launch. Android/Chrome get the same info from the manifest itself. -->
