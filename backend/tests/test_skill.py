@@ -27,6 +27,17 @@ async def test_skill_body_names_the_look_first_tools() -> None:
     assert "search_food_facts" in text
 
 
+async def test_skill_body_covers_the_connector_papercuts() -> None:
+    """Guidance added for issues #31 (log_workout item key), #33 (substring search
+    retry strategy), and #32 (update_workout can't append sets)."""
+    result = await mcp.read_resource("skill://swolemates/SKILL.md")
+
+    text = result.contents[0].content
+    assert '`"exercise"`, not `"name"`' in text
+    assert "contiguous" in text
+    assert "cannot append" in text
+
+
 async def test_skill_manifest_lists_the_main_file() -> None:
     result = await mcp.read_resource("skill://swolemates/_manifest")
 

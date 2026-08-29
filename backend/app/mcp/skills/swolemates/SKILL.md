@@ -45,6 +45,24 @@ the catalog), and get macros from `search_food_facts` rather than estimating. Co
 only genuinely ambiguous amounts. Trust the tool results for units and timezone — the
 profile drives both.
 
+### Shapes and sharp edges
+
+- **`log_workout` items key the exercise as `"exercise"`, not `"name"`:**
+  `{"exercises": [{"exercise": "Barbell Back Squat", "sets": [{"weight": 225,
+  "reps": 5}]}]}`. Timed sets use `"set_type": "time"` with `"work_seconds"`;
+  warmups add `"is_warmup": true`.
+- **`search_exercises` matches one contiguous, case-insensitive substring of the
+  catalog name.** "incline bench" hits "Incline Bench Press"; "incline press" hits
+  nothing, because the words aren't adjacent in any catalog name. On no results,
+  retry with a shorter fragment or a single distinctive word ("incline", "row")
+  before concluding the exercise isn't in the catalog.
+- **`update_workout` edits or deletes existing sets — it cannot append one.** Asking
+  for a `set_number` beyond what was logged fails ("… has no set 3"). So get the
+  full set count into the original `log_workout` call: if the user's account of a
+  session is vague on sets, ask before logging, not after. If a set really was
+  missed, say plainly that chat can't append it yet rather than improvising a
+  workaround that double-logs.
+
 ## Planning ahead
 
 - `set_weekly_pattern` / `get_weekly_pattern` — their standing split ("Monday legs,
