@@ -47,7 +47,7 @@ async def whoami() -> str:
     return f"Authenticated as {mcp_user_sub()}."
 
 
-# Registers tools/prompts on the server above. Imported for the side effect.
+# Registers tools/prompts/skills on the server above. Imported for the side effect.
 from app.mcp import (  # noqa: E402,F401
     coach_prompt,
     food_facts_tools,
@@ -55,6 +55,7 @@ from app.mcp import (  # noqa: E402,F401
     planned_workouts_tools,
     profile_tools,
     progress_tools,
+    skill,
     tdee_tools,
     templates_tools,
     workouts_tools,
