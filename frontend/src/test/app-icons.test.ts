@@ -69,6 +69,13 @@ describe("the app icon", () => {
     }
   });
 
+  it("is what an unfurler draws for a pasted link", () => {
+    // A link with no og:image falls back to the favicon at best and to a
+    // hostname-derived mark at worst — the same failure, one surface over.
+    expect(indexHtml).toContain('property="og:image" content="/icon-512.png"');
+    expect(SHIPPED).toContain("icon-512.png");
+  });
+
   it("is the same mark the app bar renders", () => {
     // App.tsx points at icon-192.png so the mark in the header and the mark in the
     // tab can't diverge. If that ever moves to its own asset, this is the reminder

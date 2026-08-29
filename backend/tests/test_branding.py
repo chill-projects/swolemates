@@ -10,8 +10,11 @@ Nothing fails, so pin the sides together here.
 import pathlib
 from urllib.parse import urlsplit
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from app.config import get_settings
-from app.main import ROOT_ASSETS
+from app.main import ROOT_ASSETS, app
 from app.mcp._icons import app_icons
 from app.mcp.server import mcp
 
@@ -64,3 +67,16 @@ async def test_every_ui_component_carries_the_app_mark() -> None:
         assert [icon.src for icon in resource.icons or []] == [icon.src for icon in app_icons()], (
             resource.uri
         )
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc"])
+async def test_api_docs_wear_our_own_favicon(path: str) -> None:
+    """FastAPI's built-in /docs and /redoc hardcode fastapi.tiangolo.com's favicon, so
+    two pages on our own origin sat there flying another project's mark (and fetching
+    it cross-origin to do it). We re-serve both with ours."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        body = (await client.get(path)).text
+
+    assert 'href="/favicon.ico"' in body
+    assert "fastapi.tiangolo.com" not in body
