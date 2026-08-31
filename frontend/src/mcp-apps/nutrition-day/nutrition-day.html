@@ -163,9 +163,15 @@
       .chip--dinner { background: var(--coral-pale); color: var(--red); }
       .chip--snack { background: var(--plum-pale); color: var(--plum-ink); }
 
-      /* The same tag, but editable — each logged entry's own meal-type picker.
-         Shares the .chip--* color classes above (toggled by JS on selection) so
-         a tagged entry reads identically to the read-only chip elsewhere. */
+      /* The same tag, but editable — the meal-type picker on a logged entry and
+         on a saved meal. Untagged reads as the neutral chip; a tagged one takes
+         the same four colors as .chip--* above, so a picker and a plain chip are
+         indistinguishable at a glance.
+
+         The color rules below are doubled up (.meal-type-select.chip--x) rather
+         than leaning on the .chip--x rules above: those are single-class, same as
+         .meal-type-select itself, so at equal specificity the later rule — this
+         one — won, and every picker rendered neutral grey whatever was selected. */
       .meal-type-select {
         font-family: var(--font-mono);
         font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
@@ -173,6 +179,10 @@
         background-color: var(--line-soft); color: var(--ink-soft);
         cursor: pointer;
       }
+      .meal-type-select.chip--breakfast { background-color: var(--gold-pale); color: var(--amber-ink); }
+      .meal-type-select.chip--lunch { background-color: var(--teal-pale); color: var(--teal); }
+      .meal-type-select.chip--dinner { background-color: var(--coral-pale); color: var(--red); }
+      .meal-type-select.chip--snack { background-color: var(--plum-pale); color: var(--plum-ink); }
 
       .log-top { display: flex; align-items: center; gap: 0.5rem; }
       .log-name { font-weight: 600; }
