@@ -25,22 +25,27 @@ async def test_skill_body_names_the_look_first_tools() -> None:
     # Logging etiquette: canonical names and real macros, not guesses.
     assert "search_exercises" in text
     assert "search_food_facts" in text
+    # The detail lives in a supporting doc so reading the skill itself stays cheap
+    # (PR #35 review) — the body must point at it.
+    assert "references/tool-shapes.md" in text
 
 
-async def test_skill_body_covers_the_connector_papercuts() -> None:
-    """Guidance added for issues #31 (log_workout item key), #33 (substring search
-    retry strategy), and #32 (update_workout can't append sets)."""
-    result = await mcp.read_resource("skill://swolemates/SKILL.md")
+async def test_tool_shapes_reference_covers_the_connector_papercuts() -> None:
+    """The shapes doc exists for issues #31 (log_workout item key), #33 (substring
+    search retry strategy), and #32 (update_workout can't append sets). Reading it
+    also exercises SkillProvider's supporting-file template path."""
+    result = await mcp.read_resource("skill://swolemates/references/tool-shapes.md")
 
     text = result.contents[0].content
-    assert '`"exercise"`, not `"name"`' in text
+    assert '"exercise"`, not `"name"' in text
     assert "contiguous" in text
     assert "cannot append" in text
 
 
-async def test_skill_manifest_lists_the_main_file() -> None:
+async def test_skill_manifest_lists_all_files() -> None:
     result = await mcp.read_resource("skill://swolemates/_manifest")
 
     manifest = json.loads(result.contents[0].content)
     assert manifest["skill"] == "swolemates"
-    assert any(f["path"] == "SKILL.md" for f in manifest["files"])
+    paths = {f["path"] for f in manifest["files"]}
+    assert {"SKILL.md", "references/tool-shapes.md"} <= paths

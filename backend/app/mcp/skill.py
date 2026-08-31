@@ -1,12 +1,4 @@
-"""The `swolemates` skill — standing guidance for how a connected model helps users.
-
-Served over MCP via FastMCP's SkillProvider: the skill body at
-skill://swolemates/SKILL.md plus a skill://swolemates/_manifest file listing. Unlike the
-`coach` prompt (user-invoked, full coaching persona), the skill is discoverable by any
-host that reads skills up front and covers the whole surface: which tool fits which
-task, look-before-asking, logging etiquette, boundaries. Guidance only — permissions and
-behavior stay in the service layer.
-"""
+"""Serves skills/swolemates/ at skill://swolemates/* via FastMCP's SkillProvider."""
 
 from pathlib import Path
 
