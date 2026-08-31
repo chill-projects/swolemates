@@ -17,6 +17,7 @@
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
+import { MEAL_TYPES, populateMealTypeSelect, renderMealTypeEdit } from "./mealType";
 
 interface TrackableProgress {
   trackable_key: string;
@@ -112,6 +113,7 @@ const saveTemplateCountEl = $<HTMLSpanElement>("save-template-count");
 const logsEl = $<HTMLUListElement>("logs");
 const saveBarEl = $<HTMLDivElement>("save-template-bar");
 const templateNameInput = $<HTMLInputElement>("template-name");
+const saveTemplateMealTypeEl = $<HTMLSelectElement>("save-template-meal-type");
 const saveTemplateBtn = $<HTMLButtonElement>("save-template-btn");
 const foodSearchInput = $<HTMLInputElement>("food-search-input");
 const foodSearchBtn = $<HTMLButtonElement>("food-search-btn");
@@ -125,7 +127,10 @@ const selectedLogIds = new Set<string>();
 // means "All".
 let mealTypeFilter: string | null = null;
 let mealNameFilter = "";
-const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
+
+// Static (unlike the per-result/per-log selects, which are built fresh every
+// render), so it's populated once here rather than in render().
+populateMealTypeSelect(saveTemplateMealTypeEl, { includeUnset: true });
 
 // The last payload the host pushed, so a filter change can re-render from it
 // without asking the server for the day again.
@@ -201,18 +206,6 @@ function renderBar(progress: TrackableProgress): HTMLDivElement {
 
   row.append(top, track);
   return row;
-}
-
-/** The four meal types get their own chip color, matching the tags in the mockups.
- *  Anything else (or nothing) falls back to the neutral chip. */
-function mealChip(mealType: string | null): HTMLSpanElement | null {
-  if (!mealType) return null;
-  const chip = document.createElement("span");
-  const known = ["breakfast", "lunch", "dinner", "snack"];
-  const key = mealType.toLowerCase();
-  chip.className = known.includes(key) ? `chip chip--${key}` : "chip";
-  chip.textContent = mealType;
-  return chip;
 }
 
 function timeLabel(iso: string): string {
@@ -414,16 +407,22 @@ function renderTemplate(template: MealTemplateSummary): HTMLLIElement {
   };
   actions.append(logBtn, itemsBtn);
 
-  // Name and chip on the left, the calorie figure and the two actions hard right —
-  // the saved-meal row from the mockup.
+  // Name and meal-type picker on the left, the calorie figure and the two actions
+  // hard right — the saved-meal row from the mockup, with the chip now editable:
+  // this is what the meal-type filter chips above the list actually filter on.
   const top = document.createElement("div");
   top.className = "template-top";
-  const chip = mealChip(template.default_meal_type);
-  top.append(name);
-  if (chip) top.append(chip);
+  const mealTypeSelect = renderMealTypeEdit(
+    { label: template.name, mealType: template.default_meal_type, allowUnset: true },
+    (mealType) =>
+      void callAndRender("update_meal_template", {
+        template_id: template.id,
+        default_meal_type: mealType,
+      }),
+  );
   const spacer = document.createElement("span");
   spacer.className = "log-spacer";
-  top.append(spacer, total, actions);
+  top.append(name, mealTypeSelect, spacer, total, actions);
 
   body.append(top, macros, itemsList);
 
@@ -542,10 +541,12 @@ function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
 
   const header = document.createElement("div");
   header.className = "log-top log-name";
-  const chip = mealChip(log.meal_type);
-  header.append(toggle);
-  if (chip) header.append(chip);
-  header.append(time, spacer, kcal);
+  const mealTypeSelect = renderMealTypeEdit(
+    { label: log.name ?? "entry", mealType: log.meal_type, allowUnset: false },
+    (mealType) =>
+      void callAndRender("update_nutrition_log", { log_id: log.id, meal_type: mealType }),
+  );
+  header.append(toggle, mealTypeSelect, time, spacer, kcal);
 
   const values = document.createElement("div");
   values.className = "log-values";
@@ -661,10 +662,12 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
 
   const top = document.createElement("div");
   top.className = "log-top";
-  const chip = mealChip(log.meal_type);
-  top.append(checkbox, name);
-  if (chip) top.append(chip);
-  top.append(time, spacer, kcal);
+  const mealTypeSelect = renderMealTypeEdit(
+    { label: log.name ?? "entry", mealType: log.meal_type, allowUnset: false },
+    (mealType) =>
+      void callAndRender("update_nutrition_log", { log_id: log.id, meal_type: mealType }),
+  );
+  top.append(checkbox, name, mealTypeSelect, time, spacer, kcal);
 
   const body = document.createElement("div");
   body.append(top, values);
@@ -773,6 +776,11 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
   gramsUnit.className = "food-result-grams-unit";
   gramsUnit.textContent = "g";
 
+  const mealTypeSelect = document.createElement("select");
+  mealTypeSelect.className = "meal-type-select";
+  mealTypeSelect.setAttribute("aria-label", `Meal type for ${match.name}`);
+  populateMealTypeSelect(mealTypeSelect, { includeUnset: true });
+
   const updateMeta = () => {
     const grams = Number(gramsInput.value) || 0;
     meta.textContent = `${grams}g — ${macroSummary(match, grams)}`;
@@ -797,7 +805,11 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
     const entries = macros
       .filter(([, value]) => value != null)
       .map(([trackable_key, value]) => ({ trackable_key, value: (value as number) * scale }));
-    void callAndRender("log_nutrition", { entries, name: match.name }).then((ok) => {
+    void callAndRender("log_nutrition", {
+      entries,
+      name: match.name,
+      meal_type: mealTypeSelect.value || null,
+    }).then((ok) => {
       if (!ok) return;
       foodSearchResultsEl.replaceChildren();
       foodSearchInput.value = "";
@@ -806,7 +818,7 @@ function renderFoodResult(match: FoodMatch): HTMLLIElement {
 
   const actions = document.createElement("div");
   actions.className = "food-result-actions";
-  actions.append(gramsInput, gramsUnit, logBtn);
+  actions.append(gramsInput, gramsUnit, mealTypeSelect, logBtn);
 
   li.append(info, actions);
   return li;
@@ -843,13 +855,19 @@ saveTemplateBtn.onclick = () => {
   const name = templateNameInput.value.trim();
   if (!name || selectedLogIds.size === 0) return;
   const logIds = Array.from(selectedLogIds);
+  const defaultMealType = saveTemplateMealTypeEl.value || null;
   // Clear before the call, not in a .then() after it — callAndRender's own render()
   // runs as soon as the server responds and reads selectedLogIds to check each log's
   // checkbox, so clearing afterward was always one render too late: the items stayed
   // checked (and the save bar stayed visible) until something else re-rendered.
   selectedLogIds.clear();
   templateNameInput.value = "";
-  void callAndRender("save_meal_template", { name, log_ids: logIds });
+  saveTemplateMealTypeEl.value = "";
+  void callAndRender("save_meal_template", {
+    name,
+    log_ids: logIds,
+    default_meal_type: defaultMealType,
+  });
 };
 templateNameInput.onkeydown = (event) => {
   if (event.key === "Enter") saveTemplateBtn.click();

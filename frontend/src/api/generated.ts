@@ -251,7 +251,8 @@ export interface paths {
         delete: operations["deleteMealTemplate"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Meal Template */
+        patch: operations["updateMealTemplate"];
         trace?: never;
     };
     "/api/nutrition/templates/{template_id}/items/{item_id}": {
@@ -1676,6 +1677,18 @@ export interface components {
                 [key: string]: number | string;
             };
         };
+        /**
+         * UpdateMealTemplateRequest
+         * @description Metadata only — items are `UpdateMealTemplateItemRequest`'s job. Both
+         *     fields are optional patches: omit one to leave it alone, and pass
+         *     `default_meal_type=""` to clear the tag (see the service docstring).
+         */
+        UpdateMealTemplateRequest: {
+            /** Default Meal Type */
+            default_meal_type?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** UpdateNutritionLogRequest */
         UpdateNutritionLogRequest: {
             /** Meal Type */
@@ -2324,6 +2337,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateMealTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMealTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealTemplateSummaryOut"];
+                };
             };
             /** @description Validation Error */
             422: {

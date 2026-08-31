@@ -151,6 +151,48 @@ async def save_meal_template(
     return next(t for t in templates if t.id == template.id)
 
 
+async def update_meal_template(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    template_id: uuid.UUID,
+    name: str | None = None,
+    default_meal_type: str | None = None,
+) -> MealTemplateSummary:
+    """Edit a saved template's own metadata — its name and default meal type —
+    leaving its items alone. The counterpart to `update_meal_template_item`'s
+    per-item edit, and deliberately not `save_meal_template(template_id=...)`:
+    that path replaces every item from a fresh `log_ids` list, so retagging an
+    existing template through it would mean re-selecting the logs it was built
+    from, which for anything older than today aren't in the day's log list (and
+    may not exist) any more.
+
+    Only passed fields change, the same convention `update_nutrition_log` uses —
+    except that `default_meal_type=""` explicitly clears the tag. None is already
+    spoken for as "leave this alone", so without the empty-string case there'd be
+    no way to untag a template tagged by mistake.
+    """
+    result = await session.execute(
+        select(MealTemplate).where(MealTemplate.id == template_id, MealTemplate.user_id == user_sub)
+    )
+    template = result.scalar_one_or_none()
+    if template is None:
+        raise NotFoundError(f"No meal template {template_id}")
+
+    if name is not None:
+        if not name.strip():
+            raise ValueError("A meal template needs a name.")
+        template.name = name.strip()
+    if default_meal_type is not None:
+        template.default_meal_type = default_meal_type or None
+    template.updated_at = datetime.now(UTC)
+
+    await session.flush()
+    events.publish(user_sub, "nutrition")
+    templates = await list_meal_templates(session, user_sub)
+    return next(t for t in templates if t.id == template_id)
+
+
 async def update_meal_template_item(
     session: AsyncSession,
     user_sub: str,

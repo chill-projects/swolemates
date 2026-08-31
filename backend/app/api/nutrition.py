@@ -21,6 +21,7 @@ from app.schemas.nutrition import (
     SetGoalsRequest,
     TrackableTypeOut,
     UpdateMealTemplateItemRequest,
+    UpdateMealTemplateRequest,
     UpdateNutritionLogRequest,
     WeightEntryOut,
 )
@@ -191,6 +192,32 @@ async def save_meal_template(
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return MealTemplateSummaryOut.model_validate(template)
+
+
+@router.patch(
+    "/templates/{template_id}",
+    response_model=MealTemplateSummaryOut,
+    operation_id="updateMealTemplate",
+)
+async def update_meal_template(
+    template_id: uuid.UUID,
+    body: UpdateMealTemplateRequest,
+    user_sub: CurrentUser,
+    session: DbSession,
+) -> MealTemplateSummaryOut:
+    try:
+        template = await service.update_meal_template(
+            session,
+            user_sub,
+            template_id=template_id,
+            name=body.name,
+            default_meal_type=body.default_meal_type,
+        )
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return MealTemplateSummaryOut.model_validate(template)
 
 

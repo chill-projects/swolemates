@@ -114,6 +114,109 @@ async def test_save_meal_template_with_template_id_replaces_items(session: Async
     assert [i.name for i in revised.items] == ["B"]
 
 
+async def _template_with_one_item(session: AsyncSession, name: str) -> service.MealTemplateSummary:
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 180}], name="Eggs"
+    )
+    await session.flush()
+    return await service.save_meal_template(session, TEST_USER, name=name, log_ids=[log.id])
+
+
+async def test_update_meal_template_sets_the_default_meal_type_without_touching_items(
+    session: AsyncSession,
+) -> None:
+    template = await _template_with_one_item(session, "Usual breakfast")
+    assert template.default_meal_type is None
+
+    updated = await service.update_meal_template(
+        session, TEST_USER, template_id=template.id, default_meal_type="breakfast"
+    )
+
+    assert updated.default_meal_type == "breakfast"
+    assert updated.name == "Usual breakfast"  # untouched
+    assert [i.name for i in updated.items] == ["Eggs"]  # items survive a metadata edit
+
+
+async def test_update_meal_template_renames_without_clearing_the_meal_type(
+    session: AsyncSession,
+) -> None:
+    template = await _template_with_one_item(session, "Draft")
+    await service.update_meal_template(
+        session, TEST_USER, template_id=template.id, default_meal_type="lunch"
+    )
+
+    updated = await service.update_meal_template(
+        session, TEST_USER, template_id=template.id, name="Desk lunch"
+    )
+
+    assert updated.name == "Desk lunch"
+    assert updated.default_meal_type == "lunch"  # omitted means "leave alone"
+
+
+async def test_update_meal_template_clears_the_meal_type_with_an_empty_string(
+    session: AsyncSession,
+) -> None:
+    """None already means "leave alone", so "" is what untags a template."""
+    template = await _template_with_one_item(session, "Mistagged")
+    await service.update_meal_template(
+        session, TEST_USER, template_id=template.id, default_meal_type="dinner"
+    )
+
+    updated = await service.update_meal_template(
+        session, TEST_USER, template_id=template.id, default_meal_type=""
+    )
+
+    assert updated.default_meal_type is None
+
+
+async def test_update_meal_template_rejects_a_blank_name(session: AsyncSession) -> None:
+    template = await _template_with_one_item(session, "Keeps its name")
+
+    with pytest.raises(ValueError, match="needs a name"):
+        await service.update_meal_template(session, TEST_USER, template_id=template.id, name="   ")
+
+
+async def test_update_meal_template_404s_for_another_users_template(
+    session: AsyncSession,
+) -> None:
+    template = await _template_with_one_item(session, "Mine")
+
+    with pytest.raises(service.NotFoundError):
+        await service.update_meal_template(
+            session, "someone-else", template_id=template.id, default_meal_type="snack"
+        )
+
+
+async def test_update_meal_template_over_rest(client: AsyncClient) -> None:
+    logged = await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "calories", "value": "180"}], "name": "Eggs"},
+    )
+    saved = await client.post(
+        "/api/nutrition/templates",
+        json={"name": "Usual breakfast", "log_ids": [logged.json()["id"]]},
+    )
+    template_id = saved.json()["id"]
+
+    updated = await client.patch(
+        f"/api/nutrition/templates/{template_id}",
+        json={"default_meal_type": "breakfast"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["default_meal_type"] == "breakfast"
+    assert [i["name"] for i in updated.json()["items"]] == ["Eggs"]
+
+
+async def test_update_meal_template_over_rest_404s_for_an_unknown_template(
+    client: AsyncClient,
+) -> None:
+    missing = await client.patch(
+        f"/api/nutrition/templates/{uuid4()}", json={"default_meal_type": "breakfast"}
+    )
+    assert missing.status_code == 404
+
+
 async def test_update_meal_template_item_replaces_name_and_values(
     session: AsyncSession,
 ) -> None:

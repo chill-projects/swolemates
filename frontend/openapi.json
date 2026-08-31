@@ -2610,6 +2610,35 @@
         "title": "UpdateMealTemplateItemRequest",
         "type": "object"
       },
+      "UpdateMealTemplateRequest": {
+        "description": "Metadata only \u2014 items are `UpdateMealTemplateItemRequest`'s job. Both\nfields are optional patches: omit one to leave it alone, and pass\n`default_meal_type=\"\"` to clear the tag (see the service docstring).",
+        "properties": {
+          "default_meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "UpdateMealTemplateRequest",
+        "type": "object"
+      },
       "UpdateNutritionLogRequest": {
         "properties": {
           "meal_type": {
@@ -3935,6 +3964,57 @@
           }
         },
         "summary": "Delete Meal Template",
+        "tags": [
+          "nutrition"
+        ]
+      },
+      "patch": {
+        "operationId": "updateMealTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMealTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealTemplateSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Meal Template",
         "tags": [
           "nutrition"
         ]

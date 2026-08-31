@@ -163,6 +163,17 @@
       .chip--dinner { background: var(--coral-pale); color: var(--red); }
       .chip--snack { background: var(--plum-pale); color: var(--plum-ink); }
 
+      /* The same tag, but editable — each logged entry's own meal-type picker.
+         Shares the .chip--* color classes above (toggled by JS on selection) so
+         a tagged entry reads identically to the read-only chip elsewhere. */
+      .meal-type-select {
+        font-family: var(--font-mono);
+        font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+        padding: 0.18rem 1.1rem 0.18rem 0.4rem; border-radius: 0.3rem; border: none;
+        background-color: var(--line-soft); color: var(--ink-soft);
+        cursor: pointer;
+      }
+
       .log-top { display: flex; align-items: center; gap: 0.5rem; }
       .log-name { font-weight: 600; }
       .log-time { font-family: var(--font-mono); font-size: 0.65rem; color: var(--dim); }
@@ -276,7 +287,8 @@
       .save-template-count {
         font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft); flex: 1;
       }
-      #save-template-bar input {
+      #save-template-bar input,
+      #save-template-bar select {
         width: 9.5rem; flex-shrink: 1; min-width: 0;
         padding: 0.45rem 0.55rem; border: 1px solid var(--line);
         border-radius: 0.45rem; background: var(--card-bg); color: inherit;
@@ -340,7 +352,10 @@
       #food-search-results li:last-child { margin-bottom: 0; }
       .food-result-name { font-weight: 600; font-size: 0.85rem; }
       .food-result-meta { font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink-soft); margin-top: 0.15rem; }
-      .food-result-actions { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+      .food-result-actions {
+        display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; flex-wrap: wrap;
+        justify-content: flex-end;
+      }
       .food-result-grams {
         width: 3.25rem; padding: 0.35rem 0.4rem; border: 1px solid var(--line);
         border-radius: 0.4rem; background: var(--card-bg); color: inherit;
@@ -389,6 +404,7 @@
           <div id="save-template-bar" hidden>
             <span id="save-template-count" class="save-template-count"></span>
             <input id="template-name" type="text" placeholder="Name this meal" aria-label="Meal name" />
+            <select id="save-template-meal-type" aria-label="Meal type"></select>
             <button type="button" id="save-template-btn" class="btn-teal">Save as meal</button>
           </div>
         </section>

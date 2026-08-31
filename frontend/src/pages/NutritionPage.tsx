@@ -197,9 +197,34 @@ export function NutritionPage() {
             body: {
               name: String(args.name ?? ""),
               log_ids: (args.log_ids as string[]) ?? [],
+              default_meal_type: (args.default_meal_type as string | null | undefined) ?? null,
+              template_id: (args.template_id as string | null | undefined) ?? null,
             },
           });
           if (error) throw new Error("save template failed");
+          break;
+        }
+        case "update_meal_template": {
+          const { error } = await api.PATCH("/api/nutrition/templates/{template_id}", {
+            params: { path: { template_id: String(args.template_id ?? "") } },
+            body: {
+              name: (args.name as string | null | undefined) ?? null,
+              default_meal_type: (args.default_meal_type as string | null | undefined) ?? null,
+            },
+          });
+          if (error) throw new Error("update template failed");
+          break;
+        }
+        case "update_nutrition_log": {
+          const { error } = await api.PATCH("/api/nutrition/logs/{log_id}", {
+            params: { path: { log_id: String(args.log_id ?? "") } },
+            body: {
+              name: (args.name as string | null | undefined) ?? null,
+              meal_type: (args.meal_type as string | null | undefined) ?? null,
+              values: (args.values as Record<string, number> | null | undefined) ?? null,
+            },
+          });
+          if (error) throw new Error("update log failed");
           break;
         }
         case "delete_meal_template": {
@@ -218,9 +243,19 @@ export function NutritionPage() {
         }
         case "log_meal_template": {
           const templateId = String(args.template_id ?? "");
+          // Forward what the caller actually passed rather than hardcoding a
+          // plain 1x log: the MCP tool takes a portion multiplier and a meal-type
+          // override, and silently dropping them here would make the same call
+          // behave differently in the SPA than in chat. Omitted args fall back to
+          // the request model's own defaults (1x, and the template's
+          // default_meal_type resolved server-side).
           const { error } = await api.POST("/api/nutrition/templates/{template_id}/log", {
             params: { path: { template_id: templateId } },
-            body: { multiplier: 1 },
+            body: {
+              multiplier: (args.multiplier as number | undefined) ?? 1,
+              meal_type: (args.meal_type as string | null | undefined) ?? null,
+              logged_at: (args.logged_at as string | null | undefined) ?? null,
+            },
           });
           if (error) throw new Error("log template failed");
           break;

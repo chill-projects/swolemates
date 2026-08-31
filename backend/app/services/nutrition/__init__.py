@@ -35,6 +35,7 @@ from app.services.nutrition.templates import (
     list_meal_templates,
     log_meal_template,
     save_meal_template,
+    update_meal_template,
     update_meal_template_item,
 )
 from app.services.nutrition.trackables import list_trackable_types
@@ -61,6 +62,7 @@ __all__ = [
     "set_goals",
     "list_meal_templates",
     "save_meal_template",
+    "update_meal_template",
     "update_meal_template_item",
     "delete_meal_template",
     "log_meal_template",

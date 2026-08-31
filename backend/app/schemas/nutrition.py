@@ -165,6 +165,15 @@ class LogMealTemplateRequest(BaseModel):
     logged_at: datetime | None = None
 
 
+class UpdateMealTemplateRequest(BaseModel):
+    """Metadata only — items are `UpdateMealTemplateItemRequest`'s job. Both
+    fields are optional patches: omit one to leave it alone, and pass
+    `default_meal_type=""` to clear the tag (see the service docstring)."""
+
+    name: str | None = None
+    default_meal_type: str | None = None
+
+
 class UpdateMealTemplateItemRequest(BaseModel):
     name: str
     serving_description: str | None = None

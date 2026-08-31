@@ -160,6 +160,11 @@ async def log_nutrition(
             calculate_targets, which needs a logged weight to run.
         name: What was logged, e.g. "chicken and rice". Use "Weight" for a weight-only entry.
         meal_type: breakfast/lunch/dinner/snack, if applicable — omit for a weight entry.
+            Infer it rather than defaulting to "snack": from what the user said, or
+            failing that from the current time of day (this logs as "now" — there's no
+            backdating param here). Everything's still editable afterward from the log
+            list, so a wrong guess isn't costly, but "snack" as a lazy catch-all for
+            everything unstated is worse than a reasonable time-of-day guess.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
@@ -281,6 +286,37 @@ async def save_meal_template(
             log_ids=[UUID(i) for i in log_ids],
             default_meal_type=default_meal_type,
             template_id=UUID(template_id) if template_id else None,
+        )
+        return await _day_payload(session, user_sub)
+
+
+@mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
+@catches_service_errors
+async def update_meal_template(
+    template_id: str,
+    name: str | None = None,
+    default_meal_type: str | None = None,
+) -> dict:
+    """Rename a saved meal template or change which meal it defaults to, without
+    touching its items — "my usual breakfast is actually a lunch." Use
+    save_meal_template (with template_id) instead when the template's *contents*
+    are what's changing, and update_meal_template_item for one item's numbers.
+
+    Args:
+        template_id: the template to edit.
+        name: the template's new name, if it's changing.
+        default_meal_type: breakfast/lunch/dinner/snack, if that's changing. Pass
+            an empty string to clear it back to no default; omit it to leave
+            whatever's set alone.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        await service.update_meal_template(
+            session,
+            user_sub,
+            template_id=UUID(template_id),
+            name=name,
+            default_meal_type=default_meal_type,
         )
         return await _day_payload(session, user_sub)
 
