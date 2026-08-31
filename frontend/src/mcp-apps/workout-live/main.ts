@@ -18,11 +18,7 @@
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
-
-interface LastTimeSet {
-  weight: number | null;
-  reps: number | null;
-}
+import { prefillWeight, type LastTimeSet } from "./prefill";
 
 interface LastTime {
   sets: LastTimeSet[];
@@ -286,18 +282,12 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
   if (!finished) {
     draft = document.createElement("div");
     draft.className = "draft-set";
-    const lastSet = e.last_time?.sets[e.last_time.sets.length - 1];
 
     weightInput = document.createElement("input");
     weightInput.type = "number";
     weightInput.step = "5";
     weightInput.placeholder = "lbs";
-    weightInput.value =
-      e.target?.weight != null
-        ? String(e.target.weight)
-        : lastSet?.weight != null
-          ? String(lastSet.weight)
-          : "";
+    weightInput.value = prefillWeight(e.target?.weight, e.last_time?.sets ?? [], e.sets.length);
     weightInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} weight`);
 
     mainInput = document.createElement("input");
@@ -309,9 +299,7 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
         : ""
       : e.target?.reps != null
         ? String(e.target.reps)
-        : lastSet?.reps != null
-          ? String(lastSet.reps)
-          : "";
+        : "";
     mainInput.setAttribute(
       "aria-label",
       `${e.exercise_name ?? "Exercise"} ${isTimed ? "seconds" : "reps"}`,
