@@ -14,10 +14,29 @@
  * log_meal_template multiplier/meal_type drop) — only that a branch exists.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+// Sources come through Vite's own `?raw` glob rather than node:fs — this project
+// has no @types/node and pins `types: ["vite/client"]`, so a node: import fails
+// `tsc --noEmit` (it did, in CI, while passing locally — see the note in
+// dispatch-parity's commit). Eager, so the maps are plain string records.
+const COMPONENT_SOURCES = import.meta.glob("./*/main.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+const PAGE_SOURCES = import.meta.glob("../pages/*.tsx", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function sourceAt(map: Record<string, string>, key: string): string {
+  const source = map[key];
+  if (source === undefined) throw new Error(`no source for ${key}`);
+  return source;
+}
 
 /** Which host page stands in for the MCP server for each bundle. PlanPage
  *  hosts two, with a separate handler for each. */
@@ -28,15 +47,12 @@ const HOSTS = [
   { component: "workout-live", page: "WorkoutLivePage" },
 ];
 
-const read = (relative: string) =>
-  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
-
 const matchAll = (source: string, pattern: RegExp): string[] =>
   [...source.matchAll(pattern)].map((m) => m[1] as string);
 
 /** Tool names a component asks its host to call. */
 function toolsCalledBy(component: string): string[] {
-  const source = read(`./${component}/main.ts`);
+  const source = sourceAt(COMPONENT_SOURCES, `./${component}/main.ts`);
   return [
     ...new Set([
       ...matchAll(source, /callAndRender\(\s*"([a-z_]+)"/g),
@@ -49,7 +65,7 @@ function toolsCalledBy(component: string): string[] {
  *  handler's switch, and an early `if (name === ...)` guard for the tools that
  *  return their own payload instead of falling through to a refetch. */
 function toolsDispatchedBy(page: string): Set<string> {
-  const source = read(`../pages/${page}.tsx`);
+  const source = sourceAt(PAGE_SOURCES, `../pages/${page}.tsx`);
   return new Set([
     ...matchAll(source, /case\s+"([a-z_]+)"/g),
     ...matchAll(source, /name === "([a-z_]+)"/g),
@@ -69,11 +85,8 @@ describe.each(HOSTS)("$component in $page", ({ component, page }) => {
 });
 
 it("covers every component bundle", () => {
-  const bundles = readdirSync(dirname(fileURLToPath(import.meta.url)), {
-    withFileTypes: true,
-  })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
+  const bundles = Object.keys(COMPONENT_SOURCES)
+    .map((key) => key.split("/")[1] as string)
     .sort();
 
   // A new bundle has to be added to HOSTS above, or it'd be exempt from the
