@@ -14,8 +14,33 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Swolemates" />
-    <link rel="icon" href="/favicon.ico" />
+    <!-- Two declarations because they serve different consumers. The .ico carries
+         16/32/48 for the browser tab. The PNG is for everything that wants one bitmap
+         at a real size and reads `sizes` to find it — link-preview crawlers, and hosts
+         that render a site's mark next to a link. Without the second one they have only
+         a 48px .ico to work from, and several skip it and fall back to a mark derived
+         from the hostname instead. Same file the app bar, the manifest and MCP's
+         serverInfo.icons use, so the mark only ever changes in one place. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- What an unfurler draws when the app's URL is pasted into a chat. With none of
+         this it falls back to the favicon at best, and to a hostname-derived mark at
+         worst — the same failure the icons above fix, one surface over. The image is
+         relative on purpose: every consumer that matters resolves it against the page
+         URL, and an absolute one would have to hardcode a single origin and go stale
+         the moment this runs anywhere but production. -->
+    <meta name="description" content="Workout logging, food tracking, and partner accountability." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Swolemates" />
+    <meta property="og:title" content="Swolemates" />
+    <meta
+      property="og:description"
+      content="Workout logging, food tracking, and partner accountability."
+    />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

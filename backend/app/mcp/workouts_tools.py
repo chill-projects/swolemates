@@ -18,6 +18,7 @@ from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
+from app.mcp._icons import app_icons
 from app.mcp.server import mcp
 from app.services import profile as profile_service
 from app.services import workouts as service
@@ -564,7 +565,7 @@ async def list_workout_exercises() -> dict:
     }
 
 
-@mcp.resource(WORKOUT_LIVE_URI)
+@mcp.resource(WORKOUT_LIVE_URI, icons=app_icons())
 def workout_live_ui() -> str:
     """The in-workout component — one bundle rendered by Claude and the SPA alike."""
     if WORKOUT_LIVE_BUNDLE.is_file():

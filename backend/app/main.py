@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastmcp.utilities.lifespan import combine_lifespans
 from sqlalchemy import text
@@ -37,10 +38,15 @@ async def app_lifespan(_: FastAPI) -> AsyncIterator[None]:
 # alongside ours, not instead of it.
 mcp_app = mcp.http_app(path="/", stateless_http=True)
 
+# docs_url/redoc_url off, then re-served below: FastAPI's built-in pages hardcode
+# fastapi.tiangolo.com's favicon, so /docs and /redoc sat on our own origin wearing
+# someone else's mark.
 app = FastAPI(
     title="Swolemates",
     version="0.1.0",
     lifespan=combine_lifespans(app_lifespan, mcp_app.lifespan),
+    docs_url=None,
+    redoc_url=None,
 )
 
 if settings.cors_origins:
@@ -71,6 +77,26 @@ async def ready(session: DbSession) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001 - reported, not raised, so probes see a body
         return JSONResponse(status_code=503, content={"status": "degraded", "database": str(exc)})
     return JSONResponse({"status": "ok", "database": "ok"})
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui() -> HTMLResponse:
+    """The stock page with our favicon. Registered before the SPA catch-all, so it
+    still wins over client-side routing the way FastAPI's own /docs did."""
+    return get_swagger_ui_html(
+        openapi_url=str(app.openapi_url),
+        title=f"{app.title} API",
+        swagger_favicon_url="/favicon.ico",
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc() -> HTMLResponse:
+    return get_redoc_html(
+        openapi_url=str(app.openapi_url),
+        title=f"{app.title} API",
+        redoc_favicon_url="/favicon.ico",
+    )
 
 
 app.include_router(api_router, prefix="/api")
@@ -124,12 +150,35 @@ async def well_known(suffix: str, request: Request) -> Response:
 # --- SPA ---------------------------------------------------------------------------
 # Mounted last so /api, /mcp and /health always win. Unknown paths fall through to
 # index.html because the SPA owns client-side routing.
+
+# ...except these. Every one is fetched as a file by something that is not a browser
+# navigating the app: the tab icon, iOS's home-screen icon, the install manifest, the
+# service worker, and — since MCP serverInfo.icons point here — Claude rendering the
+# connector's mark. Handing any of them index.html at 200 is worse than a 404: the
+# fetcher sees success, silently shows a fallback icon (Railway's, on a
+# *.up.railway.app host) or silently declines to register the worker, and nothing in
+# the logs says the file went missing from the image.
+ROOT_ASSETS = frozenset(
+    {
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-maskable-512.png",
+        "manifest.webmanifest",
+        "sw.js",
+        "registerSW.js",
+    }
+)
+
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str) -> FileResponse:
         candidate = STATIC_DIR / full_path
+        if full_path in ROOT_ASSETS and not candidate.is_file():
+            raise HTTPException(status_code=404, detail=f"{full_path} is missing from the build")
         if full_path and candidate.is_file():
             headers = None
             if full_path.startswith("mcp-apps/"):

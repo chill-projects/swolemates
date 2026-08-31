@@ -15,6 +15,7 @@ from fastmcp.apps import AppConfig
 
 from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
+from app.mcp._icons import app_icons
 from app.mcp.server import mcp
 from app.services import workout_templates as service
 from app.services import workouts as workouts_service
@@ -202,7 +203,7 @@ async def list_exercise_catalog() -> dict:
     }
 
 
-@mcp.resource(TEMPLATE_UI_URI)
+@mcp.resource(TEMPLATE_UI_URI, icons=app_icons())
 def template_ui() -> str:
     """The template editor component — one bundle rendered by Claude and the SPA alike."""
     if TEMPLATE_UI_BUNDLE.is_file():

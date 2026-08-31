@@ -18,6 +18,12 @@ RUN npm run build -- --outDir dist --emptyOutDir \
     && test -s dist/mcp-apps/nutrition-day.html \
     && ! grep -q "assets/index" dist/mcp-apps/nutrition-day.html
 
+# The icon set has to survive the build for the same reason the bundle does: these are
+# the mark the browser tab, iOS, the launcher and Claude's connector all fetch by name,
+# and a missing one degrades to a fallback icon rather than to a visible error.
+RUN for i in favicon.ico apple-touch-icon.png icon-192.png icon-512.png \
+             icon-maskable-512.png; do test -s "dist/$i" || exit 1; done
+
 # --- stage 2: the runtime -------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 WORKDIR /app

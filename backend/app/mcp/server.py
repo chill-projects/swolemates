@@ -11,6 +11,7 @@ from fastmcp import FastMCP
 
 from app.auth import mcp_user_sub
 from app.config import get_settings
+from app.mcp._icons import app_icons
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,14 @@ def _auth_provider():
     )
 
 
-mcp: FastMCP = FastMCP(name="Swolemates", auth=_auth_provider())
+# icons/website_url ride along in `initialize`'s serverInfo — the mark and link Claude
+# shows for the connector itself. See app.mcp._icons for why they're URLs.
+mcp: FastMCP = FastMCP(
+    name="Swolemates",
+    website_url=settings.public_url.rstrip("/"),
+    icons=app_icons(),
+    auth=_auth_provider(),
+)
 
 
 @mcp.tool
