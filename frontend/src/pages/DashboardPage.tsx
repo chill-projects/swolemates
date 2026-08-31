@@ -284,16 +284,25 @@ function initials(name: string): string {
   return `${first[0]}${last[0]}`.toUpperCase();
 }
 
-/** The directive: whichever of "eat" or "lift" still has ground to cover today. */
-function heroTitle(day: NutritionCalendarDay | undefined, streak: Streak | undefined): string {
+/** The directive: whichever of "eat" or "lift" still has ground to cover today.
+ *  The two numbers are on different clocks — kcal resets at midnight, workouts
+ *  at the week — so each needs its own scope word or "X left and Y left" reads
+ *  as one pool. "left today" matches nutrition-day's tooltip; "this week"
+ *  matches this same page's partner-comparison copy just below. */
+export function heroTitle(
+  day: NutritionCalendarDay | undefined,
+  streak: Streak | undefined,
+): string {
   const kcalLeft = day ? remaining(day.hero) : null;
   const liftsLeft = streak ? Math.max(streak.target - streak.this_week, 0) : null;
   const parts: string[] = [];
   if (kcalLeft !== null && kcalLeft > 0) {
-    parts.push(`${Math.round(kcalLeft).toLocaleString()} ${day!.hero.unit} left`);
+    parts.push(`${Math.round(kcalLeft).toLocaleString()} ${day!.hero.unit} left today`);
   }
-  if (liftsLeft) parts.push(`${liftsLeft} ${liftsLeft === 1 ? "workout" : "workouts"} to go`);
-  if (parts.length === 0) return "You’re on target for the week.";
+  if (liftsLeft) {
+    parts.push(`${liftsLeft} ${liftsLeft === 1 ? "workout" : "workouts"} left this week`);
+  }
+  if (parts.length === 0) return "You’re on target for today and the week.";
   return `${parts.join(" and ")}.`;
 }
 
