@@ -30,8 +30,11 @@ backend/app/
 frontend/src/
   api/         # generated client (do not hand-edit) + TanStack Query hooks
   mcp-apps/    # component bundles that render in Claude AND the SPA
-docs/legacy/   # the deleted Next.js app, kept as porting reference. Never compiled.
 ```
+
+The pre-rewrite Next.js app used to sit in `docs/legacy/` as porting reference. Porting
+is done, so it's gone — a "ported from `docs/legacy/...`" comment is a pointer into git
+history now, not a path on disk.
 
 ## Rules
 
@@ -47,8 +50,6 @@ docs/legacy/   # the deleted Next.js app, kept as porting reference. Never compi
   that stops using a column.
 - **Don't hand-edit `frontend/src/api/generated.ts`.** Run `make types`. CI fails if it
   drifts from the OpenAPI schema.
-- **`docs/legacy/` is reference material**, not live code. Port files out of it; don't
-  import from it.
 
 ## Dev loop
 

@@ -117,7 +117,7 @@ requiring the four checks before merge is one `gh api` call.
 Photo food logging needs a vision model key: `ANTHROPIC_API_KEY`
 ([console.anthropic.com](https://console.anthropic.com), matches the PRD) or
 `GEMINI_API_KEY` ([aistudio.google.com](https://aistudio.google.com), matches what the
-legacy code in `docs/legacy/logic/food-estimate.route.ts` actually did). Pennies at
+pre-rewrite app's `logic/food-estimate.route.ts` actually did). Pennies at
 two-user volume. Create whichever when phase 6 starts; Claude wires it.
 
 ---
