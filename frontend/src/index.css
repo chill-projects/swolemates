@@ -963,8 +963,9 @@ h1 a {
   font-size: 0.78rem;
 }
 
-/* Nav — a fixed bottom tab bar on phones (dot over a mono label, per the mockup's
-   phone frames), promoted into the top bar as plain text links on desktop. */
+/* Nav — a fixed bottom tab bar on phones (icon only: six page names spelled out
+   was too wide for a phone-width bar), promoted into the top bar as plain text
+   links, no icons, on desktop. */
 
 .nav-bar {
   position: fixed;
@@ -985,7 +986,7 @@ h1 a {
   min-width: 3.5rem;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
   padding: 0.5rem 0.25rem;
   text-decoration: none;
   color: var(--dim);
@@ -1002,17 +1003,26 @@ h1 a {
   font-weight: 700;
 }
 
-/* The dot is the active marker on phones and the underline's stand-in — it stays
-   in the layout when inactive so labels don't shift. */
-.nav-bar-dot {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 999px;
-  background: transparent;
+/* The active tab bar item's color (above) is the only marker on phones — the
+   icon's stroke is currentColor, so it just picks that up, no separate rule. */
+.nav-bar-icon {
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
-.nav-bar-item.active .nav-bar-dot {
-  background: var(--coral);
+/* Not display:none — an icon-only bar still needs each tab's name as its
+   accessible name, so the label stays in the DOM and in the a11y tree, just
+   clipped to nothing visually. Standard visually-hidden clip pattern. */
+.nav-bar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (min-width: 52rem) {
@@ -1054,8 +1064,21 @@ h1 a {
     border-bottom-color: var(--coral);
   }
 
-  .nav-bar-dot {
+  /* Desktop stays text-only, no icons — reverse the phone-only clip so the
+     label is visible again, and hide the icon rather than the other way
+     around. */
+  .nav-bar-icon {
     display: none;
+  }
+
+  .nav-bar-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
   }
 
   .app-bar-inner,
