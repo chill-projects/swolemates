@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.workouts import WeeklyPatternDay
 from app.services import planned_workouts as service
 from app.services import workout_templates as templates
 from app.services import workouts
@@ -212,6 +213,55 @@ async def test_set_weekly_pattern_resyncs_an_untouched_materialized_date(
     # shrink or grow the week's streak target.
     assert {p.id for p in first} == {p.id for p in second}
     assert all(p.template_name == "Pool" for p in second if p.scheduled_for.weekday() == 0)
+
+
+async def test_get_planned_workouts_resyncs_a_row_that_went_stale_earlier(
+    session: AsyncSession,
+) -> None:
+    """Self-healing on read. A row can be stale without set_weekly_pattern ever
+    having had the chance to fix it — it was materialized under an older deploy, or
+    the pattern was corrected before the write-side resync existed. Reading the plan
+    brings it back in line rather than leaving it wrong until the pattern is edited
+    again."""
+    legs = await _make_template(session, TEST_USER, "Legs")
+    pool = await _make_template(session, TEST_USER, "Pool")
+    today = date.today()
+    # Materialize today under the wrong template, bypassing set_weekly_pattern
+    # entirely, then point the pattern at the right one.
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=pool.id, scheduled_for=today
+    )
+    await session.execute(
+        WeeklyPatternDay.__table__.insert().values(
+            user_id=TEST_USER, day_of_week=today.weekday(), template_id=legs.id
+        )
+    )
+
+    refreshed = await service.get_planned_workouts(session, TEST_USER, start=today, end=today)
+
+    assert [p.id for p in refreshed] == [planned.id]  # same row, not a replacement
+    assert refreshed[0].template_name == "Legs"
+
+
+async def test_get_planned_workouts_leaves_a_started_row_alone_when_resyncing(
+    session: AsyncSession,
+) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    pool = await _make_template(session, TEST_USER, "Pool")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=pool.id, scheduled_for=today
+    )
+    await workouts.start_workout(session, TEST_USER, planned_id=planned.id)
+    await session.execute(
+        WeeklyPatternDay.__table__.insert().values(
+            user_id=TEST_USER, day_of_week=today.weekday(), template_id=legs.id
+        )
+    )
+
+    refreshed = await service.get_planned_workouts(session, TEST_USER, start=today, end=today)
+
+    assert refreshed[0].template_name == "Pool"
 
 
 async def test_set_weekly_pattern_does_not_resync_a_past_date(session: AsyncSession) -> None:

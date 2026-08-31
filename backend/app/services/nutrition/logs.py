@@ -103,6 +103,30 @@ async def get_trackable_history(
     return [(logged_at, value) for logged_at, value in result.all()]
 
 
+async def _resolve_logs(session: AsyncSession, user_sub: str, log_id: uuid.UUID) -> list[Log]:
+    """One day-view row is not always one `Log`. A template-logged meal writes one
+    row per item sharing a `group_id`, and `get_nutrition_day` collapses those into
+    a single entry keyed by that `group_id` — so the id the UI hands back for such a
+    row matches no `Log.id` at all. Look the id up both ways rather than 404ing on a
+    row the user can plainly see (which is what editing or deleting a template-
+    logged meal used to do).
+
+    Ordered by insertion so a caller applying a single-log change to a group hits a
+    stable "first" row.
+    """
+    result = await session.execute(select(Log).where(Log.id == log_id, Log.user_id == user_sub))
+    log = result.scalar_one_or_none()
+    if log is not None:
+        return [log]
+
+    grouped = await session.execute(
+        select(Log)
+        .where(Log.group_id == log_id, Log.user_id == user_sub)
+        .order_by(Log.created_at, Log.id)
+    )
+    return list(grouped.scalars())
+
+
 async def update_nutrition_log(
     session: AsyncSession,
     user_sub: str,
@@ -116,16 +140,36 @@ async def update_nutrition_log(
     (#4/#6, resolved: the nutrition equivalent of update_workout). Only fields
     actually passed change; `values` patches individual trackable keys in place
     rather than replacing the whole set, since a correction usually touches one
-    number, not the whole meal."""
-    result = await session.execute(select(Log).where(Log.id == log_id, Log.user_id == user_sub))
-    log = result.scalar_one_or_none()
-    if log is None:
+    number, not the whole meal.
+
+    `log_id` may be a template-logged meal's `group_id` (see `_resolve_logs`), in
+    which case `meal_type` applies to every item — they render as one row under one
+    tag — and `name` rewrites the group's snapshotted name rather than any single
+    item's. `values` is rejected there: which item's macros a number belongs to
+    isn't answerable from the collapsed row, and guessing would silently corrupt
+    the meal.
+    """
+    logs = await _resolve_logs(session, user_sub, log_id)
+    if not logs:
         raise NotFoundError(f"No log {log_id}")
+    log = logs[0]
+    is_group = len(logs) > 1 or logs[0].group_id == log_id
+
+    if values and is_group:
+        raise ValueError(
+            "That's a saved-meal entry made of separate items — edit the item you mean "
+            "by its own id, or edit the template."
+        )
 
     if name is not None:
-        log.name = name
+        if is_group:
+            for entry in logs:
+                entry.group_name = name
+        else:
+            log.name = name
     if meal_type is not None:
-        log.meal_type = meal_type
+        for entry in logs:
+            entry.meal_type = meal_type
     if values:
         existing = {v.trackable_key: v for v in await get_log_values(session, user_sub, log.id)}
         for trackable_key, value in values.items():
@@ -137,7 +181,8 @@ async def update_nutrition_log(
                 session.add(
                     LogValue(log_id=log.id, trackable_key=trackable_key, value=rounded_value)
                 )
-    log.edited_by_user = True
+    for entry in logs:
+        entry.edited_by_user = True
 
     await session.flush()
     events.publish(user_sub, "nutrition")
@@ -146,12 +191,16 @@ async def update_nutrition_log(
 
 async def delete_nutrition_log(session: AsyncSession, user_sub: str, log_id: uuid.UUID) -> None:
     """Self-service delete for a mistakenly-logged entry — the general case of
-    amend_last_log's no-fields-given branch, for any entry, not just the latest."""
-    result = await session.execute(select(Log).where(Log.id == log_id, Log.user_id == user_sub))
-    log = result.scalar_one_or_none()
-    if log is None:
+    amend_last_log's no-fields-given branch, for any entry, not just the latest.
+
+    Deleting a template-logged meal (a `group_id`, per `_resolve_logs`) removes
+    every item in it: the day view shows the group as one row, so deleting that row
+    means the whole meal, not an arbitrary item of it."""
+    logs = await _resolve_logs(session, user_sub, log_id)
+    if not logs:
         raise NotFoundError(f"No log {log_id}")
-    await session.delete(log)
+    for log in logs:
+        await session.delete(log)
     await session.flush()
     events.publish(user_sub, "nutrition")
 

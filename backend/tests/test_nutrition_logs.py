@@ -156,6 +156,90 @@ async def test_update_nutrition_log_patches_only_given_fields(session: AsyncSess
     assert float(values["protein_g"]) == 5  # untouched — only calories was patched
 
 
+async def _template_logged_meal(session: AsyncSession) -> tuple[object, object]:
+    """Logs a saved meal, returning (group_id the day view shows, its logs). A
+    template writes one Log per item sharing a group_id, and the day view collapses
+    them into a single row keyed by that group_id — so the id the UI hands back for
+    the row is not any Log.id."""
+    item = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 51}], name="Coffee"
+    )
+    await session.flush()
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Protein coffee", log_ids=[item.id]
+    )
+    logs = await service.log_meal_template(session, TEST_USER, template_id=template.id)
+    await session.flush()
+    return logs[0].group_id, logs
+
+
+async def test_update_nutrition_log_tags_a_whole_template_logged_meal(
+    session: AsyncSession,
+) -> None:
+    """The day row's id is the group_id — editing through it used to 404, so a
+    saved-meal entry couldn't be tagged at all."""
+    group_id, logs = await _template_logged_meal(session)
+
+    await service.update_nutrition_log(session, TEST_USER, log_id=group_id, meal_type="breakfast")
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    row = next(entry for entry in day.logs if entry.id == group_id)
+    assert row.meal_type == "breakfast"
+    assert all(log.meal_type == "breakfast" for log in logs)
+
+
+async def test_update_nutrition_log_renames_a_group_via_its_snapshot_name(
+    session: AsyncSession,
+) -> None:
+    group_id, logs = await _template_logged_meal(session)
+
+    await service.update_nutrition_log(session, TEST_USER, log_id=group_id, name="Morning coffee")
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    row = next(entry for entry in day.logs if entry.id == group_id)
+    assert row.name == "Morning coffee"
+    # The item keeps its own name; only the group's snapshot changed.
+    assert all(log.name == "Coffee" for log in logs)
+
+
+async def test_update_nutrition_log_rejects_values_on_a_group(session: AsyncSession) -> None:
+    group_id, _ = await _template_logged_meal(session)
+
+    with pytest.raises(ValueError, match="separate items"):
+        await service.update_nutrition_log(
+            session, TEST_USER, log_id=group_id, values={"calories": 10}
+        )
+
+
+async def test_delete_nutrition_log_removes_a_whole_template_logged_meal(
+    session: AsyncSession,
+) -> None:
+    group_id, logs = await _template_logged_meal(session)
+
+    await service.delete_nutrition_log(session, TEST_USER, group_id)
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    assert all(entry.id != group_id for entry in day.logs)
+    assert float(day.hero.consumed) == 51  # only the original single log is left
+
+
+async def test_update_nutrition_log_404s_for_another_users_group(session: AsyncSession) -> None:
+    item = await service.log_nutrition(
+        session, OTHER_USER, entries=[{"trackable_key": "calories", "value": 51}], name="Coffee"
+    )
+    await session.flush()
+    template = await service.save_meal_template(
+        session, OTHER_USER, name="Bob's coffee", log_ids=[item.id]
+    )
+    logs = await service.log_meal_template(session, OTHER_USER, template_id=template.id)
+    await session.flush()
+
+    with pytest.raises(service.NotFoundError):
+        await service.update_nutrition_log(
+            session, TEST_USER, log_id=logs[0].group_id, meal_type="breakfast"
+        )
+
+
 async def test_update_nutrition_log_404s_for_another_users_log(session: AsyncSession) -> None:
     bobs_log = await service.log_nutrition(
         session, OTHER_USER, entries=[{"trackable_key": "calories", "value": 100}]

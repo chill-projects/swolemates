@@ -240,6 +240,37 @@ async def _generate_missing(session: AsyncSession, user_sub: str, start: date, e
                 )
             )
         day += timedelta(days=1)
+
+    # Then bring already-materialized days back in line with the pattern. Doing this
+    # on read as well as in set_weekly_pattern is what makes it self-healing: a row
+    # that went stale while the write-side resync didn't exist yet (or was written by
+    # an older deploy) converges the next time anyone looks at the plan, instead of
+    # sitting wrong until the pattern happens to be edited again. Same guard rails as
+    # the write side — untouched, today-or-later rows only, see
+    # `_resync_untouched_planned`.
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    today = today_in(tz)
+    stale_result = await session.execute(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == user_sub,
+            PlannedWorkout.status == PlannedWorkoutStatus.planned,
+            PlannedWorkout.workout_id.is_(None),
+            PlannedWorkout.scheduled_for >= today,
+            PlannedWorkout.scheduled_for.between(start, end),
+        )
+    )
+    for planned in stale_result.scalars():
+        template_id = _pattern_template_id(pattern_by_dow, planned.scheduled_for)
+        if template_id is None or template_id == planned.template_id:
+            continue
+        template = templates.get(template_id)
+        if template is None:
+            template = await workout_templates._load_template(session, template_id)
+            templates[template_id] = template
+        # Same as generation above: an archived template isn't something to schedule.
+        if template.archived_at is None:
+            planned.template_id = template_id
+
     await session.flush()
 
 
@@ -253,11 +284,11 @@ def _pattern_template_id(
 async def get_planned_workouts(
     session: AsyncSession, user_sub: str, *, start: date, end: date
 ) -> list[PlannedWorkoutOut]:
-    """Generates any missing dates in range from the weekly pattern, then reads —
-    idempotent (a date with any existing row, generated or manually `plan_workout`-
-    ed, is left alone). A pattern edit can still reach an already-materialized date
-    here, but only one nothing's happened to yet — see `set_weekly_pattern`'s
-    `_resync_untouched_planned`."""
+    """Generates any missing dates in range from the weekly pattern, resyncs the
+    already-materialized ones nothing has happened to yet, then reads. Idempotent:
+    a date with an existing row keeps that row (and its id), and only its template
+    can change, never for a day already started, finished, skipped, or in the past
+    — see `_generate_missing` and `_resync_untouched_planned`."""
     await _generate_missing(session, user_sub, start, end)
 
     result = await session.execute(
