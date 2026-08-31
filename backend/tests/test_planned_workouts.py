@@ -186,9 +186,14 @@ async def test_get_planned_workouts_skips_archived_templates(session: AsyncSessi
     assert planned == []
 
 
-async def test_get_planned_workouts_does_not_retroactively_change_materialized_dates(
+async def test_set_weekly_pattern_resyncs_an_untouched_materialized_date(
     session: AsyncSession,
 ) -> None:
+    """The typo'd-then-fixed case: Monday got materialized as Legs, then the
+    pattern is corrected to Pool before anyone's touched that Monday. The Plan
+    page's own copy promises "change a day and the next seven days follow" —
+    this is that promise, for a day that was already generated when the fix
+    landed."""
     legs = await _make_template(session, TEST_USER, "Legs")
     pool = await _make_template(session, TEST_USER, "Pool")
     await service.set_weekly_pattern(
@@ -203,8 +208,79 @@ async def test_get_planned_workouts_does_not_retroactively_change_materialized_d
     )
     second = await service.get_planned_workouts(session, TEST_USER, start=start, end=end)
 
+    # Same rows resynced in place — not deleted and regenerated, which would
+    # shrink or grow the week's streak target.
     assert {p.id for p in first} == {p.id for p in second}
-    assert all(p.template_name == "Legs" for p in second if p.scheduled_for.weekday() == 0)
+    assert all(p.template_name == "Pool" for p in second if p.scheduled_for.weekday() == 0)
+
+
+async def test_set_weekly_pattern_does_not_resync_a_past_date(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    pool = await _make_template(session, TEST_USER, "Pool")
+    yesterday = date.today() - timedelta(days=1)
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=yesterday
+    )
+
+    await service.set_weekly_pattern(
+        session, TEST_USER, days=[{"day_of_week": yesterday.weekday(), "template_id": pool.id}]
+    )
+
+    refetched = await service.get_planned_workout(session, TEST_USER, planned.id)
+    assert refetched.template_name == "Legs"
+
+
+async def test_set_weekly_pattern_does_not_resync_a_skipped_entry(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    pool = await _make_template(session, TEST_USER, "Pool")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=today
+    )
+    await service.update_planned_workout(session, TEST_USER, planned_id=planned.id, action="skip")
+
+    await service.set_weekly_pattern(
+        session, TEST_USER, days=[{"day_of_week": today.weekday(), "template_id": pool.id}]
+    )
+
+    refetched = await service.get_planned_workout(session, TEST_USER, planned.id)
+    assert refetched.template_name == "Legs"
+
+
+async def test_set_weekly_pattern_does_not_resync_a_started_entry(session: AsyncSession) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    pool = await _make_template(session, TEST_USER, "Pool")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=today
+    )
+    await workouts.start_workout(session, TEST_USER, planned_id=planned.id)
+
+    await service.set_weekly_pattern(
+        session, TEST_USER, days=[{"day_of_week": today.weekday(), "template_id": pool.id}]
+    )
+
+    refetched = await service.get_planned_workout(session, TEST_USER, planned.id)
+    assert refetched.template_name == "Legs"
+
+
+async def test_set_weekly_pattern_leaves_an_untouched_date_when_the_day_becomes_rest(
+    session: AsyncSession,
+) -> None:
+    """Deliberately conservative: turning a day to rest doesn't delete its
+    already-materialized, still-untouched entry — deleting would shrink the
+    week's streak target the same way an explicit skip is barred from doing.
+    It's left visible, one Skip away from matching the new pattern."""
+    legs = await _make_template(session, TEST_USER, "Legs")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=today
+    )
+
+    await service.set_weekly_pattern(session, TEST_USER, days=[])
+
+    refetched = await service.get_planned_workout(session, TEST_USER, planned.id)
+    assert refetched.template_name == "Legs"
 
 
 async def test_plan_workout_allows_a_second_entry_on_the_same_day(session: AsyncSession) -> None:

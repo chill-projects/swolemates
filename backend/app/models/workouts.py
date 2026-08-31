@@ -235,9 +235,12 @@ class TemplateExercise(Base):
 class WeeklyPatternDay(Base):
     """The standing split — "Monday is legs, Tuesday is pool." At most one row per
     `(user_id, day_of_week)`; `set_weekly_pattern` replaces the caller's whole set at
-    once. `template_id IS NULL` means a rest day. Editing this only affects weeks
-    `get_planned_workouts` generates *after* the edit — already-materialized
-    `PlannedWorkout` rows are independent and don't retroactively change.
+    once. `template_id IS NULL` means a rest day. Editing this resyncs any already-
+    materialized `PlannedWorkout` row that's still untouched — `status == planned`,
+    never started, today or later — to the new template, on top of shaping weeks
+    `get_planned_workouts` generates after the edit; a row the caller has already
+    acted on (started, finished, skipped) or that's dated in the past never changes
+    (see `set_weekly_pattern`'s docstring for why).
     """
 
     __tablename__ = "weekly_pattern"

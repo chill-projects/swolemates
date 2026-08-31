@@ -69,13 +69,53 @@ async def _require_non_archived_template(
     return template
 
 
+async def _resync_untouched_planned(
+    session: AsyncSession, user_sub: str, days: list[dict], today: date
+) -> None:
+    """A pattern edit reaches forward into what's already materialized, but only
+    for a row nothing has happened to yet: still `status == planned`, never
+    started (`workout_id IS NULL`), dated today or later. That's the "change a
+    day and the next seven days follow" the Plan page's own copy promises — a
+    typo'd day fixed before it's lived through should actually fix, not leave a
+    stale template sitting there under the corrected pattern. A day already
+    started, finished, or explicitly skipped is a real thing that happened and
+    stays exactly as it was, same as a date in the past — `update_planned_
+    workout`'s "skip" already leans on this: the row count behind the week's
+    streak target can't shrink just because something got acted on, and rewriting
+    an acted-on row's template out from under it is the same kind of retroactive
+    surprise. A day newly set to rest is left alone rather than deleted, for the
+    same reason — it's still visible, just easy to Skip.
+    """
+    new_template_by_dow = {
+        entry["day_of_week"]: entry["template_id"]
+        for entry in days
+        if entry.get("template_id") is not None
+    }
+    if not new_template_by_dow:
+        return
+
+    result = await session.execute(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == user_sub,
+            PlannedWorkout.status == PlannedWorkoutStatus.planned,
+            PlannedWorkout.workout_id.is_(None),
+            PlannedWorkout.scheduled_for >= today,
+        )
+    )
+    for planned in result.scalars():
+        new_template_id = new_template_by_dow.get(planned.scheduled_for.weekday())
+        if new_template_id is not None and new_template_id != planned.template_id:
+            planned.template_id = new_template_id
+
+
 async def set_weekly_pattern(
     session: AsyncSession, user_sub: str, *, days: list[dict]
 ) -> list[WeeklyPatternDayOut]:
     """`days`: [{"day_of_week": 0-6, "template_id"?: uuid.UUID}] — one entry per
     day you want scheduled; omit a day (or pass `template_id=None`) for a rest day.
-    Replaces the caller's entire pattern in one call — editing it only affects
-    weeks `get_planned_workouts` generates *after* this call."""
+    Replaces the caller's entire pattern in one call. Shapes weeks `get_planned_
+    workouts` generates after this call, and also resyncs any already-materialized
+    but still-untouched row forward — see `_resync_untouched_planned`."""
     seen: set[int] = set()
     for entry in days:
         dow = entry.get("day_of_week")
@@ -98,6 +138,11 @@ async def set_weekly_pattern(
             )
         )
     await session.flush()
+
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    await _resync_untouched_planned(session, user_sub, days, today_in(tz))
+    await session.flush()
+
     return await get_weekly_pattern(session, user_sub)
 
 
@@ -210,8 +255,9 @@ async def get_planned_workouts(
 ) -> list[PlannedWorkoutOut]:
     """Generates any missing dates in range from the weekly pattern, then reads —
     idempotent (a date with any existing row, generated or manually `plan_workout`-
-    ed, is left alone) and never retroactive (a pattern edit only affects dates not
-    yet materialized)."""
+    ed, is left alone). A pattern edit can still reach an already-materialized date
+    here, but only one nothing's happened to yet — see `set_weekly_pattern`'s
+    `_resync_untouched_planned`."""
     await _generate_missing(session, user_sub, start, end)
 
     result = await session.execute(

@@ -68,8 +68,10 @@ async def get_weekly_pattern() -> dict:
 @catches_service_errors
 async def set_weekly_pattern(days: list[dict]) -> dict:
     """Set the caller's standing weekly split — "Monday is legs, Tuesday is pool" —
-    replacing the whole week's pattern in one call. Only affects weeks generated
-    after this call; already-scheduled dates don't retroactively change.
+    replacing the whole week's pattern in one call. Shapes weeks generated after
+    this call, and also updates an already-scheduled date if nothing's happened to
+    it yet (still unstarted); a date already started, finished, or skipped — or in
+    the past — never changes.
 
     Args:
         days: [{"day_of_week": 0-6 (0=Monday), "template_id"?: str}] — one entry
