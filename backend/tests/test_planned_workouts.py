@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.workouts import WeeklyPatternDay
+from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
 from app.services import planned_workouts as service
 from app.services import workout_templates as templates
 from app.services import workouts
@@ -213,6 +213,67 @@ async def test_set_weekly_pattern_resyncs_an_untouched_materialized_date(
     # shrink or grow the week's streak target.
     assert {p.id for p in first} == {p.id for p in second}
     assert all(p.template_name == "Pool" for p in second if p.scheduled_for.weekday() == 0)
+
+
+async def test_deleting_a_workout_unmarks_the_planned_day_it_completed(
+    session: AsyncSession,
+) -> None:
+    """Deleting the workout used to leave the day marked done with nothing behind
+    it: the FK nulls workout_id but said nothing about status."""
+    legs = await _make_template(session, TEST_USER, "Legs")
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=date.today()
+    )
+    started = await workouts.start_workout(session, TEST_USER, planned_id=planned.id)
+    await workouts.log_set(session, TEST_USER, exercise="Squat", reps=5, weight=100)
+    await workouts.finish_workout(session, TEST_USER, workout_id=started.id)
+    assert (await service.get_planned_workout(session, TEST_USER, planned.id)).status == "done"
+
+    await workouts.delete_workout(session, TEST_USER, started.id)
+
+    refreshed = await service.get_planned_workout(session, TEST_USER, planned.id)
+    assert refreshed.status == "planned"
+    assert refreshed.workout_id is None
+
+
+async def test_get_planned_workouts_repairs_a_done_row_with_no_workout(
+    session: AsyncSession,
+) -> None:
+    """`done` with no workout_id can't arise from the normal flow, so reading the
+    plan repairs it — which is what heals rows stranded by builds that deleted a
+    workout without resetting the status."""
+    legs = await _make_template(session, TEST_USER, "Legs")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=today
+    )
+    # The stranded state directly: done, but nothing linked.
+    await session.execute(
+        PlannedWorkout.__table__.update()
+        .where(PlannedWorkout.id == planned.id)
+        .values(status=PlannedWorkoutStatus.done, workout_id=None)
+    )
+
+    refreshed = await service.get_planned_workouts(session, TEST_USER, start=today, end=today)
+
+    assert [p.status for p in refreshed] == ["planned"]
+
+
+async def test_get_planned_workouts_leaves_a_genuinely_done_row_alone(
+    session: AsyncSession,
+) -> None:
+    legs = await _make_template(session, TEST_USER, "Legs")
+    today = date.today()
+    planned = await service.plan_workout(
+        session, TEST_USER, template_id=legs.id, scheduled_for=today
+    )
+    started = await workouts.start_workout(session, TEST_USER, planned_id=planned.id)
+    await workouts.log_set(session, TEST_USER, exercise="Squat", reps=5, weight=100)
+    await workouts.finish_workout(session, TEST_USER, workout_id=started.id)
+
+    refreshed = await service.get_planned_workouts(session, TEST_USER, start=today, end=today)
+
+    assert [p.status for p in refreshed] == ["done"]  # still linked, so not an orphan
 
 
 async def test_get_planned_workouts_resyncs_a_row_that_went_stale_earlier(

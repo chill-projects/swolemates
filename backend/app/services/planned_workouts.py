@@ -290,6 +290,12 @@ async def get_planned_workouts(
     can change, never for a day already started, finished, skipped, or in the past
     — see `_generate_missing` and `_resync_untouched_planned`."""
     await _generate_missing(session, user_sub, start, end)
+    # After generation, and outside it: an orphaned `done` has nothing to do with the
+    # weekly pattern, so it still needs repairing for a caller with no pattern set at
+    # all (which `_generate_missing` returns early on). The advisory lock it took is
+    # transaction-scoped, so this is still serialized against a concurrent read.
+    await _repair_orphaned_done(session, user_sub, start, end)
+    await session.flush()
 
     result = await session.execute(
         select(PlannedWorkout)
@@ -386,3 +392,40 @@ async def mark_done_if_planned(session: AsyncSession, workout_id: uuid.UUID) -> 
     )
     for planned in result.scalars():
         planned.status = PlannedWorkoutStatus.done
+
+
+async def unlink_workout(session: AsyncSession, workout_id: uuid.UUID) -> None:
+    """The counterpart to `mark_done_if_planned`, called by `workouts.delete_workout`
+    while the workout still exists to be found by. The FK is ON DELETE SET NULL so
+    the link clears itself, but `status` doesn't — which left the day still claiming
+    it was done with nothing behind it. Back to `planned`: the session it was marked
+    done for no longer exists."""
+    result = await session.execute(
+        select(PlannedWorkout).where(PlannedWorkout.workout_id == workout_id)
+    )
+    for planned in result.scalars():
+        planned.status = PlannedWorkoutStatus.planned
+        planned.workout_id = None
+
+
+async def _repair_orphaned_done(
+    session: AsyncSession, user_sub: str, start: date, end: date
+) -> None:
+    """`done` with no `workout_id` is a state the normal flow can't produce —
+    `mark_done_if_planned` only ever marks a row it found *by* workout_id — so it
+    means the workout behind it was deleted by a build that didn't yet reset the
+    status (see `unlink_workout`). Repaired on read, the same self-healing the
+    template resync does, so rows already stranded fix themselves rather than
+    needing a migration or hand surgery. Not restricted to future dates: a past day
+    claiming a session that no longer exists is just as wrong, and the streak counts
+    real workouts rather than this status, so nothing downstream shifts."""
+    result = await session.execute(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == user_sub,
+            PlannedWorkout.status == PlannedWorkoutStatus.done,
+            PlannedWorkout.workout_id.is_(None),
+            PlannedWorkout.scheduled_for.between(start, end),
+        )
+    )
+    for planned in result.scalars():
+        planned.status = PlannedWorkoutStatus.planned

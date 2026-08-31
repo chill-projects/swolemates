@@ -997,7 +997,8 @@ async def delete_workout(session: AsyncSession, user_sub: str, workout_id: uuid.
     delete_empty_workouts.py script, for any workout (finished or not), not just
     empty ones. FK cascades handle WorkoutExercise/WorkoutSet/PersonalRecord
     cleanup; a linked PlannedWorkout has its workout_id set null rather than being
-    blocked.
+    blocked, and its status reset with it (`planned_workouts.unlink_workout`) — the
+    FK alone left the day still marked done with nothing behind it.
 
     Deleting a workout that held the caller's current PR for some exercise would
     otherwise cascade that PersonalRecord row away too, silently dropping the
@@ -1017,6 +1018,14 @@ async def delete_workout(session: AsyncSession, user_sub: str, workout_id: uuid.
         .distinct()
     )
     touched_exercise_ids = list(exercise_ids_result.scalars())
+
+    # Before the row goes away, while the link can still be followed: a planned day
+    # this workout was started from is marked done, and the FK only nulls the link,
+    # leaving the day claiming a session that no longer exists.
+    from app.services import planned_workouts
+
+    await planned_workouts.unlink_workout(session, workout.id)
+    await session.flush()
 
     await session.delete(workout)
     await session.flush()
