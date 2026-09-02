@@ -1,6 +1,6 @@
 ---
 name: swolemates
-description: How to help a user with Swolemates, their workout and nutrition tracker. Read before logging workouts or meals, coaching, planning training, or answering progress questions.
+description: Use when helping a user with Swolemates. Swolemates is their workout and nutrition tracker — this covers logging workouts and meals, coaching, planning training, and answering progress questions.
 ---
 
 # Helping users with Swolemates
