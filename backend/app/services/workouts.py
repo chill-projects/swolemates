@@ -601,10 +601,22 @@ async def log_workout(
             session, user_sub, exercise_id=exercise_id, exercise_name=exercise_name, sets=new_sets
         )
 
+    tz = await profile_service.get_user_timezone(session, user_sub)
+
+    # The one-shot path has no planned entry to have been *started* from, so the live
+    # flow's link (start_workout -> finish_workout -> mark_done_if_planned) never
+    # happens here and the plan kept showing the day as still owed — including the day
+    # someone backfills after forgetting to log it. Matched by date instead; deferred
+    # import for the same cycle reason as start_workout's.
+    from app.services import planned_workouts
+
+    await planned_workouts.mark_done_for_date(
+        session, user_sub, day=local_date(when, tz), workout_id=workout.id
+    )
+
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
     details[0].celebrations = celebrations
-    tz = await profile_service.get_user_timezone(session, user_sub)
     details[0].streak = await get_streak(session, user_sub, as_of=local_date(when, tz), tz=tz)
     return details[0]
 
@@ -1039,6 +1051,25 @@ async def delete_workout(session: AsyncSession, user_sub: str, workout_id: uuid.
     events.publish(user_sub, "workouts")
 
 
+async def _move_workout(session: AsyncSession, workout: Workout, when: datetime) -> None:
+    """Shift a session onto a different day, preserving its shape. `when` becomes the
+    new `started_at`; `completed_at` and every set's `completed_at` move by the same
+    delta, so duration and the order sets were logged in survive the move. A set with
+    no `completed_at` (never logged, in a still-active session) is left alone."""
+    shift = when - workout.started_at
+    workout.started_at = when
+    if workout.completed_at is not None:
+        workout.completed_at += shift
+    sets = await session.execute(
+        select(WorkoutSet)
+        .join(WorkoutExercise, WorkoutExercise.id == WorkoutSet.workout_exercise_id)
+        .where(WorkoutExercise.workout_id == workout.id)
+    )
+    for workout_set in sets.scalars():
+        if workout_set.completed_at is not None:
+            workout_set.completed_at += shift
+
+
 async def update_workout(
     session: AsyncSession,
     user_sub: str,
@@ -1046,6 +1077,7 @@ async def update_workout(
     workout_id: uuid.UUID,
     exercise_updates: list[dict] | None = None,
     notes: str | None = None,
+    logged_at: datetime | None = None,
 ) -> WorkoutOut:
     """Edit a past session's actuals conversationally ("actually that was 8 reps
     not 6") — no add-exercise, no add-set, this corrects what's there rather than
@@ -1058,6 +1090,14 @@ async def update_workout(
     `exercise_updates`: [{"exercise": str, "notes"?, "next_time_note"?, "sets"?:
     [{"set_number": int, "weight"?, "reps"?, "work_seconds"?, "is_warmup"?,
     "delete"?: bool}]}]. Only passed fields change.
+
+    `logged_at` moves the whole session to another day — the counterpart to
+    `log_workout`'s backdating, for a session logged before anyone noticed it was
+    yesterday's. Every stamp shifts by the same delta rather than being set outright,
+    so a 47-minute session stays 47 minutes long. It also forces a PR recompute
+    across every exercise in the session: which lift counts as "first to hit 225" is
+    decided by `achieved_at`, so moving a date can reorder records that no set here
+    touched.
     """
     result = await session.execute(
         select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
@@ -1070,6 +1110,22 @@ async def update_workout(
         workout.notes = notes
 
     touched_exercise_ids: set[uuid.UUID] = set()
+    if logged_at is not None:
+        await _move_workout(session, workout, logged_at)
+        moved = await session.execute(
+            select(WorkoutExercise.exercise_id).where(WorkoutExercise.workout_id == workout.id)
+        )
+        touched_exercise_ids.update(moved.scalars())
+        # The plan follows the session. Releasing the old day first matters: leaving it
+        # marked done would credit a day nothing happened on, the mirror of the stale
+        # `done` that `_repair_orphaned_done` exists to clean up.
+        from app.services import planned_workouts
+
+        tz = await profile_service.get_user_timezone(session, user_sub)
+        await planned_workouts.unlink_workout(session, workout.id)
+        await planned_workouts.mark_done_for_date(
+            session, user_sub, day=local_date(logged_at, tz), workout_id=workout.id
+        )
     for entry in exercise_updates or []:
         exercise_name = entry["exercise"]
         we_result = await session.execute(

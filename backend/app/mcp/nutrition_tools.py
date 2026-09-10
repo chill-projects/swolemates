@@ -1,10 +1,19 @@
 """Nutrition tools (#4). log_nutrition and get_nutrition_day both render the day-vs-
-goals view via ui://swolemates/nutrition-day.html — any call that changes today's
+goals view via ui://swolemates/nutrition-day.html — any call that changes a day's
 totals returns the full current picture, so the component re-renders from any result
 without an extra round trip (the tmpx pattern). get_goals/set_goals stay text-only
 permanently, per claude-tools-v1.md §3.4.
+
+Every tool here takes an optional `date`, mirroring log_workout/log_activity's. The
+service layer always accepted `logged_at`/`day`; only this layer didn't pass them,
+which is what made "I forgot to log yesterday" impossible from chat while the same
+write worked fine over REST. The day a tool returns is the day it *acted on*, not
+today — backdating a meal and getting today's untouched card back reads as the call
+having done nothing.
 """
 
+from datetime import date as date_type
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -17,6 +26,8 @@ from app.mcp._icons import app_icons
 from app.mcp._resources import NUTRITION_UI_URI
 from app.mcp.server import mcp
 from app.services import nutrition as service
+from app.services import profile as profile_service
+from app.services.timezones import local_date, parse_local_datetime
 
 NUTRITION_UI_BUNDLE = (
     Path(__file__).resolve().parent.parent.parent / "static" / "mcp-apps" / "nutrition-day.html"
@@ -78,8 +89,26 @@ def _template_payload(t: service.MealTemplateSummary) -> dict:
     }
 
 
-async def _day_payload(session, user_sub: str) -> dict:
-    day = await service.get_nutrition_day(session, user_sub)
+async def _resolve_date(
+    session, user_sub: str, date: str | None
+) -> tuple[datetime | None, date_type | None]:
+    """An ISO date/datetime from the caller -> (instant to store, local day to show).
+    (None, None) when nothing was passed, letting the service default to now/today in
+    the caller's own zone.
+
+    Both halves are needed and neither substitutes for the other: an 8pm-local meal is
+    already tomorrow in UTC, so the card to hand back is the day the *instant* lands on
+    locally — not the raw string, and not the server's date.
+    """
+    if date is None:
+        return None, None
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    when = parse_local_datetime(date, tz)
+    return when, local_date(when, tz)
+
+
+async def _day_payload(session, user_sub: str, day: date_type | None = None) -> dict:
+    day = await service.get_nutrition_day(session, user_sub, day=day)
     return {
         "date": day.date.isoformat(),
         "hero": _progress(day.hero),
@@ -124,17 +153,26 @@ async def _resolve_template_id(
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI))
 @catches_service_errors
-async def get_nutrition_day() -> dict:
-    """Show today's nutrition so far against the caller's goals."""
+async def get_nutrition_day(date: str | None = None) -> dict:
+    """Show a day's nutrition against the caller's goals — today by default, or any
+    past day, for "what did I eat Tuesday?" and for checking a backfill landed.
+
+    Args:
+        date: ISO date, e.g. "2026-09-08". Defaults to today in the caller's timezone.
+    """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        return await _day_payload(session, user_sub)
+        _when, day = await _resolve_date(session, user_sub, date)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
 @catches_service_errors
 async def log_nutrition(
-    entries: list[dict], name: str | None = None, meal_type: str | None = None
+    entries: list[dict],
+    name: str | None = None,
+    meal_type: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Record one or more trackable entries — a meal, a glass of water, creatine, today's
     body weight — in one call. Briefly compare today to last time if notable — how close
@@ -161,17 +199,32 @@ async def log_nutrition(
         name: What was logged, e.g. "chicken and rice". Use "Weight" for a weight-only entry.
         meal_type: breakfast/lunch/dinner/snack, if applicable — omit for a weight entry.
             Infer it rather than defaulting to "snack": from what the user said, or
-            failing that from the current time of day (this logs as "now" — there's no
-            backdating param here). Everything's still editable afterward from the log
-            list, so a wrong guess isn't costly, but "snack" as a lazy catch-all for
-            everything unstated is worse than a reasonable time-of-day guess.
+            failing that from the time `date` resolves to (the current time when it's
+            omitted). Everything's still editable afterward from the log list, so a
+            wrong guess isn't costly, but "snack" as a lazy catch-all for everything
+            unstated is worse than a reasonable time-of-day guess.
+        date: ISO date/datetime if backdating; defaults to now. A bare date ("2026-09-08")
+            is taken as that day in the user's timezone. This is the tool for "I forgot
+            to log yesterday" — backfill it rather than declining or logging it as
+            today, which would put the food on the wrong day's totals. Resolve relative
+            words against the user's own timezone, and say which day you logged to, so a
+            wrong read of "last night" is caught immediately. Include the time when they
+            gave you one ("2026-09-08T19:30") — a bare date lands at local noon, which
+            makes every backfilled meal look like lunch.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        when, day = await _resolve_date(session, user_sub, date)
         await service.log_nutrition(
-            session, user_sub, entries=entries, name=name, meal_type=meal_type, source="manual"
+            session,
+            user_sub,
+            entries=entries,
+            name=name,
+            meal_type=meal_type,
+            logged_at=when,
+            source="manual",
         )
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool
@@ -181,6 +234,7 @@ async def update_nutrition_log(
     name: str | None = None,
     meal_type: str | None = None,
     values: dict[str, float] | None = None,
+    date: str | None = None,
 ) -> str:
     """Edit a past nutrition entry conversationally — "actually that was a small
     coffee, not a large." Only the fields you pass change; `values` patches
@@ -192,9 +246,13 @@ async def update_nutrition_log(
         name: new name, if it's changing.
         meal_type: new meal_type, if it's changing.
         values: trackable_key -> new value, for whichever macros were wrong.
+        date: ISO date/datetime to *move* the entry to — "that was yesterday's dinner,
+            not today's". Moves a saved-meal entry's items together, since they were
+            one sitting. Omit to leave the entry on the day it's already on.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        when, _day = await _resolve_date(session, user_sub, date)
         log = await service.update_nutrition_log(
             session,
             user_sub,
@@ -202,6 +260,7 @@ async def update_nutrition_log(
             name=name,
             meal_type=meal_type,
             values={k: Decimal(str(v)) for k, v in (values or {}).items()},
+            logged_at=when,
         )
         log_values = await service.get_log_values(session, user_sub, log.id)
     macros = ", ".join(f"{v.trackable_key}={v.value}" for v in log_values) or "no values"
@@ -214,6 +273,7 @@ async def amend_last_log(
     name: str | None = None,
     meal_type: str | None = None,
     values: dict[str, float] | None = None,
+    date: str | None = None,
 ) -> str:
     """Undo or fix the single most recent nutrition entry, without needing its id —
     "undo that" or "actually that was 300 calories." Pass nothing to remove the entry
@@ -223,18 +283,22 @@ async def amend_last_log(
         name: new name, if correcting (omit to leave alone, or to just undo).
         meal_type: new meal_type, if correcting.
         values: trackable_key -> new value, for whichever macros were wrong.
+        date: ISO date/datetime to move the entry to — "that was yesterday, not today".
+            Counts as a correction, so passing only this patches rather than deletes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        when, _day = await _resolve_date(session, user_sub, date)
         updated, log_id, log_name = await service.amend_last_log(
             session,
             user_sub,
             name=name,
             meal_type=meal_type,
             values={k: Decimal(str(v)) for k, v in (values or {}).items()},
+            logged_at=when,
         )
         if updated is None:
-            return f'Removed "{log_name or "that entry"}" from today\'s log.'
+            return f'Removed "{log_name or "that entry"}" from the log.'
         log_values = await service.get_log_values(session, user_sub, log_id)
     macros = ", ".join(f"{v.trackable_key}={v.value}" for v in log_values) or "no values"
     return f'Updated "{updated.name or "entry"}" — {macros}.'
@@ -242,7 +306,7 @@ async def amend_last_log(
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["app"]))
 @catches_service_errors
-async def delete_nutrition_log(log_id: str) -> dict:
+async def delete_nutrition_log(log_id: str, date: str | None = None) -> dict:
     """App-only: delete a logged entry outright — driven by the log list's own
     delete control (with its own confirm step), not a chat entry point. Kept off
     the model's tool list on purpose, same as delete_meal_template; for a chat-
@@ -250,11 +314,15 @@ async def delete_nutrition_log(log_id: str) -> dict:
 
     Args:
         log_id: the entry to delete (from a prior log_nutrition/get_nutrition_day result).
+        date: the day whose card to return, if not today — pass the day you're already
+            showing so an edit doesn't jump the view back to today. Doesn't affect what
+            this call changes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        _when, day = await _resolve_date(session, user_sub, date)
         await service.delete_nutrition_log(session, user_sub, UUID(log_id))
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
@@ -264,6 +332,7 @@ async def save_meal_template(
     log_ids: list[str],
     default_meal_type: str | None = None,
     template_id: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Save a recurring meal from things already logged today — save-from-log only,
     there's no from-scratch builder. Pass template_id to revise an existing template's
@@ -276,9 +345,13 @@ async def save_meal_template(
         default_meal_type: breakfast/lunch/dinner/snack, if this template usually goes
             under one.
         template_id: revise this existing template instead of creating a new one.
+        date: the day whose card to return, if not today — pass the day you're already
+            showing so an edit doesn't jump the view back to today. Doesn't affect what
+            this call changes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        _when, day = await _resolve_date(session, user_sub, date)
         await service.save_meal_template(
             session,
             user_sub,
@@ -287,7 +360,7 @@ async def save_meal_template(
             default_meal_type=default_meal_type,
             template_id=UUID(template_id) if template_id else None,
         )
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
@@ -296,6 +369,7 @@ async def update_meal_template(
     template_id: str,
     name: str | None = None,
     default_meal_type: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Rename a saved meal template or change which meal it defaults to, without
     touching its items — "my usual breakfast is actually a lunch." Use
@@ -308,9 +382,13 @@ async def update_meal_template(
         default_meal_type: breakfast/lunch/dinner/snack, if that's changing. Pass
             an empty string to clear it back to no default; omit it to leave
             whatever's set alone.
+        date: the day whose card to return, if not today — pass the day you're already
+            showing so an edit doesn't jump the view back to today. Doesn't affect what
+            this call changes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        _when, day = await _resolve_date(session, user_sub, date)
         await service.update_meal_template(
             session,
             user_sub,
@@ -318,12 +396,12 @@ async def update_meal_template(
             name=name,
             default_meal_type=default_meal_type,
         )
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["app"]))
 @catches_service_errors
-async def delete_meal_template(template_id: str) -> dict:
+async def delete_meal_template(template_id: str, date: str | None = None) -> dict:
     """App-only: delete a saved meal template — driven by the template card's own
     delete control (with its own confirm step), not a chat entry point. Kept off the
     model's tool list on purpose so a casual mention in conversation ("get rid of
@@ -332,11 +410,15 @@ async def delete_meal_template(template_id: str) -> dict:
 
     Args:
         template_id: the template to delete.
+        date: the day whose card to return, if not today — pass the day you're already
+            showing so an edit doesn't jump the view back to today. Doesn't affect what
+            this call changes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        _when, day = await _resolve_date(session, user_sub, date)
         await service.delete_meal_template(session, user_sub, UUID(template_id))
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
@@ -347,6 +429,7 @@ async def update_meal_template_item(
     name: str,
     values: dict[str, float],
     serving_description: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Edit one item within a saved meal template — rename it or change its
     calorie/macro values (e.g. bump "2 scrambled eggs" to "3 scrambled eggs" by
@@ -360,9 +443,13 @@ async def update_meal_template_item(
         values: the item's complete new value set — replaces the old one entirely,
             e.g. {"calories": 270, "protein_g": 18}.
         serving_description: optional serving note.
+        date: the day whose card to return, if not today — pass the day you're already
+            showing so an edit doesn't jump the view back to today. Doesn't affect what
+            this call changes.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        _when, day = await _resolve_date(session, user_sub, date)
         await service.update_meal_template_item(
             session,
             user_sub,
@@ -372,7 +459,7 @@ async def update_meal_template_item(
             serving_description=serving_description,
             values={k: Decimal(str(v)) for k, v in values.items()},
         )
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["model", "app"]))
@@ -382,6 +469,7 @@ async def log_meal_template(
     name: str | None = None,
     multiplier: float = 1,
     meal_type: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Log a saved meal template, optionally scaled. Portion scaling affects only this
     log instance — the template's own saved values are never changed.
@@ -392,16 +480,24 @@ async def log_meal_template(
         multiplier: scales every item's values, e.g. 1.5 for one and a half portions.
         meal_type: breakfast/lunch/dinner/snack, if applicable (defaults to the
             template's own default_meal_type).
+        date: ISO date/datetime if backdating — same as log_nutrition's, for backfilling
+            a usual meal onto a day that went unlogged. Defaults to now.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        when, day = await _resolve_date(session, user_sub, date)
         resolved_id = await _resolve_template_id(
             session, user_sub, template_id=template_id, name=name
         )
         await service.log_meal_template(
-            session, user_sub, template_id=resolved_id, multiplier=multiplier, meal_type=meal_type
+            session,
+            user_sub,
+            template_id=resolved_id,
+            multiplier=multiplier,
+            meal_type=meal_type,
+            logged_at=when,
         )
-        return await _day_payload(session, user_sub)
+        return await _day_payload(session, user_sub, day)
 
 
 @mcp.tool

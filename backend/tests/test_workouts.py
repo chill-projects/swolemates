@@ -1534,3 +1534,51 @@ async def test_list_workout_exercises_over_rest(client: AsyncClient) -> None:
     assert resp.status_code == 200
     names = {e["name"] for e in resp.json()}
     assert "Deadlift" in names
+
+
+async def test_update_workout_moves_a_session_and_keeps_its_length(
+    session: AsyncSession,
+) -> None:
+    """Every stamp shifts by one delta rather than being set outright, so a session
+    that took 40 minutes still took 40 minutes on its new day."""
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Deadlift", "sets": [{"weight": 315, "reps": 3}]}],
+        logged_at=datetime(2026, 9, 10, 17, 0, tzinfo=UTC),
+    )
+    row = await session.get(Workout, workout.id)
+    assert row is not None
+    row.completed_at = datetime(2026, 9, 10, 17, 40, tzinfo=UTC)
+    await session.flush()
+
+    moved = await service.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        logged_at=datetime(2026, 9, 7, 9, 0, tzinfo=UTC),
+    )
+
+    assert moved.started_at == datetime(2026, 9, 7, 9, 0, tzinfo=UTC)
+    assert moved.completed_at == datetime(2026, 9, 7, 9, 40, tzinfo=UTC)
+
+
+async def test_update_workout_moves_the_sets_with_the_session(session: AsyncSession) -> None:
+    """A set left stamped on the old day would put the workout on two dates at once —
+    `get_exercise_history` and the PR ordering both read those stamps."""
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Deadlift", "sets": [{"weight": 315, "reps": 3}]}],
+        logged_at=datetime(2026, 9, 10, 17, 0, tzinfo=UTC),
+    )
+    moved_to = datetime(2026, 9, 7, 9, 0, tzinfo=UTC)
+
+    await service.update_workout(session, TEST_USER, workout_id=workout.id, logged_at=moved_to)
+
+    stamps = await session.execute(
+        select(WorkoutSet.completed_at)
+        .join(WorkoutExercise, WorkoutExercise.id == WorkoutSet.workout_exercise_id)
+        .where(WorkoutExercise.workout_id == workout.id)
+    )
+    assert list(stamps.scalars()) == [moved_to]

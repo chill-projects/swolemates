@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { dateFromIso, daysBetween, isoDateInTz, isoFromDate, todayIsoInTz } from "./datetime";
+import {
+  dateFromIso,
+  daysBetween,
+  detectedTimezone,
+  isoDateInTz,
+  isoFromDate,
+  noonInstantOf,
+  todayIsoInTz,
+} from "./datetime";
 
 describe("isoDateInTz", () => {
   it("buckets an instant into the calendar day of the given zone", () => {
@@ -45,5 +53,24 @@ describe("todayIsoInTz", () => {
       day: "2-digit",
     }).format(new Date());
     expect(todayIsoInTz("Australia/Sydney")).toBe(expected);
+  });
+});
+
+describe("noonInstantOf", () => {
+  it("lands at noon on the day it was given, in the local zone", () => {
+    const instant = new Date(noonInstantOf("2026-09-07"));
+
+    expect(instant.getFullYear()).toBe(2026);
+    expect(instant.getMonth()).toBe(8);
+    expect(instant.getDate()).toBe(7);
+    expect(instant.getHours()).toBe(12);
+  });
+
+  it("stays on the named day for every zone offset", () => {
+    // The point of noon over midnight: half the world's offsets would push a midnight
+    // anchor onto the previous or next date once it's serialized as UTC, which is how
+    // a meal backdated to Monday shows up under Sunday.
+    expect(noonInstantOf("2026-09-07").slice(0, 10)).toMatch(/2026-09-0[678]/);
+    expect(isoDateInTz(noonInstantOf("2026-09-07"), detectedTimezone())).toBe("2026-09-07");
   });
 });

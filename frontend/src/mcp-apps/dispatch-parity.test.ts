@@ -84,6 +84,37 @@ describe.each(HOSTS)("$component in $page", ({ component, page }) => {
   });
 });
 
+/** The body of one `case "tool": { ... }` branch in a page's dispatch switch. */
+function dispatchBranch(page: string, tool: string): string {
+  const source = sourceAt(PAGE_SOURCES, `../pages/${page}.tsx`);
+  const start = source.indexOf(`case "${tool}":`);
+  expect(start, `${page} has no branch for ${tool}`).toBeGreaterThan(-1);
+  const next = source.indexOf("\n        case ", start + 1);
+  return source.slice(start, next === -1 ? undefined : next);
+}
+
+/**
+ * The arg-forwarding gap this file's header calls out, for the one argument where
+ * dropping it is silent and wrong rather than merely inert: a backdated write that
+ * loses its `date` lands on today, on the wrong day's totals, with nothing to show
+ * for it. Chat gets this right through the MCP tool's own signature; the SPA's
+ * hand-wired branch is the half that can drift.
+ */
+describe("nutrition writes carry the day they were made for", () => {
+  it.each(["log_nutrition", "log_meal_template", "update_nutrition_log"])(
+    "%s forwards a logged_at",
+    (tool) => {
+      expect(dispatchBranch("NutritionPage", tool)).toContain("logged_at: loggedAtFrom(args)");
+    },
+  );
+
+  it("re-reads the day the call concerned, not always today", () => {
+    const source = sourceAt(PAGE_SOURCES, "../pages/NutritionPage.tsx");
+    expect(source).toContain('api.GET("/api/nutrition/day"');
+    expect(source).toMatch(/query:\s*viewing \?/);
+  });
+});
+
 it("covers every component bundle", () => {
   const bundles = Object.keys(COMPONENT_SOURCES)
     .map((key) => key.split("/")[1] as string)

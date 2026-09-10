@@ -1,12 +1,14 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import nutrition as service
+from app.services.timezones import parse_local_datetime
 from tests.conftest import OTHER_USER, TEST_USER
 
 
@@ -364,3 +366,119 @@ async def test_weight_history_excludes_food_logs(client: AsyncClient) -> None:
     resp = await client.get("/api/nutrition/weights")
 
     assert resp.json() == []
+
+
+async def test_log_nutrition_backdates_to_a_day_that_went_unlogged(session: AsyncSession) -> None:
+    """The gap this whole feature exists for: food remembered a day late has to land on
+    the day it was eaten, not the day it was typed in."""
+    la = ZoneInfo("America/Los_Angeles")
+    monday = date(2026, 9, 7)
+
+    await service.log_nutrition(
+        session,
+        TEST_USER,
+        entries=[{"trackable_key": "calories", "value": 620}],
+        name="Monday's dinner",
+        logged_at=parse_local_datetime("2026-09-07T19:30", la),
+    )
+
+    day = await service.get_nutrition_day(session, TEST_USER, day=monday, tz=la)
+    assert [entry.name for entry in day.logs] == ["Monday's dinner"]
+    assert day.hero.consumed == Decimal(620)
+
+    tuesday = await service.get_nutrition_day(
+        session, TEST_USER, day=monday + timedelta(days=1), tz=la
+    )
+    assert tuesday.logs == []
+
+
+async def test_backdating_a_late_evening_meal_lands_on_the_local_day(
+    session: AsyncSession,
+) -> None:
+    """7:30pm Pacific is already the next day in UTC. The meal belongs to the local
+    day the user named, not the one the raw instant falls on."""
+    la = ZoneInfo("America/Los_Angeles")
+    when = parse_local_datetime("2026-09-07T19:30", la)
+    assert when.astimezone(UTC).date() == date(2026, 9, 8)
+
+    await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 400}], logged_at=when
+    )
+
+    assert await service.get_nutrition_day(session, TEST_USER, day=date(2026, 9, 7), tz=la)
+    assert not (
+        await service.get_nutrition_day(session, TEST_USER, day=date(2026, 9, 8), tz=la)
+    ).logs
+
+
+async def test_update_nutrition_log_moves_an_entry_to_another_day(
+    session: AsyncSession,
+) -> None:
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 300}], name="Dinner"
+    )
+    yesterday = datetime(2026, 9, 9, 19, 0, tzinfo=UTC)
+
+    await service.update_nutrition_log(session, TEST_USER, log_id=log.id, logged_at=yesterday)
+
+    assert log.logged_at == yesterday
+    assert log.edited_by_user is True
+
+
+async def test_update_nutrition_log_moves_a_saved_meals_items_together(
+    session: AsyncSession,
+) -> None:
+    """A group is one row in the day view, so a half-moved group would show the same
+    meal on two days at once."""
+    first = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 200}], name="Yogurt"
+    )
+    second = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 100}], name="Granola"
+    )
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Usual breakfast", log_ids=[first.id, second.id]
+    )
+    logs = await service.log_meal_template(session, TEST_USER, template_id=template.id)
+    group_id = logs[0].group_id
+    moved_to = datetime(2026, 9, 9, 8, 0, tzinfo=UTC)
+
+    await service.update_nutrition_log(session, TEST_USER, log_id=group_id, logged_at=moved_to)
+
+    assert {entry.logged_at for entry in logs} == {moved_to}
+
+
+async def test_amend_last_log_treats_a_date_as_a_correction_not_an_undo(
+    session: AsyncSession,
+) -> None:
+    """ "Actually that was yesterday" must patch the entry. Reading a date-only amend
+    as "no fields given" would delete the thing the user was trying to keep."""
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 500}], name="Burrito"
+    )
+    yesterday = datetime(2026, 9, 9, 13, 0, tzinfo=UTC)
+
+    updated, log_id, _name = await service.amend_last_log(session, TEST_USER, logged_at=yesterday)
+
+    assert updated is not None
+    assert log_id == log.id
+    assert updated.logged_at == yesterday
+
+
+async def test_patch_nutrition_log_moves_the_day_over_rest(client: AsyncClient) -> None:
+    logged = await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "calories", "value": "250"}], "name": "Toast"},
+    )
+    log_id = logged.json()["id"]
+
+    resp = await client.patch(
+        f"/api/nutrition/logs/{log_id}", json={"logged_at": "2026-09-07T08:00:00Z"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["logged_at"].startswith("2026-09-07T08:00")
+    today = await client.get("/api/nutrition/day")
+    assert log_id not in [entry["id"] for entry in today.json()["logs"]]
+    moved_to = await client.get("/api/nutrition/day", params={"day": "2026-09-07"})
+    assert log_id in [entry["id"] for entry in moved_to.json()["logs"]]

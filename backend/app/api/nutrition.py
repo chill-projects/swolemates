@@ -66,6 +66,7 @@ async def update_nutrition_log(
             name=body.name,
             meal_type=body.meal_type,
             values=body.values,
+            logged_at=body.logged_at,
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -92,7 +93,12 @@ async def amend_last_log(
 ) -> AmendLastLogOut:
     try:
         updated, log_id, _name = await service.amend_last_log(
-            session, user_sub, name=body.name, meal_type=body.meal_type, values=body.values
+            session,
+            user_sub,
+            name=body.name,
+            meal_type=body.meal_type,
+            values=body.values,
+            logged_at=body.logged_at,
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

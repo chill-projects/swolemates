@@ -2641,6 +2641,18 @@
       },
       "UpdateNutritionLogRequest": {
         "properties": {
+          "logged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged At"
+          },
           "meal_type": {
             "anyOf": [
               {

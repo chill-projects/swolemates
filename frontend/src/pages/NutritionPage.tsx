@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { api } from "../api/client";
 import { PageHero, Ring } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
-import { dateFromIso } from "../lib/datetime";
+import { dateFromIso, detectedTimezone, noonInstantOf, todayIsoInTz } from "../lib/datetime";
 
 type NutritionDayOut = components["schemas"]["NutritionDayOut"];
 
@@ -157,8 +157,24 @@ function macroLabel(key: string): string {
   return key.replace(/_g$/, "").replace(/^./, (c) => c.toUpperCase());
 }
 
+/** A tool's `date` arg is a calendar day (`YYYY-MM-DD`) or a full instant; the REST
+ *  API always wants an instant. A bare day becomes local noon, matching what the MCP
+ *  path's `parse_local_datetime` does server-side. */
+function loggedAtFrom(args: Record<string, unknown>): string | null {
+  const date = args.date as string | undefined;
+  if (!date) return null;
+  return date.length <= 10 ? noonInstantOf(date) : date;
+}
+
 export function NutritionPage() {
   const [day, setDay] = useState<DayState | null>(null);
+  // Which day the component is showing, for the refetch every branch below ends with —
+  // null while that's today, so the default path sends no `day` at all and a tab left
+  // open overnight rolls forward instead of pinning itself to yesterday. Same rule the
+  // component applies inside the iframe (`viewedDate` there).
+  // A ref, not `day`: `handleTool` is handed to AppRenderer and must keep a stable
+  // identity, and the value is only ever read at call time.
+  const viewedDayRef = useRef<string | null>(null);
   const handleTool = useCallback(
     async (name: string, args: Record<string, unknown>): Promise<ToolResultPayload> => {
       switch (name) {
@@ -173,6 +189,7 @@ export function NutritionPage() {
               entries: (args.entries as { trackable_key: string; value: number }[]) ?? [],
               name: (args.name as string | undefined) ?? null,
               meal_type: (args.meal_type as string | undefined) ?? null,
+              logged_at: loggedAtFrom(args),
               source: "manual",
             },
           });
@@ -222,6 +239,9 @@ export function NutritionPage() {
               name: (args.name as string | null | undefined) ?? null,
               meal_type: (args.meal_type as string | null | undefined) ?? null,
               values: (args.values as Record<string, number> | null | undefined) ?? null,
+              // Here `date` means *move the entry to this day*, not "the day I'm
+              // looking at" — so it is only ever what the caller explicitly passed.
+              logged_at: loggedAtFrom(args),
             },
           });
           if (error) throw new Error("update log failed");
@@ -254,7 +274,7 @@ export function NutritionPage() {
             body: {
               multiplier: (args.multiplier as number | undefined) ?? 1,
               meal_type: (args.meal_type as string | null | undefined) ?? null,
-              logged_at: (args.logged_at as string | null | undefined) ?? null,
+              logged_at: loggedAtFrom(args),
             },
           });
           if (error) throw new Error("log template failed");
@@ -280,9 +300,14 @@ export function NutritionPage() {
         default:
           throw new Error(`unknown tool: ${name}`);
       }
-      // No `day` param: the server resolves "today" in the caller's zone from the
-      // `X-Timezone` header (see api/client.ts).
-      const { data, error } = await api.GET("/api/nutrition/day", {});
+      // Whichever day the call concerned, falling back to the one already on screen so
+      // an edit doesn't yank the view back to today. Only with neither is `day` omitted,
+      // and the server resolves "today" in the caller's zone from the `X-Timezone`
+      // header (see api/client.ts).
+      const viewing = (args.date as string | undefined)?.slice(0, 10) ?? viewedDayRef.current;
+      const { data, error } = await api.GET("/api/nutrition/day", {
+        params: { query: viewing ? { day: viewing } : {} },
+      });
       if (error || !data) throw new Error("day fetch failed");
       return toPayload(data);
     },
@@ -313,7 +338,10 @@ export function NutritionPage() {
           // Ignore anything that isn't a day payload — food search comes back
           // through here too, and it must not blank the header.
           onResult={(result) => {
-            if (isDayState(result.structuredContent)) setDay(result.structuredContent);
+            if (!isDayState(result.structuredContent)) return;
+            const shown = result.structuredContent.date;
+            setDay(result.structuredContent);
+            viewedDayRef.current = shown === todayIsoInTz(detectedTimezone()) ? null : shown;
           }}
           eventsUrl="/api/nutrition/events"
         />
