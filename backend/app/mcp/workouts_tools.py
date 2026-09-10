@@ -236,7 +236,10 @@ async def log_workout(
             they've chosen to add it as a new custom exercise, don't guess.
         title: e.g. "Leg day".
         date: ISO date/datetime if backdating; defaults to now. A bare date is taken
-            as that day in the user's timezone.
+            as that day in the user's timezone. This is the tool for "I forgot to log
+            Monday" — backfill it rather than declining or logging it as today. If the
+            plan had a session scheduled that day, backfilling marks it done. Say which
+            day you logged to, so a wrong read of "yesterday" gets caught immediately.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
@@ -316,7 +319,10 @@ async def get_workout_history(
 @mcp.tool
 @catches_service_errors
 async def update_workout(
-    workout_id: str, exercise_updates: list[dict] | None = None, notes: str | None = None
+    workout_id: str,
+    exercise_updates: list[dict] | None = None,
+    notes: str | None = None,
+    date: str | None = None,
 ) -> str:
     """Correct a past session conversationally — "actually that was 8 reps not
     6" — without needing to re-log anything. Not for adding a new exercise or
@@ -332,17 +338,21 @@ async def update_workout(
             "work_seconds"?, "is_warmup"?, "delete"?: true}]}]. Only the fields
             you pass on a set change; "delete" removes it entirely.
         notes: replaces the whole workout's own notes, if given.
+        date: ISO date/datetime to move the whole session to — for a workout logged
+            before anyone noticed it was actually yesterday's. The session keeps its
+            length; the plan follows it to the new day. Omit to leave it where it is.
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
+        tz = await profile_service.get_user_timezone(session, user_sub)
         workout = await service.update_workout(
             session,
             user_sub,
             workout_id=UUID(workout_id),
             exercise_updates=exercise_updates,
             notes=notes,
+            logged_at=parse_local_datetime(date, tz) if date else None,
         )
-        tz = await profile_service.get_user_timezone(session, user_sub)
     return f"Updated: {_format_workout(workout, tz)}"
 
 

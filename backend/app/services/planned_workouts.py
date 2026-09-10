@@ -394,6 +394,43 @@ async def mark_done_if_planned(session: AsyncSession, workout_id: uuid.UUID) -> 
         planned.status = PlannedWorkoutStatus.done
 
 
+async def mark_done_for_date(
+    session: AsyncSession, user_sub: str, *, day: date, workout_id: uuid.UUID
+) -> None:
+    """Called by `workouts.log_workout` — the one-shot path, which has no planned
+    entry to have been started from, so `mark_done_if_planned`'s workout_id lookup
+    finds nothing. Match by date instead: a strength session logged on a day the plan
+    scheduled one *is* that session, whether it was logged as it happened or backfilled
+    two days later ("I forgot to log Monday" left the plan claiming Monday was missed).
+
+    Generates the day's row first — planned entries are materialized lazily on read,
+    so a backfilled day often has no row yet, and marking nothing would let
+    `get_planned_workouts` create a fresh `planned` one afterwards.
+
+    Only claims a `planned`, unlinked row. A `skipped` day stays skipped: that's an
+    explicit "not doing this" from the user, and `update_planned_workout(action=
+    "unskip")` is the way back — guessing past it would silently overrule them.
+    """
+    await _generate_missing(session, user_sub, day, day)
+    result = await session.execute(
+        select(PlannedWorkout)
+        .where(
+            PlannedWorkout.user_id == user_sub,
+            PlannedWorkout.scheduled_for == day,
+            PlannedWorkout.status == PlannedWorkoutStatus.planned,
+            PlannedWorkout.workout_id.is_(None),
+        )
+        .order_by(PlannedWorkout.id)
+        .limit(1)
+    )
+    planned = result.scalar_one_or_none()
+    if planned is None:
+        return
+    planned.workout_id = workout_id
+    planned.status = PlannedWorkoutStatus.done
+    await session.flush()
+
+
 async def unlink_workout(session: AsyncSession, workout_id: uuid.UUID) -> None:
     """The counterpart to `mark_done_if_planned`, called by `workouts.delete_workout`
     while the workout still exists to be found by. The FK is ON DELETE SET NULL so

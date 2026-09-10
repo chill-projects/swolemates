@@ -1691,6 +1691,8 @@ export interface components {
         };
         /** UpdateNutritionLogRequest */
         UpdateNutritionLogRequest: {
+            /** Logged At */
+            logged_at?: string | null;
             /** Meal Type */
             meal_type?: string | null;
             /** Name */

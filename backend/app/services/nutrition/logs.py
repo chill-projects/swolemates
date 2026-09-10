@@ -135,6 +135,7 @@ async def update_nutrition_log(
     name: str | None = None,
     meal_type: str | None = None,
     values: dict[str, Decimal] | None = None,
+    logged_at: datetime | None = None,
 ) -> Log:
     """Conversational correction — "actually that was a small coffee, not a large"
     (#4/#6, resolved: the nutrition equivalent of update_workout). Only fields
@@ -148,6 +149,12 @@ async def update_nutrition_log(
     item's. `values` is rejected there: which item's macros a number belongs to
     isn't answerable from the collapsed row, and guessing would silently corrupt
     the meal.
+
+    `logged_at` moves the entry to another day — "that was yesterday's dinner, not
+    today's" (the recovery path for a meal logged, or backdated, to the wrong day).
+    Unlike `values` it *does* apply to a whole group: every item of a saved meal was
+    eaten at one sitting, so they move together rather than splitting one meal across
+    two days.
     """
     logs = await _resolve_logs(session, user_sub, log_id)
     if not logs:
@@ -170,6 +177,9 @@ async def update_nutrition_log(
     if meal_type is not None:
         for entry in logs:
             entry.meal_type = meal_type
+    if logged_at is not None:
+        for entry in logs:
+            entry.logged_at = logged_at
     if values:
         existing = {v.trackable_key: v for v in await get_log_values(session, user_sub, log.id)}
         for trackable_key, value in values.items():
@@ -212,6 +222,7 @@ async def amend_last_log(
     name: str | None = None,
     meal_type: str | None = None,
     values: dict[str, Decimal] | None = None,
+    logged_at: datetime | None = None,
 ) -> tuple[Log | None, uuid.UUID, str | None]:
     """ "Undo that" / fix the single most recent entry without needing to identify
     which record (#4/#6, resolved). No fields given deletes the most recent log
@@ -229,13 +240,19 @@ async def amend_last_log(
         raise NotFoundError("No logs to amend yet.")
 
     log_id, log_name = log.id, log.name
-    if name is None and meal_type is None and not values:
+    if name is None and meal_type is None and logged_at is None and not values:
         await session.delete(log)
         await session.flush()
         events.publish(user_sub, "nutrition")
         return None, log_id, log_name
 
     updated = await update_nutrition_log(
-        session, user_sub, log_id=log_id, name=name, meal_type=meal_type, values=values
+        session,
+        user_sub,
+        log_id=log_id,
+        name=name,
+        meal_type=meal_type,
+        values=values,
+        logged_at=logged_at,
     )
     return updated, log_id, updated.name

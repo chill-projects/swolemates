@@ -57,6 +57,24 @@ export function isoFromDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * The instant of *noon* on calendar date `ymd`, as an ISO string — what to send when
+ * an API wants a timestamp but the user only named a day (backdating a meal to
+ * "yesterday"). Noon, not midnight, for the same reason the backend's
+ * `parse_local_datetime` picks it: midnight is the one time of day a DST shift can
+ * bump onto the wrong date.
+ *
+ * Resolved in the browser's zone rather than the stored profile override, which the
+ * backend would use. They only disagree for someone who set an override more than
+ * twelve hours from where their browser is — at which point noon is still noon-ish and
+ * the day is still the day they picked.
+ */
+export function noonInstantOf(ymd: string): string {
+  const noon = dateFromIso(ymd);
+  noon.setHours(12, 0, 0, 0);
+  return noon.toISOString();
+}
+
 /** Whole days from calendar date `fromIso` to `toIso` (both `YYYY-MM-DD`). */
 export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((dateFromIso(toIso).getTime() - dateFromIso(fromIso).getTime()) / 86_400_000);
