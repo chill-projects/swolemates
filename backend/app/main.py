@@ -32,8 +32,11 @@ async def app_lifespan(_: FastAPI) -> AsyncIterator[None]:
     await dispose_engine()
 
 
-# Stateless Streamable HTTP: the 2026-07-28 spec dropped sessions, and stateless is what
-# lets Railway load-balance across replicas without sticky routing.
+# Stateless Streamable HTTP: FastMCP's stateless_http skips per-session state, so any
+# Railway replica can answer any request without sticky routing. That's our choice, not
+# the protocol's — 2026-07-28 removed protocol-level sessions outright, but this server
+# speaks 2025-11-25 (mcp SDK 1.x tops out there; an initialize asking for 2026-07-28
+# gets 2025-11-25 back), where sessions still exist and are merely optional.
 # FastMCP's ASGI app carries its own lifespan (session manager setup); it has to run
 # alongside ours, not instead of it.
 mcp_app = mcp.http_app(path="/", stateless_http=True)
