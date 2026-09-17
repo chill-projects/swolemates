@@ -1954,6 +1954,54 @@
         "title": "ProfileUpdate",
         "type": "object"
       },
+      "PushConfigOut": {
+        "description": "What the SPA needs before it can subscribe. `public_key` is null when push isn't\nconfigured, which is the signal to hide the toggle rather than offer something that\ncan only fail.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key"
+          }
+        },
+        "required": [
+          "enabled",
+          "public_key"
+        ],
+        "title": "PushConfigOut",
+        "type": "object"
+      },
+      "PushSubscriptionIn": {
+        "description": "Exactly the shape `PushSubscription.toJSON()` produces in the browser, so the SPA\ncan post what the Push API handed it without reshaping.",
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "keys": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "object"
+          }
+        },
+        "required": [
+          "endpoint",
+          "keys"
+        ],
+        "title": "PushSubscriptionIn",
+        "type": "object"
+      },
       "RedeemInviteRequest": {
         "properties": {
           "code": {
@@ -1965,6 +2013,36 @@
           "code"
         ],
         "title": "RedeemInviteRequest",
+        "type": "object"
+      },
+      "ReminderSettingsOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour"
+          },
+          "subscribed_devices": {
+            "title": "Subscribed Devices",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "hour",
+          "subscribed_devices"
+        ],
+        "title": "ReminderSettingsOut",
         "type": "object"
       },
       "SaveMealTemplateRequest": {
@@ -2159,6 +2237,32 @@
           "work_seconds"
         ],
         "title": "SetOut",
+        "type": "object"
+      },
+      "SetReminderRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hour": {
+            "anyOf": [
+              {
+                "maximum": 23.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "SetReminderRequest",
         "type": "object"
       },
       "SetType": {
@@ -4751,6 +4855,154 @@
         "summary": "Complete Onboarding",
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/api/reminders": {
+      "get": {
+        "operationId": "getReminderSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Reminder Settings",
+        "tags": [
+          "reminders"
+        ]
+      },
+      "put": {
+        "operationId": "setReminderSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReminderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Reminder Settings",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/reminders/config": {
+      "get": {
+        "description": "Unauthenticated: it carries no user data, only whether this deployment can send\npush at all and the public half of the VAPID pair, which the browser needs to\nsubscribe and which is public by design.",
+        "operationId": "getPushConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Push Config",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/reminders/subscriptions": {
+      "delete": {
+        "operationId": "removePushSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscriptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Push Subscription",
+        "tags": [
+          "reminders"
+        ]
+      },
+      "post": {
+        "operationId": "addPushSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscriptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Push Subscription",
+        "tags": [
+          "reminders"
         ]
       }
     },

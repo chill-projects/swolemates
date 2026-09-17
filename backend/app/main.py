@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db import dispose_engine
 from app.deps import DbSession
 from app.mcp.server import mcp
+from app.reminder_loop import reminder_loop
 
 settings = get_settings()
 
@@ -28,7 +29,8 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 @asynccontextmanager
 async def app_lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
+    async with reminder_loop():
+        yield
     await dispose_engine()
 
 

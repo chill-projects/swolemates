@@ -471,6 +471,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reminder Settings */
+        get: operations["getReminderSettings"];
+        /** Set Reminder Settings */
+        put: operations["setReminderSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Push Config
+         * @description Unauthenticated: it carries no user data, only whether this deployment can send
+         *     push at all and the public half of the VAPID pair, which the browser needs to
+         *     subscribe and which is public by design.
+         */
+        get: operations["getPushConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Push Subscription */
+        post: operations["addPushSubscription"];
+        /** Remove Push Subscription */
+        delete: operations["removePushSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tdee": {
         parameters: {
             query?: never;
@@ -1507,10 +1565,44 @@ export interface components {
             timezone?: string | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
         };
+        /**
+         * PushConfigOut
+         * @description What the SPA needs before it can subscribe. `public_key` is null when push isn't
+         *     configured, which is the signal to hide the toggle rather than offer something that
+         *     can only fail.
+         */
+        PushConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Public Key */
+            public_key: string | null;
+        };
+        /**
+         * PushSubscriptionIn
+         * @description Exactly the shape `PushSubscription.toJSON()` produces in the browser, so the SPA
+         *     can post what the Push API handed it without reshaping.
+         */
+        PushSubscriptionIn: {
+            /** Endpoint */
+            endpoint: string;
+            /** Keys */
+            keys: {
+                [key: string]: string;
+            };
+        };
         /** RedeemInviteRequest */
         RedeemInviteRequest: {
             /** Code */
             code: string;
+        };
+        /** ReminderSettingsOut */
+        ReminderSettingsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Hour */
+            hour: number | null;
+            /** Subscribed Devices */
+            subscribed_devices: number;
         };
         /** SaveMealTemplateRequest */
         SaveMealTemplateRequest: {
@@ -1570,6 +1662,13 @@ export interface components {
             weight: string | null;
             /** Work Seconds */
             work_seconds: number | null;
+        };
+        /** SetReminderRequest */
+        SetReminderRequest: {
+            /** Enabled */
+            enabled: boolean;
+            /** Hour */
+            hour?: number | null;
         };
         /**
          * SetType
@@ -2869,6 +2968,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+        };
+    };
+    getReminderSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsOut"];
+                };
+            };
+        };
+    };
+    setReminderSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReminderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getPushConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfigOut"];
+                };
+            };
+        };
+    };
+    addPushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
