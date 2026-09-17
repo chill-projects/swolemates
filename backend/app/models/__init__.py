@@ -12,6 +12,7 @@ from app.models.nutrition import (
 )
 from app.models.partner import InviteStatus, PartnerInvite, PartnerLink
 from app.models.profile import UserProfile, WeightUnit
+from app.models.push import PushSubscription
 from app.models.workouts import Exercise, SetType, Workout, WorkoutExercise, WorkoutSet, WorkoutType
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "SetType",
     "PartnerInvite",
     "PartnerLink",
+    "PushSubscription",
     "InviteStatus",
 ]

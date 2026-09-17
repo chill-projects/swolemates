@@ -132,6 +132,30 @@
         "title": "CalculateTargetsResponse",
         "type": "object"
       },
+      "CarriedNoteOut": {
+        "properties": {
+          "exercise_name": {
+            "title": "Exercise Name",
+            "type": "string"
+          },
+          "logged_on": {
+            "format": "date",
+            "title": "Logged On",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exercise_name",
+          "note",
+          "logged_on"
+        ],
+        "title": "CarriedNoteOut",
+        "type": "object"
+      },
       "CelebrationOut": {
         "properties": {
           "exercise_name": {
@@ -167,6 +191,24 @@
           "previous"
         ],
         "title": "CelebrationOut",
+        "type": "object"
+      },
+      "CheckinDecisionOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "detail"
+        ],
+        "title": "CheckinDecisionOut",
         "type": "object"
       },
       "CreateTemplateExerciseIn": {
@@ -1912,6 +1954,54 @@
         "title": "ProfileUpdate",
         "type": "object"
       },
+      "PushConfigOut": {
+        "description": "What the SPA needs before it can subscribe. `public_key` is null when push isn't\nconfigured, which is the signal to hide the toggle rather than offer something that\ncan only fail.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key"
+          }
+        },
+        "required": [
+          "enabled",
+          "public_key"
+        ],
+        "title": "PushConfigOut",
+        "type": "object"
+      },
+      "PushSubscriptionIn": {
+        "description": "Exactly the shape `PushSubscription.toJSON()` produces in the browser, so the SPA\ncan post what the Push API handed it without reshaping.",
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "keys": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "object"
+          }
+        },
+        "required": [
+          "endpoint",
+          "keys"
+        ],
+        "title": "PushSubscriptionIn",
+        "type": "object"
+      },
       "RedeemInviteRequest": {
         "properties": {
           "code": {
@@ -1923,6 +2013,36 @@
           "code"
         ],
         "title": "RedeemInviteRequest",
+        "type": "object"
+      },
+      "ReminderSettingsOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour"
+          },
+          "subscribed_devices": {
+            "title": "Subscribed Devices",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "hour",
+          "subscribed_devices"
+        ],
+        "title": "ReminderSettingsOut",
         "type": "object"
       },
       "SaveMealTemplateRequest": {
@@ -2117,6 +2237,32 @@
           "work_seconds"
         ],
         "title": "SetOut",
+        "type": "object"
+      },
+      "SetReminderRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hour": {
+            "anyOf": [
+              {
+                "maximum": 23.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "SetReminderRequest",
         "type": "object"
       },
       "SetType": {
@@ -2571,6 +2717,29 @@
         "title": "TrackableTypeOut",
         "type": "object"
       },
+      "UpcomingSessionOut": {
+        "properties": {
+          "scheduled_for": {
+            "format": "date",
+            "title": "Scheduled For",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlannedWorkoutStatus"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_for",
+          "template_name",
+          "status"
+        ],
+        "title": "UpcomingSessionOut",
+        "type": "object"
+      },
       "UpdateMealTemplateItemRequest": {
         "properties": {
           "name": {
@@ -2961,6 +3130,69 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WeeklyCheckinOut": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "carried_notes": {
+            "items": {
+              "$ref": "#/components/schemas/CarriedNoteOut"
+            },
+            "title": "Carried Notes",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/CheckinDecisionOut"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "nutrition_streak": {
+            "title": "Nutrition Streak",
+            "type": "integer"
+          },
+          "review": {
+            "$ref": "#/components/schemas/WeeklyReviewOut"
+          },
+          "streak": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreakOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingSessionOut"
+            },
+            "title": "Upcoming",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "review",
+          "upcoming",
+          "carried_notes",
+          "decisions",
+          "streak",
+          "nutrition_streak",
+          "summary"
+        ],
+        "title": "WeeklyCheckinOut",
+        "type": "object"
+      },
       "WeeklyPatternDayIn": {
         "properties": {
           "day_of_week": {
@@ -3022,6 +3254,41 @@
           "template_name"
         ],
         "title": "WeeklyPatternDayOut",
+        "type": "object"
+      },
+      "WeeklyReviewOut": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "nutrition_days_logged": {
+            "title": "Nutrition Days Logged",
+            "type": "integer"
+          },
+          "sessions_completed": {
+            "title": "Sessions Completed",
+            "type": "integer"
+          },
+          "sessions_planned": {
+            "title": "Sessions Planned",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "sessions_completed",
+          "sessions_planned",
+          "nutrition_days_logged"
+        ],
+        "title": "WeeklyReviewOut",
         "type": "object"
       },
       "WeightEntryOut": {
@@ -4591,6 +4858,154 @@
         ]
       }
     },
+    "/api/reminders": {
+      "get": {
+        "operationId": "getReminderSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Reminder Settings",
+        "tags": [
+          "reminders"
+        ]
+      },
+      "put": {
+        "operationId": "setReminderSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReminderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Reminder Settings",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/reminders/config": {
+      "get": {
+        "description": "Unauthenticated: it carries no user data, only whether this deployment can send\npush at all and the public half of the VAPID pair, which the browser needs to\nsubscribe and which is public by design.",
+        "operationId": "getPushConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Push Config",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
+    "/api/reminders/subscriptions": {
+      "delete": {
+        "operationId": "removePushSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscriptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Push Subscription",
+        "tags": [
+          "reminders"
+        ]
+      },
+      "post": {
+        "operationId": "addPushSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscriptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Push Subscription",
+        "tags": [
+          "reminders"
+        ]
+      }
+    },
     "/api/tdee": {
       "get": {
         "description": "What the calculator would produce right now, persisting nothing \u2014 the Profile\npage shows this next to the targets you've actually saved, so the estimate can be\ndisplayed without silently overwriting them.",
@@ -4832,6 +5247,57 @@
         "summary": "Update Workout Template",
         "tags": [
           "templates"
+        ]
+      }
+    },
+    "/api/weekly-checkin": {
+      "get": {
+        "description": "The week behind and the week ahead in one read. `as_of` is for looking at the\ncheck-in from another day (and for tests); it defaults to today in `tz`.",
+        "operationId": "getWeeklyCheckin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyCheckinOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Weekly Checkin",
+        "tags": [
+          "planned-workouts"
         ]
       }
     },

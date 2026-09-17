@@ -471,6 +471,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reminder Settings */
+        get: operations["getReminderSettings"];
+        /** Set Reminder Settings */
+        put: operations["setReminderSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Push Config
+         * @description Unauthenticated: it carries no user data, only whether this deployment can send
+         *     push at all and the public half of the VAPID pair, which the browser needs to
+         *     subscribe and which is public by design.
+         */
+        get: operations["getPushConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Push Subscription */
+        post: operations["addPushSubscription"];
+        /** Remove Push Subscription */
+        delete: operations["removePushSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tdee": {
         parameters: {
             query?: never;
@@ -573,6 +631,27 @@ export interface paths {
         put?: never;
         /** Update Workout Template */
         post: operations["updateWorkoutTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weekly-checkin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Weekly Checkin
+         * @description The week behind and the week ahead in one read. `as_of` is for looking at the
+         *     check-in from another day (and for tests); it defaults to today in `tz`.
+         */
+        get: operations["getWeeklyCheckin"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -926,6 +1005,18 @@ export interface components {
             /** Tdee */
             tdee: number;
         };
+        /** CarriedNoteOut */
+        CarriedNoteOut: {
+            /** Exercise Name */
+            exercise_name: string;
+            /**
+             * Logged On
+             * Format: date
+             */
+            logged_on: string;
+            /** Note */
+            note: string;
+        };
         /** CelebrationOut */
         CelebrationOut: {
             /** Exercise Name */
@@ -936,6 +1027,13 @@ export interface components {
             previous: string | null;
             /** Value */
             value: string;
+        };
+        /** CheckinDecisionOut */
+        CheckinDecisionOut: {
+            /** Detail */
+            detail: string;
+            /** Kind */
+            kind: string;
         };
         /** CreateTemplateExerciseIn */
         CreateTemplateExerciseIn: {
@@ -1467,10 +1565,44 @@ export interface components {
             timezone?: string | null;
             weight_unit?: components["schemas"]["WeightUnit"] | null;
         };
+        /**
+         * PushConfigOut
+         * @description What the SPA needs before it can subscribe. `public_key` is null when push isn't
+         *     configured, which is the signal to hide the toggle rather than offer something that
+         *     can only fail.
+         */
+        PushConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Public Key */
+            public_key: string | null;
+        };
+        /**
+         * PushSubscriptionIn
+         * @description Exactly the shape `PushSubscription.toJSON()` produces in the browser, so the SPA
+         *     can post what the Push API handed it without reshaping.
+         */
+        PushSubscriptionIn: {
+            /** Endpoint */
+            endpoint: string;
+            /** Keys */
+            keys: {
+                [key: string]: string;
+            };
+        };
         /** RedeemInviteRequest */
         RedeemInviteRequest: {
             /** Code */
             code: string;
+        };
+        /** ReminderSettingsOut */
+        ReminderSettingsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Hour */
+            hour: number | null;
+            /** Subscribed Devices */
+            subscribed_devices: number;
         };
         /** SaveMealTemplateRequest */
         SaveMealTemplateRequest: {
@@ -1530,6 +1662,13 @@ export interface components {
             weight: string | null;
             /** Work Seconds */
             work_seconds: number | null;
+        };
+        /** SetReminderRequest */
+        SetReminderRequest: {
+            /** Enabled */
+            enabled: boolean;
+            /** Hour */
+            hour?: number | null;
         };
         /**
          * SetType
@@ -1666,6 +1805,17 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** UpcomingSessionOut */
+        UpcomingSessionOut: {
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            status: components["schemas"]["PlannedWorkoutStatus"];
+            /** Template Name */
+            template_name: string;
+        };
         /** UpdateMealTemplateItemRequest */
         UpdateMealTemplateItemRequest: {
             /** Name */
@@ -1760,6 +1910,26 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WeeklyCheckinOut */
+        WeeklyCheckinOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Carried Notes */
+            carried_notes: components["schemas"]["CarriedNoteOut"][];
+            /** Decisions */
+            decisions: components["schemas"]["CheckinDecisionOut"][];
+            /** Nutrition Streak */
+            nutrition_streak: number;
+            review: components["schemas"]["WeeklyReviewOut"];
+            streak: components["schemas"]["StreakOut"] | null;
+            /** Summary */
+            summary: string;
+            /** Upcoming */
+            upcoming: components["schemas"]["UpcomingSessionOut"][];
+        };
         /** WeeklyPatternDayIn */
         WeeklyPatternDayIn: {
             /** Day Of Week */
@@ -1775,6 +1945,25 @@ export interface components {
             template_id: string | null;
             /** Template Name */
             template_name: string | null;
+        };
+        /** WeeklyReviewOut */
+        WeeklyReviewOut: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Nutrition Days Logged */
+            nutrition_days_logged: number;
+            /** Sessions Completed */
+            sessions_completed: number;
+            /** Sessions Planned */
+            sessions_planned: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
         };
         /**
          * WeightEntryOut
@@ -2783,6 +2972,141 @@ export interface operations {
             };
         };
     };
+    getReminderSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsOut"];
+                };
+            };
+        };
+    };
+    setReminderSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReminderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getPushConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfigOut"];
+                };
+            };
+        };
+    };
+    addPushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removePushSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getTdeeEstimate: {
         parameters: {
             query?: never;
@@ -2960,6 +3284,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getWeeklyCheckin: {
+        parameters: {
+            query?: {
+                as_of?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCheckinOut"];
                 };
             };
             /** @description Validation Error */

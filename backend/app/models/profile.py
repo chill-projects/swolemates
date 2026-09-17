@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import DateTime, Enum, Integer, Numeric, String, Text, func
+from sqlalchemy import Date, DateTime, Enum, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -68,6 +68,14 @@ class UserProfile(Base, TimestampMixin):
     )
     coach_notes: Mapped[str | None] = mapped_column(Text)
     onboarding_completed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+    # Weekly reminder: local hour (0-23) to send the Sunday check-in nudge at. NULL is
+    # off, which is the default — a fitness app that starts notifying you uninvited is
+    # one people mute before they ever see it be useful.
+    weekly_reminder_hour: Mapped[int | None] = mapped_column(Integer)
+    # The local date the reminder was last sent for. Doubles as the send lock: the
+    # conditional UPDATE that advances it is what makes exactly one replica win the
+    # race, so no delivery-ledger table is needed for a single notification kind.
+    weekly_reminder_sent_on: Mapped[object | None] = mapped_column(Date)
     sex: Mapped[BiologicalSex | None] = mapped_column(Enum(BiologicalSex, name="biological_sex"))
     age: Mapped[int | None] = mapped_column(Integer)
     height_in: Mapped[object | None] = mapped_column(Numeric)

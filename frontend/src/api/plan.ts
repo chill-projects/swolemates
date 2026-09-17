@@ -4,6 +4,7 @@ import { api } from "./client";
 
 const PATTERN_KEY = ["weeklyPattern"] as const;
 const TEMPLATES_KEY = ["templates"] as const;
+const CHECKIN_KEY = ["weeklyCheckin"] as const;
 
 export function useWeeklyPattern() {
   return useQuery({
@@ -11,6 +12,19 @@ export function useWeeklyPattern() {
     queryFn: async () => {
       const { data, error } = await api.GET("/api/weekly-pattern");
       if (error) throw new Error("Failed to load your weekly pattern");
+      return data;
+    },
+  });
+}
+
+/** The weekly check-in. No `as_of`: the server resolves "today" in the caller's zone
+ *  from the `X-Timezone` header, same as every other day-scoped read. */
+export function useWeeklyCheckin() {
+  return useQuery({
+    queryKey: CHECKIN_KEY,
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/weekly-checkin");
+      if (error) throw new Error("Failed to load your check-in");
       return data;
     },
   });
@@ -31,6 +45,7 @@ export function useSetWeeklyPattern() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PATTERN_KEY });
+      void queryClient.invalidateQueries({ queryKey: CHECKIN_KEY });
       void queryClient.invalidateQueries({ queryKey: ["plannedWorkouts"] });
     },
   });
