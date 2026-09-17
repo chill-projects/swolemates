@@ -23,8 +23,9 @@ from app.mcp._icons import app_icons
 from app.mcp.server import mcp
 from app.services import planned_workouts as service
 from app.services import profile as profile_service
+from app.services import weekly_checkin as service_checkin
 from app.services import workout_templates
-from app.services.timezones import today_in
+from app.services.timezones import local_date, parse_local_datetime, today_in
 
 PLANNED_UI_URI = "ui://swolemates/planned.html"
 
@@ -151,6 +152,67 @@ async def update_planned_workout(planned_id: str, action: str) -> dict:
             session, user_sub, planned_id=UUID(planned_id), action=action
         )
     return _planned_workout_payload(planned)
+
+
+def _checkin_text(checkin: service_checkin.WeeklyCheckin) -> str:
+    """Text, not a component. The check-in is something to read and then act on through
+    other tools - wrapping it in UI would put a second, worse plan editor next to the
+    one `planned.html` already is."""
+    review = checkin.review
+    lines = [
+        f"Week of {review.start:%-d %b} - {review.end:%-d %b}: "
+        f"{review.sessions_completed} of {review.sessions_planned} planned sessions, "
+        f"{review.nutrition_days_logged} of 7 days logged."
+    ]
+    if checkin.streak is not None:
+        lines.append(
+            f"Streak: {checkin.streak.weeks} week(s); "
+            f"{checkin.streak.this_week}/{checkin.streak.target} this week. "
+            f"Nutrition logged {checkin.nutrition_streak} day(s) running."
+        )
+
+    if checkin.upcoming:
+        lines.append("\nComing up:")
+        lines += [f"  {s.scheduled_for:%a %-d %b} - {s.template_name}" for s in checkin.upcoming]
+    else:
+        lines.append("\nNothing scheduled for the week ahead.")
+
+    if checkin.carried_notes:
+        lines.append("\nNotes they left for next time:")
+        lines += [
+            f'  {n.exercise_name} ({n.logged_on:%a}) - "{n.note}"' for n in checkin.carried_notes
+        ]
+
+    if checkin.decisions:
+        lines.append("\nNeeds sorting before the week starts:")
+        lines += [f"  {d.detail}" for d in checkin.decisions]
+    return "\n".join(lines)
+
+
+@mcp.tool
+@catches_service_errors
+async def get_weekly_checkin(date: str | None = None) -> str:
+    """Review the week just gone and set up the week ahead - the Sunday-night ritual,
+    though it reads correctly on any day. Returns what they did against what they
+    planned, what's scheduled next, the notes they left themselves last time, and
+    anything that will silently not happen unless they fix it.
+
+    Lead with the notes if there are any: the user wrote them for exactly this moment,
+    and they're the most concrete thing to plan around ("you said to hold the weight on
+    bench"). Then walk the week with them and make whatever changes they ask for via
+    set_weekly_pattern, plan_workout, or update_planned_workout - this tool only reads.
+    Don't recite every field back; pick what's worth acting on.
+
+    Args:
+        date: ISO date to stand on, e.g. "2026-09-13". Defaults to today in the user's
+            timezone. Use it to see the check-in as of another day.
+    """
+    user_sub = mcp_user_sub()
+    async with tool_session() as session:
+        tz = await profile_service.get_user_timezone(session, user_sub)
+        as_of = local_date(parse_local_datetime(date, tz), tz) if date else None
+        checkin = await service_checkin.get_weekly_checkin(session, user_sub, as_of=as_of, tz=tz)
+    return _checkin_text(checkin)
 
 
 @mcp.tool(app=AppConfig(resource_uri=PLANNED_UI_URI, visibility=["app"]))
