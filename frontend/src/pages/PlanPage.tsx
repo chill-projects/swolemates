@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
-import { useSetWeeklyPattern, useTemplates, useWeeklyPattern } from "../api/plan";
+import { useSetWeeklyPattern, useTemplates, useWeeklyCheckin, useWeeklyPattern } from "../api/plan";
 import type { components } from "../api/generated";
 import { Card, PageHero } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
@@ -63,6 +63,77 @@ function patternHeadline(pattern: PatternDay[] | undefined): string {
  * pattern decides which template runs on which day, the next seven days come from
  * it, and the library below is where a template gets edited.
  */
+type CheckinReview = components["schemas"]["WeeklyReviewOut"];
+
+function reviewLine(review: CheckinReview): string {
+  const planned = review.sessions_planned
+    ? `${review.sessions_completed}/${review.sessions_planned} sessions`
+    : `${review.sessions_completed} sessions`;
+  return `${planned} · ${review.nutrition_days_logged}/7 days logged`;
+}
+
+
+/** The weekly check-in — the seven days just gone, and what needs deciding before the
+ *  next seven start. Reads the same `get_weekly_checkin` service the MCP tool does, so
+ *  the Sunday ritual is identical here and in Claude.
+ *
+ *  Deliberately *not* showing the upcoming week: "Next seven days" is the panel beside
+ *  this one, with Start/Skip on every row. The payload carries `upcoming` because chat
+ *  and a future notification have no such panel; on this page repeating it would just
+ *  be a worse copy an arm's length away.
+ *
+ *  Decisions come first because they're the only part that's actionable *before* the
+ *  week starts; under a scoreboard is where they'd get missed. */
+function WeeklyCheckinCard() {
+  const checkin = useWeeklyCheckin();
+  const data = checkin.data;
+
+  return (
+    <Card
+      title="Last seven days"
+      meta={<span className="card-meta">{data ? reviewLine(data.review) : ""}</span>}
+    >
+      {checkin.isPending && <p className="muted">Loading…</p>}
+      {checkin.isError && <p className="error">Couldn’t load your check-in.</p>}
+      {data && (
+        <>
+          {data.decisions.length > 0 && (
+            <ul className="checkin-decisions">
+              {data.decisions.map((d) => (
+                <li key={d.kind + d.detail}>{d.detail}</li>
+              ))}
+            </ul>
+          )}
+
+          {data.carried_notes.length > 0 ? (
+            <div className="checkin-block">
+              {/* Written by the user for exactly this moment, and until now visible only
+                  inside the session that recorded them. */}
+              <h3 className="checkin-heading">You left yourself</h3>
+              <ul className="checkin-notes">
+                {data.carried_notes.map((n) => (
+                  <li key={n.exercise_name}>
+                    <span className="checkin-note-name">{n.exercise_name}</span>
+                    <span className="checkin-note-text">“{n.note}”</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            data.decisions.length === 0 && (
+              <p className="card-note">
+                Nothing to pick up — leave a note at the end of a session and it shows up
+                here next week.
+              </p>
+            )
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+
 export function PlanPage() {
   const pattern = useWeeklyPattern();
   const templates = useTemplates();
@@ -263,6 +334,7 @@ export function PlanPage() {
           </div>
 
           <div className="page-grid">
+            <WeeklyCheckinCard />
             <Card
               title="Templates"
               meta={

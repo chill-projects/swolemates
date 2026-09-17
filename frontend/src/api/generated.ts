@@ -579,6 +579,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weekly-checkin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Weekly Checkin
+         * @description The week behind and the week ahead in one read. `as_of` is for looking at the
+         *     check-in from another day (and for tests); it defaults to today in `tz`.
+         */
+        get: operations["getWeeklyCheckin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/weekly-pattern": {
         parameters: {
             query?: never;
@@ -926,6 +947,18 @@ export interface components {
             /** Tdee */
             tdee: number;
         };
+        /** CarriedNoteOut */
+        CarriedNoteOut: {
+            /** Exercise Name */
+            exercise_name: string;
+            /**
+             * Logged On
+             * Format: date
+             */
+            logged_on: string;
+            /** Note */
+            note: string;
+        };
         /** CelebrationOut */
         CelebrationOut: {
             /** Exercise Name */
@@ -936,6 +969,13 @@ export interface components {
             previous: string | null;
             /** Value */
             value: string;
+        };
+        /** CheckinDecisionOut */
+        CheckinDecisionOut: {
+            /** Detail */
+            detail: string;
+            /** Kind */
+            kind: string;
         };
         /** CreateTemplateExerciseIn */
         CreateTemplateExerciseIn: {
@@ -1666,6 +1706,17 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** UpcomingSessionOut */
+        UpcomingSessionOut: {
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            status: components["schemas"]["PlannedWorkoutStatus"];
+            /** Template Name */
+            template_name: string;
+        };
         /** UpdateMealTemplateItemRequest */
         UpdateMealTemplateItemRequest: {
             /** Name */
@@ -1760,6 +1811,26 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WeeklyCheckinOut */
+        WeeklyCheckinOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Carried Notes */
+            carried_notes: components["schemas"]["CarriedNoteOut"][];
+            /** Decisions */
+            decisions: components["schemas"]["CheckinDecisionOut"][];
+            /** Nutrition Streak */
+            nutrition_streak: number;
+            review: components["schemas"]["WeeklyReviewOut"];
+            streak: components["schemas"]["StreakOut"] | null;
+            /** Summary */
+            summary: string;
+            /** Upcoming */
+            upcoming: components["schemas"]["UpcomingSessionOut"][];
+        };
         /** WeeklyPatternDayIn */
         WeeklyPatternDayIn: {
             /** Day Of Week */
@@ -1775,6 +1846,25 @@ export interface components {
             template_id: string | null;
             /** Template Name */
             template_name: string | null;
+        };
+        /** WeeklyReviewOut */
+        WeeklyReviewOut: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Nutrition Days Logged */
+            nutrition_days_logged: number;
+            /** Sessions Completed */
+            sessions_completed: number;
+            /** Sessions Planned */
+            sessions_planned: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
         };
         /**
          * WeightEntryOut
@@ -2960,6 +3050,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getWeeklyCheckin: {
+        parameters: {
+            query?: {
+                as_of?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyCheckinOut"];
                 };
             };
             /** @description Validation Error */
