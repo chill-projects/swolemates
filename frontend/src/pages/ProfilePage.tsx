@@ -10,6 +10,13 @@ import {
 import type { components } from "../api/generated";
 import { useWhoami } from "../auth/authkit";
 import { McpConnectInfo } from "../components/McpConnectInfo";
+import {
+  disablePush,
+  enablePush,
+  usePushConfig,
+  useReminderSettings,
+  useSetReminder,
+} from "../api/reminders";
 import { Card, PageHero } from "../components/ui";
 import { detectedTimezone } from "../lib/datetime";
 import {
@@ -378,6 +385,8 @@ export function ProfilePage({ profile }: { profile: Profile }) {
                   : `Overriding your browser's ${detectedTz}.`}
               </p>
             </Card>
+
+            <WeeklyReminderCard />
           </div>
 
           <div className="page-grid">
@@ -469,6 +478,93 @@ export function ProfilePage({ profile }: { profile: Profile }) {
     </>
   );
 }
+
+/**
+ * The weekly reminder toggle.
+ *
+ * Hidden entirely when the server has no VAPID keys: offering a switch that can only
+ * fail is worse than not offering one. On iPhone it will also be missing until the app
+ * is installed to the Home Screen, because that's the only place iOS allows Web Push —
+ * hence the note rather than a silently dead control.
+ *
+ * `enablePush` runs straight off the click, never from an effect: both iOS and Chrome
+ * refuse a permission prompt that isn't tied to a real gesture.
+ */
+function WeeklyReminderCard() {
+  const config = usePushConfig();
+  const settings = useReminderSettings();
+  const setReminder = useSetReminder();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!config.data?.enabled || !config.data.public_key) return null;
+  const publicKey = config.data.public_key;
+  const enabled = settings.data?.enabled ?? false;
+  const hour = settings.data?.hour ?? 18;
+
+  async function toggle(next: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      // Permission first, settings second. Flipping the stored preference before the
+      // browser has agreed would leave someone "subscribed" with nothing to deliver to.
+      if (next) await enablePush(publicKey);
+      else await disablePush();
+      await setReminder.mutateAsync({ enabled: next, hour });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Weekly reminder">
+      <div className="setting-rows">
+        <SettingRow label="Sunday nudge">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={busy || settings.isPending}
+            onChange={(e) => void toggle(e.target.checked)}
+          />
+        </SettingRow>
+        {enabled && (
+          <SettingRow label="Arrives at">
+            <select
+              value={hour}
+              disabled={busy}
+              onChange={(e) => setReminder.mutate({ enabled: true, hour: Number(e.target.value) })}
+            >
+              {HOUR_OPTIONS.map((h) => (
+                <option key={h} value={h}>
+                  {formatHour(h)}
+                </option>
+              ))}
+            </select>
+          </SettingRow>
+        )}
+      </div>
+      {error && <p className="error">{error}</p>}
+      <p className="card-note">
+        {enabled
+          ? `A nudge every Sunday at ${formatHour(hour)}, your time, with what's worth sorting before the week starts.${
+              settings.data?.subscribed_devices
+                ? ` Going to ${settings.data.subscribed_devices} device${settings.data.subscribed_devices === 1 ? "" : "s"}.`
+                : ""
+            }`
+          : "A Sunday evening nudge to look at the week ahead. On iPhone, add Swolemates to your Home Screen first — iOS only allows notifications for installed apps."}
+      </p>
+    </Card>
+  );
+}
+
+const HOUR_OPTIONS = [16, 17, 18, 19, 20, 21];
+
+function formatHour(hour: number): string {
+  return new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, { hour: "numeric" });
+}
+
 
 function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (

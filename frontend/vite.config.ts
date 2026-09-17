@@ -12,7 +12,7 @@ export default defineConfig({
       // a build) simple and avoids a dev-only caching layer to reason about.
       // Manifest icons precache automatically; these two are only referenced via
       // <link> tags in index.html, so they need to be named explicitly.
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+      includeAssets: ["favicon.ico", "apple-touch-icon.png", "push-sw.js"],
       manifest: {
         name: "Swolemates",
         short_name: "Swolemates",
@@ -36,6 +36,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Adds our push/notificationclick listeners to the generated service worker.
+        // This is what keeps us on `generateSW` — see public/push-sw.js for why that
+        // matters. Also listed in `includeAssets` so it's precached and versioned with
+        // the rest of the shell rather than fetched cold on the first push.
+        importScripts: ["/push-sw.js"],
         // This is a mutation-heavy, data-current app — a stale cached response for any
         // of these would actively mislead the user, so a network failure here must
         // surface as a real error rather than silently falling back to the cached SPA
