@@ -59,6 +59,7 @@ async def whoami() -> str:
 from app.mcp import (  # noqa: E402,F401
     coach_prompt,
     food_facts_tools,
+    meal_plan_tools,
     nutrition_tools,
     planned_workouts_tools,
     profile_tools,
