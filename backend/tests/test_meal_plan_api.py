@@ -160,9 +160,7 @@ async def test_kitchen_round_trips(client: AsyncClient) -> None:
 
 
 async def test_planning_an_ingredient_is_a_400(client: AsyncClient) -> None:
-    item = await client.post(
-        "/api/kitchen", json={"kind": "ingredient", "name": "Half a cabbage"}
-    )
+    item = await client.post("/api/kitchen", json={"kind": "ingredient", "name": "Half a cabbage"})
     resp = await client.post(
         "/api/meal-plan",
         json={

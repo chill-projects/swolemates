@@ -45,9 +45,7 @@ async def _template(
         ],
         name=name,
     )
-    return await nutrition_service.save_meal_template(
-        session, user, name=name, log_ids=[log.id]
-    )
+    return await nutrition_service.save_meal_template(session, user, name=name, log_ids=[log.id])
 
 
 # --------------------------------------------------------------------------- slots
@@ -489,9 +487,7 @@ async def test_logging_a_planned_meal_writes_it_into_the_day(
         session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
     )
 
-    logged = await service.log_planned_meal(
-        session, TEST_USER, planned_meal_id=planned.id
-    )
+    logged = await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
 
     assert logged.status == "logged"
     day = await nutrition_service.get_nutrition_day(session, TEST_USER, day=MON)
@@ -547,12 +543,11 @@ async def test_logging_is_scoped_to_the_caller(session: AsyncSession) -> None:
 
 async def test_unknown_ids_raise_not_found(session: AsyncSession) -> None:
     with pytest.raises(NotFoundError):
-        await service.update_planned_meal(
-            session, TEST_USER, planned_meal_id=uuid4(), name="nope"
-        )
+        await service.update_planned_meal(session, TEST_USER, planned_meal_id=uuid4(), name="nope")
 
 
 # ------------------------------------------------------- resolving a spoken name
+
 
 async def test_resolve_prefers_a_leftover_over_a_saved_meal_of_the_same_name(
     session: AsyncSession,

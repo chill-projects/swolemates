@@ -1730,3 +1730,437 @@ li {
   display: flex;
   gap: 0.5rem;
 }
+
+/* ---------------------------------------------------------------- meal plan
+   The eating half of the Plan tab. Seven day columns that scroll sideways rather
+   than squeezing — a 100px column can't hold a meal name — and the same four slot
+   colours the nutrition log already uses, so a planned meal and a logged one read
+   as the same kind of object. */
+
+.meal-week-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.meal-week-nav button {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.meal-week-nav button:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.meal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(132px, 1fr));
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.meal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  background: var(--sand);
+  border: 1px solid var(--line-soft);
+  border-radius: 0.55rem;
+  padding: 0.45rem 0.38rem;
+}
+.meal-day--today {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 1px var(--teal);
+}
+.meal-day-name {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.meal-day--today .meal-day-name {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.meal-slot {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.38rem;
+  color: var(--ink);
+  background: var(--card);
+}
+.meal-slot:hover {
+  border-color: var(--teal);
+}
+.meal-slot.is-open {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.meal-slot--empty {
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--dim);
+}
+.meal-slot--breakfast { background: var(--gold-pale); }
+.meal-slot--lunch { background: var(--teal-pale); }
+.meal-slot--dinner { background: var(--coral-pale); }
+.meal-slot--snack { background: var(--plum-pale); }
+.meal-slot-kind {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.48rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.meal-slot--breakfast .meal-slot-kind { color: var(--amber); }
+.meal-slot--lunch .meal-slot-kind { color: var(--teal); }
+.meal-slot--dinner .meal-slot-kind { color: var(--red); }
+.meal-slot--snack .meal-slot-kind { color: var(--plum); }
+.meal-slot-name {
+  display: block;
+  font-size: 0.71rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.meal-slot-macros {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.53rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+/* Amber rather than grey: "we don't know" is information, not absence. */
+.meal-slot-macros.is-unknown {
+  color: var(--amber);
+  font-weight: 700;
+}
+.meal-slot-logged {
+  position: absolute;
+  top: 0.22rem;
+  right: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.45rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.meal-day-foot {
+  margin-top: auto;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.meal-day-foot b {
+  color: var(--ink);
+  font-size: 0.64rem;
+}
+.meal-day-unknown {
+  display: block;
+  color: var(--amber);
+  font-weight: 700;
+}
+
+/* --- picker + editor: one panel style, opened under the week --- */
+.meal-picker,
+.meal-editor {
+  margin-top: 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 0.6rem;
+  background: var(--card);
+  padding: 0.7rem 0.8rem;
+}
+.meal-picker-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+.meal-picker-close {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  padding: 0.18rem 0.5rem;
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.meal-picker-close:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.meal-picker-group {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0.6rem 0 0.3rem;
+}
+.meal-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.meal-options li button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--sand);
+  color: var(--ink);
+}
+.meal-options li button:hover:not(:disabled) {
+  border-color: var(--teal);
+}
+.meal-options li.is-leftover button {
+  border-color: var(--coral);
+  background: var(--coral-pale);
+}
+.meal-options .mo-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.meal-options .mo-macros {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.meal-options-empty {
+  font-size: 0.78rem;
+}
+.meal-picker-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.meal-picker-actions button {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.meal-picker-actions button:hover:not(:disabled) {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.meal-picker-actions .primary {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--card);
+}
+.meal-picker-actions .danger:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.meal-quick {
+  display: flex;
+  gap: 0.35rem;
+}
+.meal-quick input {
+  flex: 1;
+  min-width: 0;
+}
+.meal-quick button {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--teal);
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  background: var(--teal);
+  color: var(--card);
+}
+
+.meal-editor-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.55rem;
+}
+.meal-editor-name span,
+.meal-editor-macros span,
+.kitchen-form label span {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.meal-editor-macros {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.meal-editor-macros label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.meal-editor-macros input {
+  width: 5.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* --- the tray --- */
+.kitchen {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line-soft);
+}
+.kitchen-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.kitchen-head h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin: 0;
+}
+.kitchen-head button {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--teal);
+  border-radius: 0.4rem;
+  padding: 0.24rem 0.55rem;
+  background: var(--teal);
+  color: var(--card);
+}
+.kitchen-form {
+  border: 1px dashed var(--teal);
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.75rem;
+  background: var(--sand);
+  margin-bottom: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+.kitchen-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.kitchen-form .card-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+.kitchen-kind {
+  display: flex;
+  gap: 0.3rem;
+}
+.kitchen-kind button {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.28rem 0.55rem;
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.kitchen-kind button[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--sand);
+}
+.kitchen-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.kitchen-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.42rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--sand);
+}
+.kitchen-list li.is-leftover {
+  border-color: var(--coral);
+}
+.kitchen-list .k-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.kitchen-list .k-detail {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.kitchen-list .k-remove {
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--dim);
+  padding: 0 0.1rem;
+}
+.kitchen-list .k-remove:hover {
+  color: var(--red);
+}
+
+@media (max-width: 720px) {
+  /* A phone can't hold seven columns; the grid scrolls and each day stays legible
+     rather than every column shrinking to unreadable. */
+  .meal-week {
+    grid-template-columns: repeat(7, 78vw);
+  }
+}
