@@ -117,3 +117,42 @@ export function macrosFromForm(form: Record<string, string>): Record<string, str
   }
   return out;
 }
+
+/** The single initial the phone ribbon shows. Two of them are "T" and two are "S",
+ *  which is fine — position carries the rest, and the selected day is named in full
+ *  above the list. */
+export function dayLetter(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, { weekday: "narrow" }).charAt(0);
+}
+
+export interface RibbonDay {
+  date: string;
+  letter: string;
+  /** How many of the day's four slots are filled — the dots under each pill. */
+  filled: number;
+  isToday: boolean;
+  isSelected: boolean;
+}
+
+export function ribbonDays(
+  days: { scheduled_for: string; meals: { meal_type: string }[] }[],
+  selected: string,
+  today: string,
+): RibbonDay[] {
+  return days.map((day) => ({
+    date: day.scheduled_for,
+    letter: dayLetter(day.scheduled_for),
+    filled: day.meals.length,
+    isToday: day.scheduled_for === today,
+    isSelected: day.scheduled_for === selected,
+  }));
+}
+
+/** Where the phone should land after the week changes underneath it: stay put if the
+ *  day is still on screen, else today, else the start of the week. */
+export function clampSelectedDay(selected: string, dates: string[], today: string): string {
+  if (dates.length === 0 || dates.includes(selected)) return selected;
+  if (dates.includes(today)) return today;
+  return dates[0]!;
+}

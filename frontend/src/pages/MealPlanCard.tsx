@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import {
   type KitchenItem,
+  type PlannedDay,
   type PlannedMeal,
   useAddKitchenItem,
   useClearPlannedMeal,
@@ -12,22 +13,25 @@ import {
   useRemoveKitchenItem,
   useUpdatePlannedMeal,
 } from "../api/mealPlan";
-import { useTemplates } from "../api/plan";
+import { usePlannedWorkouts, useTemplates } from "../api/plan";
 import { Card } from "../components/ui";
 import {
   EDITABLE_TRACKABLES,
   MEAL_TYPES,
   TRACKABLE_LABELS,
   addDays,
+  clampSelectedDay,
   dayLabel,
   dayMacros,
   isoDate,
   macroLabel,
   macrosFromForm,
+  ribbonDays,
   sortBySlot,
   tidyNumber,
   weekStart,
 } from "../lib/mealPlan";
+import { useMediaQuery } from "../lib/useMediaQuery";
 
 type Slot = { date: string; mealType: string };
 
@@ -52,15 +56,28 @@ export function MealPlanCard() {
   const plan = useMealPlan(start, end);
   const kitchen = useKitchen();
   const templates = useTemplates();
+  // Matches the breakpoint where the app stops being a phone (the nav bar unpins).
+  const isPhone = useMediaQuery("(max-width: 52rem)");
+  const sessions = usePlannedWorkouts(start, end);
 
   const [openSlot, setOpenSlot] = useState<Slot | null>(null);
   const [editing, setEditing] = useState<PlannedMeal | null>(null);
+  const [selectedDay, setSelectedDay] = useState(() => isoDate(new Date()));
 
   const planMeal = usePlanMeal();
   const clearMeal = useClearPlannedMeal();
   const logMeal = useLogPlannedMeal();
 
   const todayIso = isoDate(new Date());
+  const days = plan.data ?? [];
+  // Paging the week must land somewhere real rather than on a day that scrolled away.
+  const shownDay = clampSelectedDay(
+    selectedDay,
+    days.map((d) => d.scheduled_for),
+    todayIso,
+  );
+  const sessionFor = (iso: string) =>
+    (sessions.data ?? []).find((s) => s.scheduled_for === iso) ?? null;
   const error =
     planMeal.error ?? clearMeal.error ?? logMeal.error ?? plan.error ?? kitchen.error;
 
@@ -84,58 +101,58 @@ export function MealPlanCard() {
       {error && <p className="error">{(error as Error).message}</p>}
       {plan.isPending && <p className="muted">Loading…</p>}
 
-      <div className="meal-week">
-        {(plan.data ?? []).map((day) => {
-          const meals = sortBySlot(day.meals);
-          const macros = dayMacros(meals);
-          const bySlot = new Map(meals.map((m) => [m.meal_type, m]));
-          return (
-            <div
-              key={day.scheduled_for}
-              className={day.scheduled_for === todayIso ? "meal-day meal-day--today" : "meal-day"}
-            >
-              <span className="meal-day-name">{dayLabel(day.scheduled_for)}</span>
-              {MEAL_TYPES.map((mealType) => {
-                const meal = bySlot.get(mealType);
-                const isOpen =
-                  openSlot?.date === day.scheduled_for && openSlot?.mealType === mealType;
-                return (
-                  <button
+      {isPhone ? (
+        <PhoneWeek
+          days={days}
+          selected={shownDay}
+          today={todayIso}
+          sessionFor={sessionFor}
+          openSlot={openSlot}
+          onSelectDay={setSelectedDay}
+          onOpenSlot={setOpenSlot}
+        />
+      ) : (
+        <div className="meal-week">
+          {days.map((day) => {
+            const meals = sortBySlot(day.meals);
+            const macros = dayMacros(meals);
+            const bySlot = new Map(meals.map((m) => [m.meal_type, m]));
+            return (
+              <div
+                key={day.scheduled_for}
+                className={
+                  day.scheduled_for === todayIso ? "meal-day meal-day--today" : "meal-day"
+                }
+              >
+                <span className="meal-day-name">{dayLabel(day.scheduled_for)}</span>
+                {MEAL_TYPES.map((mealType) => (
+                  <SlotButton
                     key={mealType}
-                    type="button"
-                    className={
-                      (meal ? `meal-slot meal-slot--${mealType}` : "meal-slot meal-slot--empty") +
-                      (isOpen ? " is-open" : "")
+                    mealType={mealType}
+                    meal={bySlot.get(mealType) ?? null}
+                    isOpen={
+                      openSlot?.date === day.scheduled_for && openSlot?.mealType === mealType
                     }
                     onClick={() =>
-                      setOpenSlot(isOpen ? null : { date: day.scheduled_for, mealType })
+                      setOpenSlot(
+                        openSlot?.date === day.scheduled_for && openSlot?.mealType === mealType
+                          ? null
+                          : { date: day.scheduled_for, mealType },
+                      )
                     }
-                  >
-                    <span className="meal-slot-kind">{mealType}</span>
-                    <span className="meal-slot-name">{meal ? meal.name : "+ add"}</span>
-                    {meal && (
-                      <span
-                        className={
-                          meal.estimated ? "meal-slot-macros" : "meal-slot-macros is-unknown"
-                        }
-                      >
-                        {macroLabel(meal)}
-                      </span>
-                    )}
-                    {meal?.status === "logged" && <span className="meal-slot-logged">logged</span>}
-                  </button>
-                );
-              })}
-              <div className="meal-day-foot">
-                <b>{macros.calories.toLocaleString()}</b> kcal · {macros.protein} g
-                {macros.unestimated > 0 && (
-                  <span className="meal-day-unknown">{macros.unestimated} not estimated</span>
-                )}
+                  />
+                ))}
+                <div className="meal-day-foot">
+                  <b>{macros.calories.toLocaleString()}</b> kcal · {macros.protein} g
+                  {macros.unestimated > 0 && (
+                    <span className="meal-day-unknown">{macros.unestimated} not estimated</span>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {openSlot && (
         <MealPicker
@@ -143,7 +160,7 @@ export function MealPlanCard() {
           kitchen={kitchen.data ?? []}
           templates={(templates.data ?? []).map((t) => ({ id: t.id, name: t.name }))}
           current={
-            (plan.data ?? [])
+            days
               .find((d) => d.scheduled_for === openSlot.date)
               ?.meals.find((m) => m.meal_type === openSlot.mealType) ?? null
           }
@@ -168,6 +185,142 @@ export function MealPlanCard() {
 
       <KitchenTray items={kitchen.data ?? []} templates={templates.data ?? []} />
     </Card>
+  );
+}
+
+/** One slot button, shared by both layouts so the two can't drift apart. */
+function SlotButton({
+  mealType,
+  meal,
+  isOpen,
+  onClick,
+  wide = false,
+}: {
+  mealType: string;
+  meal: PlannedMeal | null;
+  isOpen: boolean;
+  onClick: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={
+        (meal ? `meal-slot meal-slot--${mealType}` : "meal-slot meal-slot--empty") +
+        (isOpen ? " is-open" : "") +
+        (wide ? " meal-slot--wide" : "")
+      }
+      onClick={onClick}
+    >
+      <span className="meal-slot-kind">{mealType}</span>
+      <span className="meal-slot-name">{meal ? meal.name : "+ add"}</span>
+      {meal && (
+        <span className={meal.estimated ? "meal-slot-macros" : "meal-slot-macros is-unknown"}>
+          {macroLabel(meal)}
+        </span>
+      )}
+      {meal?.status === "logged" && <span className="meal-slot-logged">logged</span>}
+    </button>
+  );
+}
+
+/**
+ * The phone layout: a week ribbon you tap across, and one day open beneath it.
+ *
+ * Seven columns can't survive 390px — squeezing them makes every meal name unreadable,
+ * and scrolling them sideways means you can never see the week you came to plan. The
+ * ribbon keeps the week present as seven pills (the dots say how full each day is, so
+ * you can spot the empty ones without leaving the day you're on) while the day itself
+ * gets the full width.
+ *
+ * The session sits at the top of the day, not in a separate card, because on a narrow
+ * screen two cards are two scroll positions and the day stops reading as one thing.
+ */
+function PhoneWeek({
+  days,
+  selected,
+  today,
+  sessionFor,
+  openSlot,
+  onSelectDay,
+  onOpenSlot,
+}: {
+  days: PlannedDay[];
+  selected: string;
+  today: string;
+  sessionFor: (iso: string) => { template_name: string; exercise_names: string[] } | null;
+  openSlot: Slot | null;
+  onSelectDay: (iso: string) => void;
+  onOpenSlot: (slot: Slot | null) => void;
+}) {
+  const pills = ribbonDays(days, selected, today);
+  const day = days.find((d) => d.scheduled_for === selected);
+  const meals = sortBySlot(day?.meals ?? []);
+  const bySlot = new Map(meals.map((m) => [m.meal_type, m]));
+  const macros = dayMacros(meals);
+  const session = sessionFor(selected);
+
+  return (
+    <div className="meal-phone">
+      <div className="meal-ribbon" role="tablist" aria-label="Day of the week">
+        {pills.map((pill) => (
+          <button
+            key={pill.date}
+            type="button"
+            role="tab"
+            aria-selected={pill.isSelected}
+            aria-label={dayLabel(pill.date)}
+            className={
+              "meal-pill" +
+              (pill.isSelected ? " is-on" : "") +
+              (pill.isToday ? " is-today" : "")
+            }
+            onClick={() => onSelectDay(pill.date)}
+          >
+            <span className="meal-pill-letter">{pill.letter}</span>
+            <span className="meal-pill-dots" aria-hidden="true">
+              {MEAL_TYPES.map((_, i) => (
+                <i key={i} className={i < pill.filled ? "is-on" : undefined} />
+              ))}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <p className="meal-phone-day">{dayLabel(selected)}</p>
+
+      <div className={session ? "meal-session" : "meal-session meal-session--rest"}>
+        <span className="meal-session-kind">{session ? "session" : "rest day"}</span>
+        <span className="meal-session-name">{session ? session.template_name : "No session"}</span>
+        {session && (
+          <span className="meal-session-sub">{session.exercise_names.length} exercises</span>
+        )}
+      </div>
+
+      {MEAL_TYPES.map((mealType) => (
+        <SlotButton
+          key={mealType}
+          wide
+          mealType={mealType}
+          meal={bySlot.get(mealType) ?? null}
+          isOpen={openSlot?.date === selected && openSlot?.mealType === mealType}
+          onClick={() =>
+            onOpenSlot(
+              openSlot?.date === selected && openSlot?.mealType === mealType
+                ? null
+                : { date: selected, mealType },
+            )
+          }
+        />
+      ))}
+
+      <div className="meal-day-foot">
+        <b>{macros.calories.toLocaleString()}</b> kcal · {macros.protein} g
+        {macros.unestimated > 0 && (
+          <span className="meal-day-unknown">{macros.unestimated} not estimated</span>
+        )}
+      </div>
+    </div>
   );
 }
 

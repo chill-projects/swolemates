@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   addDays,
+  clampSelectedDay,
   dayLabel,
+  dayLetter,
   dayMacros,
   isoDate,
   macroLabel,
   macrosFromForm,
+  ribbonDays,
   sortBySlot,
   tidyNumber,
   weekDates,
@@ -200,5 +203,65 @@ describe("macrosFromForm", () => {
 
   it("ignores keys the planner doesn't edit", () => {
     expect(macrosFromForm({ calories: "100", fiber_g: "9" })).toEqual({ calories: "100" });
+  });
+});
+
+describe("dayLetter", () => {
+  it("is the single initial the ribbon shows", () => {
+    expect(dayLetter("2026-09-28")).toBe("M");
+    expect(dayLetter("2026-09-30")).toBe("W");
+    expect(dayLetter("2026-10-04")).toBe("S");
+  });
+});
+
+describe("ribbonDays", () => {
+  const week = [
+    { scheduled_for: "2026-09-28", meals: [{ meal_type: "breakfast" }, { meal_type: "lunch" }] },
+    { scheduled_for: "2026-09-29", meals: [] },
+    { scheduled_for: "2026-09-30", meals: [{ meal_type: "dinner" }] },
+  ];
+
+  it("counts how full each day is, which is what the dots show", () => {
+    const pills = ribbonDays(week, "2026-09-29", "2026-09-28");
+    expect(pills.map((p) => p.filled)).toEqual([2, 0, 1]);
+  });
+
+  it("marks the selected day and today independently", () => {
+    const pills = ribbonDays(week, "2026-09-29", "2026-09-28");
+    expect(pills.map((p) => p.isSelected)).toEqual([false, true, false]);
+    expect(pills.map((p) => p.isToday)).toEqual([true, false, false]);
+  });
+
+  it("can have today selected as well", () => {
+    const pills = ribbonDays(week, "2026-09-28", "2026-09-28");
+    expect(pills[0]).toMatchObject({ isSelected: true, isToday: true });
+  });
+
+  it("carries the letter and the date through", () => {
+    expect(ribbonDays(week, "2026-09-28", "2026-09-28")[2]).toMatchObject({
+      date: "2026-09-30",
+      letter: "W",
+    });
+  });
+});
+
+describe("clampSelectedDay", () => {
+  const dates = ["2026-09-28", "2026-09-29", "2026-09-30"];
+
+  it("keeps a selection that is still in the week", () => {
+    expect(clampSelectedDay("2026-09-29", dates, "2026-09-28")).toBe("2026-09-29");
+  });
+
+  // Paging the week must land somewhere sensible rather than on a blank day.
+  it("falls to today when the selection has scrolled out of the week", () => {
+    expect(clampSelectedDay("2026-10-05", dates, "2026-09-30")).toBe("2026-09-30");
+  });
+
+  it("falls to the first day when today is not in the week either", () => {
+    expect(clampSelectedDay("2026-10-05", dates, "2026-11-01")).toBe("2026-09-28");
+  });
+
+  it("copes with an empty week", () => {
+    expect(clampSelectedDay("2026-10-05", [], "2026-11-01")).toBe("2026-10-05");
   });
 });

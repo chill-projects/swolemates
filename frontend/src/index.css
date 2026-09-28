@@ -2157,10 +2157,134 @@ li {
   color: var(--red);
 }
 
-@media (max-width: 720px) {
-  /* A phone can't hold seven columns; the grid scrolls and each day stays legible
-     rather than every column shrinking to unreadable. */
-  .meal-week {
-    grid-template-columns: repeat(7, 78vw);
-  }
+/* --- the phone layout: a ribbon you tap across, one day open beneath ---------
+   Seven columns can't survive a 390px screen. Squeezed, every meal name is
+   unreadable; scrolled sideways, you can never see the week you came to plan. The
+   ribbon keeps the week present as seven pills and gives the day the full width. */
+
+.meal-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.meal-ribbon {
+  display: flex;
+  gap: 0.2rem;
+  margin-bottom: 0.15rem;
+}
+.meal-pill {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.1rem 0.25rem;
+  background: var(--sand);
+  color: var(--ink-soft);
+  text-align: center;
+}
+.meal-pill.is-today {
+  border-color: var(--teal);
+}
+.meal-pill.is-on {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--card);
+}
+.meal-pill-letter {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+/* Four dots, one per slot: how full the day is, readable without leaving the day
+   you're on. */
+.meal-pill-dots {
+  display: flex;
+  gap: 0.09rem;
+  justify-content: center;
+  margin-top: 0.2rem;
+}
+.meal-pill-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.22;
+}
+.meal-pill-dots i.is-on {
+  opacity: 1;
+}
+
+.meal-phone-day {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0.15rem 0 0;
+}
+
+.meal-session {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--teal);
+  border-radius: 0.45rem;
+  background: var(--card);
+  padding: 0.4rem 0.55rem;
+}
+.meal-session--rest {
+  border-style: dashed;
+  border-color: var(--line);
+}
+.meal-session-kind {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+.meal-session--rest .meal-session-kind {
+  color: var(--dim);
+}
+.meal-session-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.meal-session--rest .meal-session-name {
+  color: var(--dim);
+  font-weight: 400;
+}
+.meal-session-sub {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--ink-soft);
+}
+
+/* A full-width slot has room for a real tap target and a longer name. */
+.meal-slot--wide {
+  padding: 0.5rem 0.6rem;
+  min-height: 2.75rem;
+}
+.meal-slot--wide .meal-slot-kind {
+  font-size: 0.52rem;
+}
+.meal-slot--wide .meal-slot-name {
+  font-size: 0.85rem;
+}
+.meal-slot--wide .meal-slot-macros {
+  font-size: 0.6rem;
+}
+.meal-phone .meal-day-foot {
+  margin-top: 0.3rem;
+  font-size: 0.62rem;
+}
+.meal-phone .meal-day-foot b {
+  font-size: 0.75rem;
 }

@@ -46,3 +46,20 @@ export function useTemplates() {
     },
   });
 }
+
+/** Planned sessions for a date range. The meal plan's phone view reads this so a day
+ *  shows its training and its eating together — on a narrow screen they'd otherwise
+ *  sit in two separate scrolling cards, which is the split the Plan tab exists to
+ *  avoid. */
+export function usePlannedWorkouts(start: string, end: string) {
+  return useQuery({
+    queryKey: ["plannedWorkouts", start, end],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/planned-workouts", {
+        params: { query: { start, end } },
+      });
+      if (error || !data) throw new Error("Failed to load your planned sessions");
+      return data;
+    },
+  });
+}
