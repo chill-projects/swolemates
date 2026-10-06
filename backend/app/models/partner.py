@@ -13,7 +13,14 @@ see that model's docstring for why a cache exists there at all.
 import enum
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,9 +47,52 @@ class PartnerInvite(Base, TimestampMixin):
     redeemed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
 
 
+class Partnership(Base, TimestampMixin):
+    """A link between two people, as a row of its own so that membership in it can be
+    a per-row fact (see `PartnershipMember`). Carries no columns beyond its id and
+    timestamps — it exists to be pointed at."""
+
+    __tablename__ = "partnerships"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+
+class PartnershipMember(Base, TimestampMixin):
+    """One person's side of a partnership. `UNIQUE(user_id)` is the whole point of this
+    table (#40): "a user has at most one partner" is what the code has always believed,
+    and as a pair table it was not expressible — `(Alice,Bob)` and `(Alice,Carol)` are
+    two individually-valid rows, so no per-row constraint could reject the second, and
+    two concurrent redemptions could each pass every Python guard and both commit.
+
+    Here the invariant *is* per-row, so Postgres enforces it at any isolation level and
+    a race surfaces as an `IntegrityError` at insert instead of silent corruption that
+    permanently 500s every partner endpoint for the affected user.
+
+    A partnership having exactly two members is still not expressible this way — but a
+    third member would have to be someone with no partner of their own, and nothing in
+    the service inserts outside the pair `redeem_invite` writes.
+    """
+
+    __tablename__ = "partnership_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partnership_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("partnerships.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", name="uq_partnership_members_user_id"),)
+
+
 class PartnerLink(Base, TimestampMixin):
-    """`user_id_a < user_id_b` always — callers sort the pair themselves
-    (`min`/`max`) before inserting, same as legacy's `least`/`greatest`."""
+    """Superseded by `Partnership`/`PartnershipMember` — kept, and still written, only
+    for the blue-green overlap: the release before this one reads `partner_links` to
+    decide whether someone already has a partner, and would happily create a second
+    link during the seconds both versions are serving. Dropped in the follow-up deploy,
+    per the never-drop-in-the-same-deploy rule in AGENTS.md.
+
+    `user_id_a < user_id_b` always — callers sort the pair themselves (`min`/`max`)
+    before inserting, same as legacy's `least`/`greatest`."""
 
     __tablename__ = "partner_links"
 
