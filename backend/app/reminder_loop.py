@@ -28,7 +28,7 @@ TICK_SECONDS = 15 * 60
 
 
 async def tick() -> int:
-    """One pass. Returns how many users were notified.
+    """One pass. Returns how many users had it delivered to at least one device.
 
     A session per user, not one for the whole tick: the commit at each boundary is what
     makes the claim binding, and it means one user's dead subscription or slow push
@@ -51,8 +51,10 @@ async def tick() -> int:
 
 
 async def _tick_forever() -> None:
+    # Tick first, then sleep: sleeping first would skip a reminder hour that starts in
+    # the first fifteen minutes after a deploy. Ticking on every boot is safe — the
+    # claim is what stops a restart (or N replicas starting together) double-sending.
     while True:
-        await asyncio.sleep(TICK_SECONDS)
         try:
             notified = await tick()
             if notified:
@@ -63,6 +65,7 @@ async def _tick_forever() -> None:
             # A failed tick must never end the loop: the next one is fifteen minutes
             # away and will retry whoever is still unclaimed.
             log.exception("weekly reminder tick failed")
+        await asyncio.sleep(TICK_SECONDS)
 
 
 @asynccontextmanager

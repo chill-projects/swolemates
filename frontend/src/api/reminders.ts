@@ -57,6 +57,12 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+function sameKey(current: ArrayBuffer | null, wanted: Uint8Array): boolean {
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return bytes.length === wanted.length && bytes.every((b, i) => b === wanted[i]);
+}
+
 export class PushPermissionError extends Error {}
 
 /**
@@ -83,14 +89,27 @@ export async function enablePush(publicKey: string): Promise<void> {
   }
 
   const registration = await navigator.serviceWorker.ready;
-  // `getSubscription` first: re-subscribing an already-subscribed browser with a
-  // different key throws, and after a redeploy the existing one is usually still valid.
-  const existing = await registration.pushManager.getSubscription();
+  const serverKey = urlBase64ToUint8Array(publicKey);
+  // `getSubscription` first: after a redeploy the existing one is usually still valid.
+  // But a subscription is bound to the VAPID key it was made with — after a key rotation
+  // every push to it is refused, and `subscribe` with the new key throws while the old
+  // one exists. So reuse it only if the key matches; otherwise drop it (server row
+  // included, best-effort) and subscribe afresh.
+  let existing = await registration.pushManager.getSubscription();
+  if (existing && !sameKey(existing.options.applicationServerKey, serverKey)) {
+    await api
+      .DELETE("/api/reminders/subscriptions", {
+        body: existing.toJSON() as { endpoint: string; keys: Record<string, string> },
+      })
+      .catch(() => undefined);
+    await existing.unsubscribe();
+    existing = null;
+  }
   const subscription =
     existing ??
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey: serverKey,
     }));
 
   const { error } = await api.POST("/api/reminders/subscriptions", {

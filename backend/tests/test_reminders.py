@@ -10,13 +10,16 @@ wherever a test reaches it; these assert on who *would* be notified, which is th
 that can be wrong in an interesting way.
 """
 
+import asyncio
 from datetime import date, timedelta
 
 import pytest
+import requests
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import reminder_loop
 from app.config import get_settings
 from app.models.profile import UserProfile
 from app.models.push import PushSubscription
@@ -25,7 +28,7 @@ from app.services import reminders as service
 from tests.conftest import OTHER_USER, TEST_USER
 
 SUBSCRIPTION = {
-    "endpoint": "https://push.example.com/abc",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/abc",
     "p256dh": "BPtestkeytestkeytestkey",
     "auth": "authsecret",
 }
@@ -245,11 +248,15 @@ async def test_a_dead_subscription_is_dropped_and_a_flaky_one_is_kept(
     bad minute. Dropping on the second would silently unsubscribe people."""
     await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
     await service.subscribe(
-        session, TEST_USER, **{**SUBSCRIPTION, "endpoint": "https://push.example.com/live"}
+        session,
+        TEST_USER,
+        **{**SUBSCRIPTION, "endpoint": "https://fcm.googleapis.com/fcm/send/live"},
     )
 
-    async def fake_push(subscription, **_: object) -> bool:
-        return subscription.endpoint.endswith("live")
+    async def fake_push(subscription, **_: object) -> service.PushResult:
+        if subscription.endpoint.endswith("live"):
+            return service.PushResult.DELIVERED
+        return service.PushResult.GONE
 
     monkeypatch.setattr(service, "_push", fake_push)
     await service.send_reminder_to(session, TEST_USER)
@@ -263,7 +270,7 @@ async def test_a_dead_subscription_is_dropped_and_a_flaky_one_is_kept(
         .scalars()
         .all()
     )
-    assert remaining == ["https://push.example.com/live"]
+    assert remaining == ["https://fcm.googleapis.com/fcm/send/live"]
 
 
 async def test_the_notification_body_is_the_checkin_summary(
@@ -274,9 +281,9 @@ async def test_the_notification_body_is_the_checkin_summary(
     await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
     sent: dict[str, str] = {}
 
-    async def fake_push(subscription, *, title: str, body: str, url: str) -> bool:
+    async def fake_push(subscription, *, title: str, body: str, url: str) -> service.PushResult:
         sent.update(title=title, body=body, url=url)
-        return True
+        return service.PushResult.DELIVERED
 
     monkeypatch.setattr(service, "_push", fake_push)
     await service.send_reminder_to(session, TEST_USER)
@@ -329,9 +336,9 @@ async def test_claim_and_send_notifies_once_then_declines(
     await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
     sends: list[str] = []
 
-    async def fake_push(subscription, **_: object) -> bool:
+    async def fake_push(subscription, **_: object) -> service.PushResult:
         sends.append(subscription.endpoint)
-        return True
+        return service.PushResult.DELIVERED
 
     monkeypatch.setattr(service, "_push", fake_push)
 
@@ -364,3 +371,148 @@ async def test_due_weekday_is_read_at_call_time(
 
     monkeypatch.setattr(service, "REMINDER_WEEKDAY", (int(local_dow) + 1) % 7)
     assert TEST_USER not in await service.due_user_ids(session)
+
+
+# --- review hardening -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://fcm.googleapis.com/fcm/send/abc",
+        "https://updates.push.services.mozilla.com/wpush/v2/abc",
+        "https://wns2-par02p.notify.windows.com/w/?token=abc",
+        "https://web.push.apple.com/QGx0abc",
+    ],
+)
+def test_real_push_services_are_accepted(endpoint: str) -> None:
+    assert service.validate_endpoint(endpoint) == endpoint
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://fcm.googleapis.com/fcm/send/abc",  # not https
+        "https://169.254.169.254/latest/meta-data/",
+        "https://localhost/abc",
+        "https://fcm.googleapis.com.evil.example/abc",
+        "https://evilnotify.windows.com/abc",  # a suffix must start at a label
+        "https://fcm.googleapis.com:8443/abc",
+        "https://user@fcm.googleapis.com/abc",
+        "not a url",
+        "",
+    ],
+)
+async def test_non_push_endpoints_are_refused(session: AsyncSession, endpoint: str) -> None:
+    """The server POSTs to whatever is stored, so an arbitrary URL here is an SSRF."""
+    with pytest.raises(service.InvalidPushEndpoint):
+        await service.subscribe(session, TEST_USER, **{**SUBSCRIPTION, "endpoint": endpoint})
+    assert (await service.get_settings_for(session, TEST_USER)).subscribed_devices == 0
+
+
+async def test_rest_refuses_a_non_push_endpoint(client: AsyncClient, push_configured: None) -> None:
+    resp = await client.post(
+        "/api/reminders/subscriptions",
+        json={"endpoint": "http://localhost:5432/", "keys": {"p256dh": "x", "auth": "y"}},
+    )
+
+    assert resp.status_code == 400
+
+
+async def test_a_reassigned_endpoint_is_invisible_to_its_previous_owner(
+    session: AsyncSession,
+) -> None:
+    """After the browser moves to B, A neither counts it nor can delete it."""
+    await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
+    await service.subscribe(session, OTHER_USER, **SUBSCRIPTION)
+
+    assert (await service.get_settings_for(session, TEST_USER)).subscribed_devices == 0
+    await service.unsubscribe(session, TEST_USER, endpoint=SUBSCRIPTION["endpoint"])
+    assert (await service.get_settings_for(session, OTHER_USER)).subscribed_devices == 1
+
+
+async def test_one_unrecognised_timezone_does_not_break_the_due_query(
+    session: AsyncSession,
+) -> None:
+    """Postgres's tz database isn't Python's. One name it doesn't know used to make the
+    whole due query raise, so nobody got a reminder."""
+    await _profile(session, OTHER_USER, weekly_reminder_hour=0, timezone="Mars/Olympus_Mons")
+    profile = await _profile(session, TEST_USER, timezone="UTC")
+    local_dow, local_hour = (
+        await session.execute(
+            select(
+                service._local_now(UserProfile.timezone, "dow"),
+                service._local_now(UserProfile.timezone, "hour"),
+            ).where(UserProfile.user_id == TEST_USER)
+        )
+    ).one()
+    profile.weekly_reminder_hour = int(local_hour)
+    await session.flush()
+
+    assert TEST_USER in await service.due_user_ids(session, weekday=(int(local_dow) - 1) % 7)
+    # The bad-zone user falls back to UTC rather than raising.
+    assert await service._claim(session, OTHER_USER) is not None
+
+
+async def test_push_uses_a_bounded_timeout(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, push_configured: None
+) -> None:
+    await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
+    subscription = (await session.execute(select(PushSubscription))).scalars().one()
+    seen: dict[str, object] = {}
+
+    def fake_webpush(**kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(service, "webpush", fake_webpush)
+    result = await service._push(subscription, title="t", body="b", url="/plan")
+
+    assert result is service.PushResult.DELIVERED
+    assert seen["timeout"] == service.PUSH_TIMEOUT_SECONDS
+
+
+async def test_a_network_error_keeps_the_claim_and_the_subscription(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, push_configured: None
+) -> None:
+    """A ConnectionError used to escape claim_and_send, roll back the claim, and re-send
+    to every device that had already received it on the next tick."""
+    await _profile(session, TEST_USER, weekly_reminder_hour=18, timezone="UTC")
+    await service.subscribe(session, TEST_USER, **SUBSCRIPTION)
+
+    def flaky_webpush(**_: object) -> None:
+        raise requests.ConnectionError("push service unreachable")
+
+    monkeypatch.setattr(service, "webpush", flaky_webpush)
+
+    assert await service.claim_and_send(session, TEST_USER) is False
+    profile = await profile_service.get_or_create_profile(session, TEST_USER)
+    assert profile.weekly_reminder_sent_on is not None
+    assert (await service.get_settings_for(session, TEST_USER)).subscribed_devices == 1
+
+
+async def test_claiming_with_no_devices_is_not_counted_as_notified(
+    session: AsyncSession, push_configured: None
+) -> None:
+    await _profile(session, TEST_USER, weekly_reminder_hour=18, timezone="UTC")
+
+    assert await service.claim_and_send(session, TEST_USER) is False
+
+
+async def test_the_loop_ticks_before_its_first_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sleeping first would skip a reminder hour that starts just after a deploy."""
+    calls: list[str] = []
+
+    async def fake_tick() -> int:
+        calls.append("tick")
+        return 0
+
+    async def fake_sleep(_: float) -> None:
+        calls.append("sleep")
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(reminder_loop, "tick", fake_tick)
+    monkeypatch.setattr(reminder_loop.asyncio, "sleep", fake_sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await reminder_loop._tick_forever()
+
+    assert calls == ["tick", "sleep"]
