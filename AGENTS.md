@@ -13,9 +13,9 @@ writing code against them — do not work from memory:
   the AuthKit provider.
 - **MCP spec** — the current revision is 2026-07-28 (no `initialize` handshake,
   per-request `_meta` protocol version, no protocol-level sessions), but **this server
-  speaks 2025-11-25**: `mcp` SDK 1.x's `LATEST_PROTOCOL_VERSION` is 2025-11-25, and an
-  `initialize` asking for 2026-07-28 is answered with 2025-11-25. Write against
-  2025-11-25 semantics until the SDK moves. Our transport is stateless because
+  speaks whatever the installed `mcp` SDK's `mcp.types.LATEST_PROTOCOL_VERSION` is**
+  (2025-11-25 as of writing) — check that constant rather than trusting a pinned date
+  here, and write against that revision's semantics. Our transport is stateless because
   `stateless_http=True` says so, not because the protocol requires it.
 - **MCP Apps / ext-apps** (`ui://` resources, `_meta.ui.*`) — the interactive component
   format for both Claude and the SPA.
