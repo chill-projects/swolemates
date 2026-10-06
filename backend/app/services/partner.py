@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.partner import (
@@ -37,6 +37,8 @@ log = logging.getLogger(__name__)
 
 INVITE_CODE_BYTES = 4  # secrets.token_hex(4) -> 8 hex chars, matching legacy's format
 INVITE_EXPIRY = timedelta(days=7)
+# deadlock_detected, serialization_failure
+_RACE_SQLSTATES = frozenset({"40P01", "40001"})
 
 
 @dataclass
@@ -182,8 +184,9 @@ async def redeem_invite(session: AsyncSession, user_sub: str, code: str) -> str:
       at once, where the transactions touch no row in common. That's write skew, and
       it isn't caught by `REPEATABLE READ` either; only the constraint sees it.
 
-    The `IntegrityError` that second case raises is a race, not a bug, and it means
-    exactly what the first guard means — so it's reported with the same words.
+    The `IntegrityError` that second case raises is a race, not a bug. It's reported
+    as "already linked" when the caller now has a partner, or "no longer available"
+    when it was the inviter who got linked in the meantime.
     """
     if await get_partner_user_id(session, user_sub) is not None:
         raise ValueError("You already have a partner linked.")
@@ -203,10 +206,17 @@ async def redeem_invite(session: AsyncSession, user_sub: str, code: str) -> str:
     partnership = Partnership()
     session.add(partnership)
     await session.flush()
+    # Members go in `user_id` order, not inviter-first. If Alice redeems Bob's code
+    # while Bob redeems Alice's, the two transactions lock different invites and meet
+    # only on the `UNIQUE(user_id)` index; inviter-first, each would take one slot and
+    # wait on the other — a deadlock, which Postgres reports as an OperationalError,
+    # not the IntegrityError handled below. In a fixed order the loser blocks on the
+    # first slot and then fails cleanly on the constraint when the winner commits.
+    user_id_a, user_id_b = sorted((invite.inviter_id, user_sub))
     session.add_all(
         [
-            PartnershipMember(partnership_id=partnership.id, user_id=invite.inviter_id),
-            PartnershipMember(partnership_id=partnership.id, user_id=user_sub),
+            PartnershipMember(partnership_id=partnership.id, user_id=user_id_a),
+            PartnershipMember(partnership_id=partnership.id, user_id=user_id_b),
         ]
     )
 
@@ -214,7 +224,6 @@ async def redeem_invite(session: AsyncSession, user_sub: str, code: str) -> str:
     # `partner_links` for its own already-linked guard, and would let one of these two
     # take a second partner during the seconds both versions serve traffic. Removed
     # with the table in the follow-up deploy.
-    user_id_a, user_id_b = sorted((invite.inviter_id, user_sub))
     session.add(PartnerLink(user_id_a=user_id_a, user_id_b=user_id_b))
 
     invite.status = InviteStatus.redeemed
@@ -227,8 +236,31 @@ async def redeem_invite(session: AsyncSession, user_sub: str, code: str) -> str:
         # into a response rather than a crash — so unwind here instead of handing back
         # a poisoned session that fails again at commit.
         await session.rollback()
-        raise ValueError("You already have a partner linked.") from exc
+        raise ValueError(await _lost_race_message(session, user_sub)) from exc
+    except OperationalError as exc:
+        # The member ordering above should make a deadlock unreachable, but if one (or a
+        # serialization failure) happens anyway it's still a lost race, not a server
+        # error — report it as one rather than a 500.
+        if getattr(exc.orig, "sqlstate", None) not in _RACE_SQLSTATES:
+            raise
+        await session.rollback()
+        log.warning("redeem_invite hit %s — reporting as a lost race", exc.orig.sqlstate)
+        raise ValueError(await _lost_race_message(session, user_sub)) from exc
     return invite.inviter_id
+
+
+async def _lost_race_message(session: AsyncSession, user_sub: str) -> str:
+    """Which side of the unique constraint the caller lost on. Either they gained a
+    partner in a concurrent redemption, or the *inviter* did (e.g. linked through
+    someone else's code while their own was still pending) — telling the caller "you
+    already have a partner" in the second case is false. Queried directly rather than
+    through `get_partner_user_id` so the answer comes from the post-rollback state."""
+    mine = await session.execute(
+        select(PartnershipMember.id).where(PartnershipMember.user_id == user_sub).limit(1)
+    )
+    if mine.first() is not None:
+        return "You already have a partner linked."
+    return "This invite is no longer available."
 
 
 async def get_partner_summary(
