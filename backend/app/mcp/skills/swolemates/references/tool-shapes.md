@@ -5,6 +5,7 @@ correction call of a conversation; don't reload if it's already in context.
 
 ## log_workout
 
+<!-- Workaround for #31 — remove when #31 is fixed. -->
 Items key the exercise as `"exercise"`, not `"name"`:
 
 ```json
@@ -22,6 +23,7 @@ Items key the exercise as `"exercise"`, not `"name"`:
 
 ## search_exercises
 
+<!-- Workaround for #33 — remove when #33 is fixed. -->
 Matches one **contiguous, case-insensitive substring** of the catalog name.
 "incline bench" hits "Incline Bench Press"; "incline press" hits nothing, because
 the words aren't adjacent in any catalog name. On no results, retry with a shorter
@@ -31,6 +33,7 @@ close-but-not-exact name silently creates a custom exercise with no muscle-map d
 
 ## update_workout
 
+<!-- Workaround for #32 — remove when #32 is fixed. -->
 Edits or deletes existing sets — it **cannot append one**. Asking for a
 `set_number` beyond what was logged fails ("… has no set 3"). So get the full set
 count into the original `log_workout` call: if the user's account of a session is

@@ -322,7 +322,7 @@ async def test_get_planned_workouts_leaves_a_started_row_alone_when_resyncing(
 ) -> None:
     legs = await _make_template(session, TEST_USER, "Legs")
     pool = await _make_template(session, TEST_USER, "Pool")
-    today = date.today()
+    today = today_in(await profile_service.get_user_timezone(session, TEST_USER))
     planned = await service.plan_workout(
         session, TEST_USER, template_id=pool.id, scheduled_for=today
     )

@@ -115,6 +115,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kitchen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Kitchen */
+        get: operations["listKitchen"];
+        put?: never;
+        /** Add Kitchen Item */
+        post: operations["addKitchenItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kitchen/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Kitchen Item */
+        delete: operations["removeKitchenItem"];
+        options?: never;
+        head?: never;
+        /** Update Kitchen Item */
+        patch: operations["updateKitchenItem"];
+        trace?: never;
+    };
+    "/api/meal-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meal Plan */
+        get: operations["getMealPlan"];
+        put?: never;
+        /** Plan Meal */
+        post: operations["planMeal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/meal-plan/{planned_meal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Clear Planned Meal */
+        delete: operations["clearPlannedMeal"];
+        options?: never;
+        head?: never;
+        /** Update Planned Meal */
+        patch: operations["updatePlannedMeal"];
+        trace?: never;
+    };
+    "/api/meal-plan/{planned_meal_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Planned Meal */
+        post: operations["logPlannedMeal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nutrition/calendar": {
         parameters: {
             query?: never;
@@ -965,6 +1054,21 @@ export interface components {
          * @enum {string}
          */
         ActivityLevel: "sedentary" | "light" | "moderate" | "active" | "very_active";
+        /** AddKitchenItemRequest */
+        AddKitchenItemRequest: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Portion */
+            portion?: number | string | null;
+            /** Template Ids */
+            template_ids?: string[] | null;
+            /** Values */
+            values?: {
+                [key: string]: number | string;
+            } | null;
+        };
         /** AmendLastLogOut */
         AmendLastLogOut: {
             /** Deleted */
@@ -1223,6 +1327,36 @@ export interface components {
             inviter_display_name: string | null;
             /** Valid */
             valid: boolean;
+        };
+        /** KitchenItemOut */
+        KitchenItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Portion */
+            portion: string | null;
+            /** Templates */
+            templates: components["schemas"]["KitchenTemplateRefOut"][];
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
+        /** KitchenTemplateRefOut */
+        KitchenTemplateRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** LastTimeOut */
         LastTimeOut: {
@@ -1508,6 +1642,28 @@ export interface components {
          * @enum {string}
          */
         PersonalRecordKind: "weight" | "e1rm";
+        /** PlanMealRequest */
+        PlanMealRequest: {
+            /** Kitchen Item Id */
+            kitchen_item_id?: string | null;
+            /** Meal Type */
+            meal_type: string;
+            /** Name */
+            name?: string | null;
+            /** Portion */
+            portion?: number | string | null;
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            /** Template Id */
+            template_id?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: number | string;
+            } | null;
+        };
         /** PlanWorkoutRequest */
         PlanWorkoutRequest: {
             /**
@@ -1520,6 +1676,59 @@ export interface components {
              * Format: uuid
              */
             template_id: string;
+        };
+        /** PlannedDayOut */
+        PlannedDayOut: {
+            /** Meals */
+            meals: components["schemas"]["PlannedMealOut"][];
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+            /** Unestimated */
+            unestimated: number;
+        };
+        /** PlannedMealOut */
+        PlannedMealOut: {
+            /** Estimated */
+            estimated: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kitchen Item Id */
+            kitchen_item_id: string | null;
+            /** Log Group Id */
+            log_group_id: string | null;
+            /** Meal Type */
+            meal_type: string;
+            /** Name */
+            name: string;
+            /** Overridden */
+            overridden: boolean;
+            /** Portion */
+            portion: string | null;
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
         };
         /** PlannedWorkoutOut */
         PlannedWorkoutOut: {
@@ -1854,6 +2063,13 @@ export interface components {
             /** Template Name */
             template_name: string;
         };
+        /** UpdateKitchenItemRequest */
+        UpdateKitchenItemRequest: {
+            /** Name */
+            name?: string | null;
+            /** Portion */
+            portion?: number | string | null;
+        };
         /** UpdateMealTemplateItemRequest */
         UpdateMealTemplateItemRequest: {
             /** Name */
@@ -1885,6 +2101,29 @@ export interface components {
             meal_type?: string | null;
             /** Name */
             name?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: number | string;
+            } | null;
+        };
+        /**
+         * UpdatePlannedMealRequest
+         * @description Every field optional; only what's sent changes.
+         *
+         *     `values` has three meanings, which is deliberate and matches
+         *     `update_meal_template`'s handling of an empty tag: absent leaves the macros alone,
+         *     a populated dict overrides them, and `{}` clears the override so they fall back to
+         *     whatever the meal came from.
+         */
+        UpdatePlannedMealRequest: {
+            /** Meal Type */
+            meal_type?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Portion */
+            portion?: number | string | null;
+            /** Scheduled For */
+            scheduled_for?: string | null;
             /** Values */
             values?: {
                 [key: string]: number | string;
@@ -2250,6 +2489,283 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FoodFactOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listKitchen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitchenItemOut"][];
+                };
+            };
+        };
+    };
+    addKitchenItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddKitchenItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitchenItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    removeKitchenItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateKitchenItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateKitchenItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitchenItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getMealPlan: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedDayOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    planMeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanMealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedMealOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clearPlannedMeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updatePlannedMeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePlannedMealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedMealOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logPlannedMeal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedMealOut"];
                 };
             };
             /** @description Validation Error */

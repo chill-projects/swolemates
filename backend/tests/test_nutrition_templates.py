@@ -1,3 +1,4 @@
+import uuid
 from uuid import uuid4
 
 import pytest
@@ -91,6 +92,105 @@ async def test_save_meal_template_skips_ids_belonging_to_another_user(
     )
 
     assert [i.name for i in template.items] == ["Mine"]
+
+
+async def _logged_saved_meal(session: AsyncSession, user_sub: str) -> uuid.UUID:
+    """Log a two-item saved meal for `user_sub`; return the group id its collapsed
+    day-view row is keyed by."""
+    eggs = await service.log_nutrition(
+        session,
+        user_sub,
+        entries=[
+            {"trackable_key": "calories", "value": 180},
+            {"trackable_key": "protein_g", "value": 12},
+        ],
+        name="Eggs",
+    )
+    toast = await service.log_nutrition(
+        session, user_sub, entries=[{"trackable_key": "calories", "value": 90}], name="Toast"
+    )
+    await session.flush()
+    template = await service.save_meal_template(
+        session, user_sub, name="Usual breakfast", log_ids=[eggs.id, toast.id]
+    )
+    created = await service.log_meal_template(session, user_sub, template_id=template.id)
+    group_id = created[0].group_id
+    assert group_id is not None
+    return group_id
+
+
+async def test_save_meal_template_expands_a_saved_meal_row_into_its_items(
+    session: AsyncSession,
+) -> None:
+    group_id = await _logged_saved_meal(session, TEST_USER)
+
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Breakfast again", log_ids=[group_id]
+    )
+
+    # Items of one logged meal share logged_at/created_at, so their relative order
+    # isn't stored anywhere — only membership is asserted.
+    assert sorted(i.name for i in template.items) == ["Eggs", "Toast"]
+    assert float(template.totals["calories"]) == 270
+    assert float(template.totals["protein_g"]) == 12
+
+
+async def test_save_meal_template_mixes_a_saved_meal_row_with_single_entries(
+    session: AsyncSession,
+) -> None:
+    group_id = await _logged_saved_meal(session, TEST_USER)
+    coffee = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 5}], name="Coffee"
+    )
+    banana = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 105}], name="Banana"
+    )
+    await session.flush()
+
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Big breakfast", log_ids=[coffee.id, group_id, banana.id]
+    )
+
+    names = [i.name for i in template.items]
+    assert names[0] == "Coffee" and names[-1] == "Banana"  # selection order kept
+    assert sorted(names[1:3]) == ["Eggs", "Toast"]  # the group, expanded in place
+    assert float(template.totals["calories"]) == 380
+
+
+async def test_save_meal_template_rejects_a_selection_that_resolves_to_nothing(
+    session: AsyncSession,
+) -> None:
+    with pytest.raises(ValueError):
+        await service.save_meal_template(session, TEST_USER, name="Empty", log_ids=[uuid4()])
+
+    assert await service.list_meal_templates(session, TEST_USER) == []
+
+
+async def test_save_meal_template_ignores_another_users_saved_meal_row(
+    session: AsyncSession,
+) -> None:
+    bobs_group = await _logged_saved_meal(session, OTHER_USER)
+    mine = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 100}], name="Mine"
+    )
+    await session.flush()
+
+    with pytest.raises(ValueError):
+        await service.save_meal_template(session, TEST_USER, name="Bob's", log_ids=[bobs_group])
+
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Mixed", log_ids=[bobs_group, mine.id]
+    )
+    assert [i.name for i in template.items] == ["Mine"]
+
+
+async def test_save_meal_template_over_rest_400s_when_nothing_resolves(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/nutrition/templates", json={"name": "Empty", "log_ids": [str(uuid4())]}
+    )
+    assert response.status_code == 400
 
 
 async def test_save_meal_template_with_template_id_replaces_items(session: AsyncSession) -> None:

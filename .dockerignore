@@ -12,3 +12,8 @@ docs/
 .git
 .github
 *.md
+# The MCP skill (SKILL.md + references/*.md) must ship in the image. `*.md` above only
+# matches root-level files (Docker patterns are anchored at the context root), but
+# re-include explicitly so a future `**/*.md` can't silently drop it. Last match wins,
+# so keep this after any .md exclusion.
+!backend/app/mcp/skills/**
