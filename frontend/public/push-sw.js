@@ -43,17 +43,21 @@ self.addEventListener("notificationclick", (event) => {
 
   // Focus an already-open tab instead of opening a second one. `includeUncontrolled`
   // matters because a tab opened before this service worker took control isn't
-  // controlled by it, and would otherwise be invisible here.
+  // controlled by it, and would otherwise be invisible here. But `navigate()` rejects
+  // for exactly those uncontrolled tabs, so focus first (while we still hold the click's
+  // user activation), then try to navigate, and fall back to a new window if that fails.
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
-        for (const client of clients) {
-          if (new URL(client.url).origin === self.location.origin && "focus" in client) {
-            return client.navigate(target).then((c) => c?.focus());
-          }
-        }
-        return self.clients.openWindow(target);
+        const client = clients.find(
+          (c) => new URL(c.url).origin === self.location.origin && "focus" in c,
+        );
+        if (!client) return self.clients.openWindow(target);
+        return client
+          .focus()
+          .then((focused) => (focused || client).navigate(target))
+          .catch(() => self.clients.openWindow(target));
       }),
   );
 });

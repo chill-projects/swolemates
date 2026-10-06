@@ -58,7 +58,10 @@ async def add_push_subscription(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Subscription is missing its encryption keys.",
         )
-    await service.subscribe(session, user_sub, endpoint=body.endpoint, p256dh=p256dh, auth=auth)
+    try:
+        await service.subscribe(session, user_sub, endpoint=body.endpoint, p256dh=p256dh, auth=auth)
+    except service.InvalidPushEndpoint as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.api_route(

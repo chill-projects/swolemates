@@ -21,9 +21,12 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import date
+from enum import Enum
+from urllib.parse import urlsplit
 
+import requests
 from pywebpush import WebPushException, webpush
-from sqlalchemy import Date, cast, delete, func, select, update
+from sqlalchemy import Date, case, cast, delete, func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,12 +48,80 @@ DEFAULT_REMINDER_HOUR = 18
 # stale.
 PUSH_TTL_SECONDS = 6 * 60 * 60
 
+# Seconds to wait on a push service before giving up on that device. pywebpush forwards
+# `timeout=None` to `requests` unless told otherwise, which means wait forever — and a
+# worker thread stuck on one hung push service would hold that user's claim open forever.
+PUSH_TIMEOUT_SECONDS = 10
+
+# The server POSTs to whatever endpoint a browser registers, so the endpoint is an
+# outbound-request target supplied by a client: unchecked, it's an SSRF primitive
+# (`http://169.254.169.254/...`, `http://localhost:5432`). Only the real browser push
+# services are accepted. Exact hosts, plus suffixes for services that shard by hostname.
+#   Chrome/Chromium/Opera/Samsung: fcm.googleapis.com (legacy: android.googleapis.com)
+#   Firefox: updates.push.services.mozilla.com
+#   Edge (Windows): <shard>.notify.windows.com
+#   Safari (macOS/iOS): web.push.apple.com
+PUSH_HOSTS = frozenset(
+    {
+        "fcm.googleapis.com",
+        "android.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "web.push.apple.com",
+    }
+)
+PUSH_HOST_SUFFIXES = (".push.services.mozilla.com", ".notify.windows.com", ".push.apple.com")
+
+
+class InvalidPushEndpoint(ValueError):
+    pass
+
+
+def validate_endpoint(endpoint: str) -> str:
+    """Return `endpoint` if it points at a known browser push service, else raise.
+
+    Lives here, not in the schema or router, so it holds for any future caller of
+    `subscribe` — the same reason permission checks live in services.
+    """
+    try:
+        parts = urlsplit(endpoint)
+        port = parts.port
+    except ValueError as exc:
+        raise InvalidPushEndpoint("That push endpoint isn't a valid URL.") from exc
+    host = (parts.hostname or "").lower()
+    if (
+        parts.scheme != "https"
+        or parts.username is not None
+        or parts.password is not None
+        or port not in (None, 443)
+        or not (host in PUSH_HOSTS or host.endswith(PUSH_HOST_SUFFIXES))
+    ):
+        raise InvalidPushEndpoint("That push endpoint isn't from a recognised push service.")
+    return endpoint
+
 
 @dataclass
 class ReminderSettings:
     enabled: bool
     hour: int | None
     subscribed_devices: int
+
+
+def _zone(tz_column):
+    """The user's zone as Postgres will accept it, or UTC.
+
+    `profile.timezone` is validated against Python's zoneinfo when it's set, but
+    Postgres ships its own tz database and the two can disagree (a newly added zone, a
+    hand-edited row). An unrecognised name makes `timezone()` raise — and because the due
+    query covers every user at once, one bad row would stop the reminder for everyone.
+    Checking against `pg_timezone_names` contains that to the one user, who falls back
+    to UTC like a user with no zone set.
+    """
+    known = select(literal_column("name")).select_from(text("pg_timezone_names"))
+    return case((tz_column.in_(known.scalar_subquery()), tz_column), else_="UTC")
+
+
+def _local_date():
+    return cast(func.timezone(_zone(UserProfile.timezone), func.now()), Date)
 
 
 def _local_now(tz_column, part: str):
@@ -60,7 +131,7 @@ def _local_now(tz_column, part: str):
     users whose local clock currently reads Sunday 18:00 is a query, and writing it as
     one keeps the tick O(due users) instead of O(all users).
     """
-    local = func.timezone(func.coalesce(tz_column, "UTC"), func.now())
+    local = func.timezone(_zone(tz_column), func.now())
     return func.extract(part, local)
 
 
@@ -76,7 +147,7 @@ async def due_user_ids(session: AsyncSession, *, weekday: int | None = None) -> 
     once, at import).
     """
     weekday = REMINDER_WEEKDAY if weekday is None else weekday
-    local_date = cast(func.timezone(func.coalesce(UserProfile.timezone, "UTC"), func.now()), Date)
+    local_date = _local_date()
     result = await session.execute(
         select(UserProfile.user_id).where(
             UserProfile.weekly_reminder_hour.isnot(None),
@@ -96,7 +167,7 @@ async def _claim(session: AsyncSession, user_sub: str) -> date | None:
     Postgres against the current row, so of N replicas racing on the same user exactly
     one matches and the rest update nothing.
     """
-    local_date = cast(func.timezone(func.coalesce(UserProfile.timezone, "UTC"), func.now()), Date)
+    local_date = _local_date()
     result = await session.execute(
         update(UserProfile)
         .where(
@@ -119,7 +190,16 @@ async def subscribe(
     worker updated) hands back the same endpoint with fresh keys. Re-pointing it at the
     current user also matters on a shared device: the endpoint belongs to the browser,
     not the account, so the last person to enable notifications owns it.
+
+    That reassignment can't be abused to read someone else's notifications: a push is
+    encrypted to the `p256dh`/`auth` keys stored with it, which only the browser that
+    created the subscription holds. Posting another user's endpoint with your own keys
+    just produces pushes that browser can't decrypt — and the endpoint itself is an
+    unguessable capability URL. Reads and deletes stay filtered to the caller's rows.
+
+    Raises `InvalidPushEndpoint` for anything that isn't a browser push service.
     """
+    validate_endpoint(endpoint)
     await session.execute(
         insert(PushSubscription)
         .values(user_id=user_sub, endpoint=endpoint, p256dh=p256dh, auth=auth)
@@ -174,8 +254,15 @@ async def set_reminder(
     return await get_settings_for(session, user_sub)
 
 
-async def _push(subscription: PushSubscription, *, title: str, body: str, url: str) -> bool:
-    """One device. Returns False if the subscription is dead and should be dropped."""
+class PushResult(Enum):
+    DELIVERED = "delivered"
+    FAILED = "failed"  # transient: keep the subscription, try again next week
+    GONE = "gone"  # the push service says this endpoint is dead: drop it
+
+
+async def _push(subscription: PushSubscription, *, title: str, body: str, url: str) -> PushResult:
+    """One device. Never raises: a failure here must not escape `claim_and_send`, or the
+    claim rolls back and every device that *did* get the push gets it again next tick."""
     settings = get_settings()
     try:
         # `webpush` is `requests` underneath — blocking, and a push service that hangs
@@ -190,18 +277,33 @@ async def _push(subscription: PushSubscription, *, title: str, body: str, url: s
             vapid_private_key=settings.vapid_private_key,
             vapid_claims={"sub": settings.vapid_subject},
             ttl=PUSH_TTL_SECONDS,
+            timeout=PUSH_TIMEOUT_SECONDS,
         )
-        return True
+        return PushResult.DELIVERED
     except WebPushException as exc:
         # 404/410 is the push service saying this endpoint is permanently gone — the app
-        # was uninstalled, or the browser rotated it. Anything else (timeout, 5xx) is
+        # was uninstalled, or the browser rotated it. Anything else (5xx, 429) is
         # transient and the row stays: dropping it would silently unsubscribe someone
         # because a push service had a bad minute.
+        #
+        # 401/403 deliberately aren't pruned. After a VAPID key rotation they do mean
+        # "this subscription belongs to the old key", but they're also exactly what a
+        # misconfigured key on *our* side returns, and pruning on that would unsubscribe
+        # every user in one tick. The SPA notices a changed key and re-subscribes
+        # (removing the stale row) instead.
         status = getattr(exc.response, "status_code", None)
         if status in (404, 410):
-            return False
+            return PushResult.GONE
         log.warning("push to %s failed: %s", subscription.id, exc)
-        return True
+        return PushResult.FAILED
+    except requests.RequestException as exc:
+        # Connection refused, DNS, the timeout above — the network, not the endpoint.
+        log.warning("push to %s failed: %s", subscription.id, exc)
+        return PushResult.FAILED
+    except Exception:
+        # Anything else (a malformed stored key, say) is still one device's problem.
+        log.exception("push to %s failed", subscription.id)
+        return PushResult.FAILED
 
 
 async def send_reminder_to(session: AsyncSession, user_sub: str) -> int:
@@ -225,16 +327,20 @@ async def send_reminder_to(session: AsyncSession, user_sub: str) -> int:
     checkin = await weekly_checkin.get_weekly_checkin(session, user_sub)
     delivered = 0
     for subscription in subscriptions:
-        if await _push(subscription, title="Plan your week", body=checkin.summary, url="/plan"):
+        result = await _push(
+            subscription, title="Plan your week", body=checkin.summary, url="/plan"
+        )
+        if result is PushResult.DELIVERED:
             delivered += 1
-        else:
+        elif result is PushResult.GONE:
             await session.delete(subscription)
     await session.flush()
     return delivered
 
 
 async def claim_and_send(session: AsyncSession, user_sub: str) -> bool:
-    """One user's turn: take the claim, and send if it was ours to take.
+    """One user's turn: take the claim, and send if it was ours to take. True only if
+    at least one device actually received it.
 
     Claim and send share a transaction, and this never commits — the caller owns that,
     the same as every other service here. `reminder_loop` gives each user its own
@@ -245,8 +351,7 @@ async def claim_and_send(session: AsyncSession, user_sub: str) -> bool:
         return False
     if await _claim(session, user_sub) is None:
         return False  # another replica got there first
-    await send_reminder_to(session, user_sub)
-    return True
+    return await send_reminder_to(session, user_sub) > 0
 
 
 # Kept for the health/debug path: a one-line description of whether push can work at all.
@@ -256,6 +361,8 @@ def push_status() -> str:
 
 __all__ = [
     "DEFAULT_REMINDER_HOUR",
+    "InvalidPushEndpoint",
+    "PushResult",
     "REMINDER_WEEKDAY",
     "ReminderSettings",
     "get_settings_for",
@@ -266,4 +373,5 @@ __all__ = [
     "set_reminder",
     "subscribe",
     "unsubscribe",
+    "validate_endpoint",
 ]

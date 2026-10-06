@@ -172,6 +172,7 @@ ROOT_ASSETS = frozenset(
         "icon-maskable-512.png",
         "manifest.webmanifest",
         "sw.js",
+        "push-sw.js",
         "registerSW.js",
     }
 )
