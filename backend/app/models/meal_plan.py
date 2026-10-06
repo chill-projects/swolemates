@@ -151,6 +151,8 @@ class PlannedMeal(Base, TimestampMixin):
             name="meal_type_is_a_known_slot",
         ),
         Index("ix_planned_meals_user_id_scheduled_for", "user_id", "scheduled_for"),
+        Index("ix_planned_meals_template_id", "template_id"),
+        Index("ix_planned_meals_kitchen_item_id", "kitchen_item_id"),
     )
 
 
