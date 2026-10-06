@@ -79,3 +79,19 @@ def local_day_bounds_utc(day: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
     start = datetime.combine(day, time.min, tzinfo=tz).astimezone(UTC)
     end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz).astimezone(UTC)
     return start, end
+
+
+def ensure_not_future(instant: datetime, tz: ZoneInfo) -> None:
+    """Backdating guard: raises `ValueError` if `instant` lands on a calendar day after
+    today in `tz`. Day-granular, not instant-granular — "tonight at 7" logged at 6pm is
+    a fine plan-ahead for today, but a misread "Friday" that resolves to *next* Friday
+    would put food on a day that hasn't happened, or mark that day's planned session
+    done before it's been trained. Callers resolve `tz` the way they resolve "today"
+    everywhere else (stored profile zone, or the request's)."""
+    day = local_date(instant, tz)
+    today = today_in(tz)
+    if day > today:
+        raise ValueError(
+            f"{day.isoformat()} is in the future (today is {today.isoformat()}) — "
+            "you can log or move entries to today or an earlier day, not ahead."
+        )

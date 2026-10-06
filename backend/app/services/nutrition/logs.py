@@ -3,12 +3,14 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.nutrition import Log, LogValue
+from app.services import profile as profile_service
 from app.services.errors import NotFoundError
 
 
@@ -32,7 +34,9 @@ async def log_nutrition(
     name: str | None = None,
     meal_type: str | None = None,
     source: str = "manual",
+    tz: ZoneInfo | None = None,
 ) -> Log:
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
     log = Log(
         user_id=user_sub,
         logged_at=logged_at or datetime.now(UTC),
@@ -59,12 +63,27 @@ async def log_nutrition(
 
 
 async def get_log_values(session: AsyncSession, user_sub: str, log_id: uuid.UUID) -> list[LogValue]:
+    """One entry's values. `log_id` may also be a saved meal's `group_id` (see
+    `_resolve_logs`) — then it's the meal's totals, summed across its items, as
+    unsaved `LogValue`s: read-only, since no single row holds a group's number."""
     result = await session.execute(
         select(LogValue)
         .join(Log, Log.id == LogValue.log_id)
         .where(LogValue.log_id == log_id, Log.user_id == user_sub)
     )
-    return list(result.scalars())
+    values = list(result.scalars())
+    if values:
+        return values
+
+    grouped = await session.execute(
+        select(LogValue.trackable_key, LogValue.value)
+        .join(Log, Log.id == LogValue.log_id)
+        .where(Log.group_id == log_id, Log.user_id == user_sub)
+    )
+    totals: dict[str, Decimal] = {}
+    for trackable_key, value in grouped.all():
+        totals[trackable_key] = totals.get(trackable_key, Decimal(0)) + value
+    return [LogValue(log_id=log_id, trackable_key=k, value=v) for k, v in totals.items()]
 
 
 async def get_latest_trackable_value(
@@ -136,6 +155,7 @@ async def update_nutrition_log(
     meal_type: str | None = None,
     values: dict[str, Decimal] | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> Log:
     """Conversational correction — "actually that was a small coffee, not a large"
     (#4/#6, resolved: the nutrition equivalent of update_workout). Only fields
@@ -154,8 +174,9 @@ async def update_nutrition_log(
     today's" (the recovery path for a meal logged, or backdated, to the wrong day).
     Unlike `values` it *does* apply to a whole group: every item of a saved meal was
     eaten at one sitting, so they move together rather than splitting one meal across
-    two days.
+    two days. A move to a day after today is rejected (`profile.check_backdate`).
     """
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
     logs = await _resolve_logs(session, user_sub, log_id)
     if not logs:
         raise NotFoundError(f"No log {log_id}")
@@ -234,6 +255,7 @@ async def amend_last_log(
     meal_type: str | None = None,
     values: dict[str, Decimal] | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> tuple[Log | None, uuid.UUID, str | None]:
     """ "Undo that" / fix the single most recent entry without needing to identify
     which record (#4/#6, resolved). No fields given deletes the most recent log
@@ -242,6 +264,12 @@ async def amend_last_log(
     is None when the entry was deleted, since the row no longer exists to return.
     "Most recent" is insertion order (`created_at`), not `logged_at` — a backdated
     entry someone just logged is still the thing "that" refers to.
+
+    A saved meal logged via `log_meal_template` is one row per item sharing a
+    `group_id`, but it's one entry to the user — "that was yesterday" right after
+    logging it means the whole meal. So when the newest row belongs to a group, the
+    group is what gets amended or undone (via `_resolve_logs`' group lookup), not
+    just whichever item happened to be inserted last.
     """
     result = await session.execute(
         select(Log).where(Log.user_id == user_sub).order_by(Log.created_at.desc()).limit(1)
@@ -251,9 +279,13 @@ async def amend_last_log(
         raise NotFoundError("No logs to amend yet.")
 
     log_id, log_name = log.id, log.name
+    if log.group_id is not None:
+        log_id, log_name = log.group_id, log.group_name
     if name is None and meal_type is None and logged_at is None and not values:
-        await _unlink_planned_meals(session, user_sub, [log])
-        await session.delete(log)
+        entries = await _resolve_logs(session, user_sub, log_id)
+        await _unlink_planned_meals(session, user_sub, entries)
+        for entry in entries:
+            await session.delete(entry)
         await session.flush()
         events.publish(user_sub, "nutrition")
         return None, log_id, log_name
@@ -266,5 +298,6 @@ async def amend_last_log(
         meal_type=meal_type,
         values=values,
         logged_at=logged_at,
+        tz=tz,
     )
-    return updated, log_id, updated.name
+    return updated, log_id, updated.group_name if updated.group_id == log_id else updated.name

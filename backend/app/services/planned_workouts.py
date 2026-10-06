@@ -16,11 +16,16 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
+from app.models.workouts import (
+    PlannedWorkout,
+    PlannedWorkoutStatus,
+    WeeklyPatternDay,
+    WorkoutTemplate,
+)
 from app.services import profile as profile_service
 from app.services import workout_templates
 from app.services.errors import NotFoundError
-from app.services.timezones import today_in
+from app.services.timezones import local_date, today_in
 
 
 @dataclass
@@ -403,7 +408,12 @@ async def mark_done_if_planned(session: AsyncSession, workout_id: uuid.UUID) -> 
 
 
 async def mark_done_for_date(
-    session: AsyncSession, user_sub: str, *, day: date, workout_id: uuid.UUID
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    day: date,
+    workout_id: uuid.UUID,
+    mark_done: bool = True,
 ) -> None:
     """Called by `workouts.log_workout` — the one-shot path, which has no planned
     entry to have been started from, so `mark_done_if_planned`'s workout_id lookup
@@ -418,8 +428,18 @@ async def mark_done_for_date(
     Only claims a `planned`, unlinked row. A `skipped` day stays skipped: that's an
     explicit "not doing this" from the user, and `update_planned_workout(action=
     "unskip")` is the way back — guessing past it would silently overrule them.
+
+    `mark_done=False` links without completing — for `update_workout` moving a
+    session that's still in progress: the row becomes "started" (linked, `planned`),
+    exactly what `start_workout` from a plan leaves, and `finish_workout` marks it.
+
+    Generation is bounded below by when the day's pattern template was created: a
+    weekly pattern can't have scheduled a template that didn't exist yet, so a
+    backfill from before that ("log my run from last March") mustn't materialize a
+    planned row the plan never actually had.
     """
-    await _generate_missing(session, user_sub, day, day)
+    if await _pattern_could_have_scheduled(session, user_sub, day):
+        await _generate_missing(session, user_sub, day, day)
     result = await session.execute(
         select(PlannedWorkout)
         .where(
@@ -435,8 +455,29 @@ async def mark_done_for_date(
     if planned is None:
         return
     planned.workout_id = workout_id
-    planned.status = PlannedWorkoutStatus.done
+    if mark_done:
+        planned.status = PlannedWorkoutStatus.done
     await session.flush()
+
+
+async def _pattern_could_have_scheduled(session: AsyncSession, user_sub: str, day: date) -> bool:
+    """False when `day` predates the creation of the template its weekday's pattern
+    points at (in the caller's zone) — see `mark_done_for_date`. Rest days and no
+    pattern fall through as True; `_generate_missing` already generates nothing for
+    those."""
+    result = await session.execute(
+        select(WorkoutTemplate.created_at)
+        .join(WeeklyPatternDay, WeeklyPatternDay.template_id == WorkoutTemplate.id)
+        .where(
+            WeeklyPatternDay.user_id == user_sub,
+            WeeklyPatternDay.day_of_week == day.weekday(),
+        )
+    )
+    created_at = result.scalar_one_or_none()
+    if created_at is None:
+        return True
+    tz = await profile_service.get_user_timezone(session, user_sub)
+    return day >= local_date(created_at, tz)
 
 
 async def unlink_workout(session: AsyncSession, workout_id: uuid.UUID) -> None:

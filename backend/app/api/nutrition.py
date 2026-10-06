@@ -40,23 +40,31 @@ async def list_trackable_types(session: DbSession) -> list[TrackableTypeOut]:
 
 @router.post("/logs", response_model=LogOut, status_code=201, operation_id="logNutrition")
 async def log_nutrition(
-    body: LogNutritionRequest, user_sub: CurrentUser, session: DbSession
+    body: LogNutritionRequest, user_sub: CurrentUser, session: DbSession, tz: UserTimezone
 ) -> LogOut:
-    log = await service.log_nutrition(
-        session,
-        user_sub,
-        entries=[e.model_dump() for e in body.entries],
-        logged_at=body.logged_at,
-        name=body.name,
-        meal_type=body.meal_type,
-        source=body.source,
-    )
+    try:
+        log = await service.log_nutrition(
+            session,
+            user_sub,
+            entries=[e.model_dump() for e in body.entries],
+            logged_at=body.logged_at,
+            name=body.name,
+            meal_type=body.meal_type,
+            source=body.source,
+            tz=tz,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return LogOut.model_validate(log)
 
 
 @router.patch("/logs/{log_id}", response_model=NutritionLogOut, operation_id="updateNutritionLog")
 async def update_nutrition_log(
-    log_id: uuid.UUID, body: UpdateNutritionLogRequest, user_sub: CurrentUser, session: DbSession
+    log_id: uuid.UUID,
+    body: UpdateNutritionLogRequest,
+    user_sub: CurrentUser,
+    session: DbSession,
+    tz: UserTimezone,
 ) -> NutritionLogOut:
     try:
         log = await service.update_nutrition_log(
@@ -67,9 +75,12 @@ async def update_nutrition_log(
             meal_type=body.meal_type,
             values=body.values,
             logged_at=body.logged_at,
+            tz=tz,
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     log_values = await service.get_log_values(session, user_sub, log.id)
     values = {v.trackable_key: v.value for v in log_values}
     return NutritionLogOut(
@@ -89,28 +100,33 @@ async def delete_nutrition_log(
 
 @router.post("/logs/amend-last", response_model=AmendLastLogOut, operation_id="amendLastLog")
 async def amend_last_log(
-    body: UpdateNutritionLogRequest, user_sub: CurrentUser, session: DbSession
+    body: UpdateNutritionLogRequest, user_sub: CurrentUser, session: DbSession, tz: UserTimezone
 ) -> AmendLastLogOut:
     try:
-        updated, log_id, _name = await service.amend_last_log(
+        updated, log_id, name = await service.amend_last_log(
             session,
             user_sub,
             name=body.name,
             meal_type=body.meal_type,
             values=body.values,
             logged_at=body.logged_at,
+            tz=tz,
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if updated is None:
         return AmendLastLogOut(deleted=True, log=None)
     log_values = await service.get_log_values(session, user_sub, log_id)
     values = {v.trackable_key: v.value for v in log_values}
     return AmendLastLogOut(
         deleted=False,
+        # `log_id`/`name`, not `updated`'s: for a saved meal they're the group's (the
+        # entry the user sees), not whichever item row `updated` happens to be.
         log=NutritionLogOut(
-            id=updated.id,
-            name=updated.name,
+            id=log_id,
+            name=name,
             logged_at=updated.logged_at,
             meal_type=updated.meal_type,
             values=values,
@@ -273,7 +289,11 @@ async def delete_meal_template(
     operation_id="logMealTemplate",
 )
 async def log_meal_template(
-    template_id: uuid.UUID, body: LogMealTemplateRequest, user_sub: CurrentUser, session: DbSession
+    template_id: uuid.UUID,
+    body: LogMealTemplateRequest,
+    user_sub: CurrentUser,
+    session: DbSession,
+    tz: UserTimezone,
 ) -> list[LogOut]:
     try:
         logs = await service.log_meal_template(
@@ -283,9 +303,12 @@ async def log_meal_template(
             multiplier=body.multiplier,
             meal_type=body.meal_type,
             logged_at=body.logged_at,
+            tz=tz,
         )
     except service.NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return [LogOut.model_validate(log) for log in logs]
 
 

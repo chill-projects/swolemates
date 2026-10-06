@@ -944,7 +944,8 @@ export interface paths {
         delete: operations["deleteWorkout"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Workout */
+        patch: operations["updateWorkout"];
         trace?: never;
     };
     "/api/workouts/{workout_id}/entries": {
@@ -1252,6 +1253,20 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ExerciseUpdateIn */
+        ExerciseUpdateIn: {
+            /** Exercise */
+            exercise: string;
+            /** Next Time Note */
+            next_time_note?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Sets
+             * @default []
+             */
+            sets: components["schemas"]["SetUpdateIn"][];
+        };
         /** FinishWorkoutRequest */
         FinishWorkoutRequest: {
             /** Notes */
@@ -1537,6 +1552,11 @@ export interface components {
             streak_key: string | null;
             /** Templates */
             templates: components["schemas"]["MealTemplateSummaryOut"][];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
         };
         /** NutritionEntryIn */
         NutritionEntryIn: {
@@ -1884,6 +1904,24 @@ export interface components {
          * @enum {string}
          */
         SetType: "reps" | "time";
+        /**
+         * SetUpdateIn
+         * @description Only fields actually sent change (`exclude_unset`), so `null` vs omitted matter.
+         */
+        SetUpdateIn: {
+            /** Delete */
+            delete?: boolean | null;
+            /** Is Warmup */
+            is_warmup?: boolean | null;
+            /** Reps */
+            reps?: number | null;
+            /** Set Number */
+            set_number: number;
+            /** Weight */
+            weight?: number | string | null;
+            /** Work Seconds */
+            work_seconds?: number | null;
+        };
         /** SetWeeklyPatternRequest */
         SetWeeklyPatternRequest: {
             /** Days */
@@ -2112,6 +2150,19 @@ export interface components {
             workout_exercise_id?: string | null;
             /** Workout Set Id */
             workout_set_id?: string | null;
+        };
+        /**
+         * UpdateWorkoutRequest
+         * @description REST twin of the `update_workout` MCP tool: correct a past session's sets or
+         *     notes, and/or move the whole session to `logged_at` (not after today).
+         */
+        UpdateWorkoutRequest: {
+            /** Exercise Updates */
+            exercise_updates?: components["schemas"]["ExerciseUpdateIn"][] | null;
+            /** Logged At */
+            logged_at?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /** UpdateWorkoutTemplateRequest */
         UpdateWorkoutTemplateRequest: {
@@ -4161,6 +4212,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateWorkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import events
 from app.models.profile import ActivityLevel, BiologicalSex, GoalType, UserProfile, WeightUnit
-from app.services.timezones import resolve_timezone, validate_timezone_name
+from app.services.timezones import ensure_not_future, resolve_timezone, validate_timezone_name
 
 
 async def get_or_create_profile(session: AsyncSession, user_sub: str) -> UserProfile:
@@ -93,6 +93,19 @@ async def get_user_timezone(session: AsyncSession, user_sub: str) -> ZoneInfo:
     live `X-Timezone` header: MCP tools and partner-summary reads."""
     profile = await get_or_create_profile(session, user_sub)
     return resolve_timezone(profile.timezone)
+
+
+async def check_backdate(
+    session: AsyncSession, user_sub: str, logged_at: datetime | None, tz: ZoneInfo | None = None
+) -> None:
+    """The shared "not after today" guard for every backdating write — workouts and
+    nutrition, logged or moved, REST or MCP — so neither transport can put an entry on
+    a day that hasn't happened. `tz` is the request's zone when the caller has one (the
+    REST path's `UserTimezone`); otherwise the stored profile zone. No-op for None
+    (the "now" default, which is never in the future)."""
+    if logged_at is None:
+        return
+    ensure_not_future(logged_at, tz or await get_user_timezone(session, user_sub))
 
 
 async def complete_onboarding(session: AsyncSession, user_sub: str) -> UserProfile:

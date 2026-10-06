@@ -111,6 +111,7 @@ async def _day_payload(session, user_sub: str, day: date_type | None = None) -> 
     day = await service.get_nutrition_day(session, user_sub, day=day)
     return {
         "date": day.date.isoformat(),
+        "today": day.today.isoformat(),
         "hero": _progress(day.hero),
         "bars": [_progress(b) for b in day.bars],
         "streak_key": day.streak_key,
@@ -277,7 +278,9 @@ async def amend_last_log(
 ) -> str:
     """Undo or fix the single most recent nutrition entry, without needing its id —
     "undo that" or "actually that was 300 calories." Pass nothing to remove the entry
-    outright; pass any field to correct it in place instead.
+    outright; pass any field to correct it in place instead. Right after
+    log_meal_template, "that" is the whole saved meal: undo removes all of it and a
+    date moves all of it together.
 
     Args:
         name: new name, if correcting (omit to leave alone, or to just undo).
@@ -301,7 +304,7 @@ async def amend_last_log(
             return f'Removed "{log_name or "that entry"}" from the log.'
         log_values = await service.get_log_values(session, user_sub, log_id)
     macros = ", ".join(f"{v.trackable_key}={v.value}" for v in log_values) or "no values"
-    return f'Updated "{updated.name or "entry"}" — {macros}.'
+    return f'Updated "{log_name or "entry"}" — {macros}.'
 
 
 @mcp.tool(app=AppConfig(resource_uri=NUTRITION_UI_URI, visibility=["app"]))

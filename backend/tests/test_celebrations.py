@@ -159,7 +159,9 @@ async def test_get_streak_current_week_counts_as_a_bonus_once_target_is_met(
     session: AsyncSession,
 ) -> None:
     today = date.today()
-    monday = _monday(today)
+    # Last week, not this one: logging can't reach days after today, and this
+    # week's Mon-Wed are partly in the future early in the week.
+    monday = _monday(today) - timedelta(days=7)
     for i in range(3):
         await workouts.log_activity(
             session,
@@ -178,7 +180,9 @@ async def test_get_streak_current_week_counts_as_a_bonus_once_target_is_met(
 
 async def test_get_streak_backward_walk_stops_at_a_shortfall(session: AsyncSession) -> None:
     today = date.today()
-    monday = _monday(today)
+    # Last week, not this one: logging can't reach days after today, and this
+    # week's Mon-Wed are partly in the future early in the week.
+    monday = _monday(today) - timedelta(days=7)
     # This week: hits the fallback target of 3.
     for i in range(3):
         await workouts.log_activity(
@@ -212,7 +216,9 @@ async def test_get_streak_backward_walk_stops_at_a_shortfall(session: AsyncSessi
 
 async def test_get_streak_multi_week_run(session: AsyncSession) -> None:
     today = date.today()
-    monday = _monday(today)
+    # Last week, not this one: logging can't reach days after today, and this
+    # week's Mon-Wed are partly in the future early in the week.
+    monday = _monday(today) - timedelta(days=7)
     for weeks_back in range(3):
         week_monday = monday - timedelta(days=7 * weeks_back)
         for i in range(3):
@@ -231,7 +237,9 @@ async def test_get_streak_multi_week_run(session: AsyncSession) -> None:
 
 async def test_get_streak_is_scoped_to_owner(session: AsyncSession) -> None:
     today = date.today()
-    monday = _monday(today)
+    # Last week, not this one: logging can't reach days after today, and this
+    # week's Mon-Wed are partly in the future early in the week.
+    monday = _monday(today) - timedelta(days=7)
     for i in range(3):
         await workouts.log_activity(
             session,

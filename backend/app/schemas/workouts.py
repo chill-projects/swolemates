@@ -190,6 +190,33 @@ class UpdateWorkoutEntryRequest(BaseModel):
     note: str | None = None
 
 
+class SetUpdateIn(BaseModel):
+    """Only fields actually sent change (`exclude_unset`), so `null` vs omitted matter."""
+
+    set_number: int = Field(ge=1)
+    weight: Decimal | None = None
+    reps: int | None = None
+    work_seconds: int | None = None
+    is_warmup: bool | None = None
+    delete: bool | None = None
+
+
+class ExerciseUpdateIn(BaseModel):
+    exercise: str
+    notes: str | None = None
+    next_time_note: str | None = None
+    sets: list[SetUpdateIn] = []
+
+
+class UpdateWorkoutRequest(BaseModel):
+    """REST twin of the `update_workout` MCP tool: correct a past session's sets or
+    notes, and/or move the whole session to `logged_at` (not after today)."""
+
+    exercise_updates: list[ExerciseUpdateIn] | None = None
+    notes: str | None = None
+    logged_at: datetime | None = None
+
+
 class ExerciseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

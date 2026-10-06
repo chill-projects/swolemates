@@ -536,6 +536,7 @@ async def log_workout(
     title: str | None = None,
     notes: str | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> WorkoutOut:
     """One-shot: record an already-completed strength session in a single call (#3,
     resolved — this *is* legacy 0010's `save_strength_workout` RPC, now an ordinary
@@ -547,6 +548,7 @@ async def log_workout(
     """
     if not exercises:
         raise ValueError("Add at least one exercise.")
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
     for entry in exercises:
         _validate_sets(entry["exercise"], entry.get("sets", []))
 
@@ -601,7 +603,7 @@ async def log_workout(
             session, user_sub, exercise_id=exercise_id, exercise_name=exercise_name, sets=new_sets
         )
 
-    tz = await profile_service.get_user_timezone(session, user_sub)
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
 
     # The one-shot path has no planned entry to have been *started* from, so the live
     # flow's link (start_workout -> finish_workout -> mark_done_if_planned) never
@@ -630,11 +632,13 @@ async def log_activity(
     title: str | None = None,
     notes: str | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> WorkoutOut:
     """The simple legacy form — a non-strength session (yoga, a swim, a hike), no
     per-set detail."""
     if duration_minutes <= 0:
         raise ValueError("duration_minutes must be greater than 0.")
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
 
     when = logged_at or datetime.now(UTC)
     met = _ACTIVITY_MET.get(activity_type.strip().lower(), _DEFAULT_ACTIVITY_MET)
@@ -657,7 +661,7 @@ async def log_activity(
     await session.flush()
     events.publish(user_sub, "workouts")
     details = await _load_workout_details(session, [workout.id])
-    tz = await profile_service.get_user_timezone(session, user_sub)
+    tz = tz or await profile_service.get_user_timezone(session, user_sub)
     details[0].streak = await get_streak(session, user_sub, as_of=local_date(when, tz), tz=tz)
     return details[0]
 
@@ -1142,6 +1146,7 @@ async def update_workout(
     exercise_updates: list[dict] | None = None,
     notes: str | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> WorkoutOut:
     """Edit a past session's actuals conversationally ("actually that was 8 reps
     not 6") — no add-exercise, no add-set, this corrects what's there rather than
@@ -1161,8 +1166,13 @@ async def update_workout(
     so a 47-minute session stays 47 minutes long. It also forces a PR recompute
     across every exercise in the session: which lift counts as "first to hit 225" is
     decided by `achieved_at`, so moving a date can reorder records that no set here
-    touched.
+    touched. A move to a day after today is rejected (`profile.check_backdate`).
+
+    Moving a still-in-progress session (no `completed_at`) carries its plan link to
+    the new day *without* marking it done — nothing's finished yet. `finish_workout`'s
+    `mark_done_if_planned` then marks the new day's row once it actually is.
     """
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
     result = await session.execute(
         select(Workout).where(Workout.id == workout_id, Workout.user_id == user_sub)
     )
@@ -1185,10 +1195,14 @@ async def update_workout(
         # `done` that `_repair_orphaned_done` exists to clean up.
         from app.services import planned_workouts
 
-        tz = await profile_service.get_user_timezone(session, user_sub)
+        tz = tz or await profile_service.get_user_timezone(session, user_sub)
         await planned_workouts.unlink_workout(session, workout.id)
         await planned_workouts.mark_done_for_date(
-            session, user_sub, day=local_date(logged_at, tz), workout_id=workout.id
+            session,
+            user_sub,
+            day=local_date(logged_at, tz),
+            workout_id=workout.id,
+            mark_done=workout.completed_at is not None,
         )
     for entry in exercise_updates or []:
         exercise_name = entry["exercise"]

@@ -82,6 +82,9 @@ interface MealTemplateSummary {
 
 interface NutritionDayPayload {
   date: string;
+  /** Today in the zone the server computed `date` in (the profile's) — compare
+   *  against this, never the browser's `todayIso()`, which can be a day off. */
+  today: string;
   hero: TrackableProgress;
   bars: TrackableProgress[];
   streak_key: string | null;
@@ -150,8 +153,8 @@ const app = new App({ name: "Swolemates Nutrition", version: "1.0.0" });
  *  on its own, so passing nothing keeps the default path byte-for-byte unchanged and
  *  lets a component left open overnight roll forward instead of pinning to yesterday. */
 function viewedDate(): string | null {
-  const shown = currentPayload?.date;
-  return shown && shown !== todayIso() ? shown : null;
+  if (!currentPayload) return null;
+  return currentPayload.date !== currentPayload.today ? currentPayload.date : null;
 }
 
 function extractPayload(result: {
@@ -634,9 +637,9 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
   return li;
 }
 
-function renderDayNav(iso: string): void {
-  const isToday = iso === todayIso();
-  const label = dayLabel(iso);
+function renderDayNav(iso: string, today: string): void {
+  const isToday = iso === today;
+  const label = dayLabel(iso, today);
   dayLabelEl.textContent = label;
   dayNextBtn.disabled = isToday;
   dayBackBtn.hidden = isToday;
@@ -648,7 +651,7 @@ function renderDayNav(iso: string): void {
 
 function render(payload: NutritionDayPayload): void {
   currentPayload = payload;
-  renderDayNav(payload.date);
+  renderDayNav(payload.date, payload.today);
   statusEl.textContent = payload.summary;
 
   ringValueEl.textContent = Math.round(payload.hero.consumed).toLocaleString();
@@ -855,7 +858,7 @@ function goToDay(iso: string): void {
 
 dayPrevBtn.onclick = () => goToDay(shiftIso(currentPayload?.date ?? todayIso(), -1));
 dayNextBtn.onclick = () => goToDay(shiftIso(currentPayload?.date ?? todayIso(), 1));
-dayBackBtn.onclick = () => goToDay(todayIso());
+dayBackBtn.onclick = () => goToDay(currentPayload?.today ?? todayIso());
 
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
 // one (a chat widget) at least get freshness whenever the user returns to the tab.

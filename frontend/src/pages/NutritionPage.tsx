@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import { PageHero, Ring } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
 import type { components } from "../api/generated";
-import { dateFromIso, detectedTimezone, noonInstantOf, todayIsoInTz } from "../lib/datetime";
+import { dateFromIso, noonInstantOf } from "../lib/datetime";
 
 type NutritionDayOut = components["schemas"]["NutritionDayOut"];
 
@@ -41,6 +41,7 @@ function toPayload(day: NutritionDayOut): ToolResultPayload {
 
   const payload = {
     date: day.date,
+    today: day.today,
     hero,
     bars,
     streak_key: day.streak_key,
@@ -76,6 +77,7 @@ function toPayload(day: NutritionDayOut): ToolResultPayload {
  *  inside the iframe is rendering — see AppRenderer's `onResult`. */
 type DayState = {
   date: string;
+  today: string;
   hero: { unit: string; consumed: number; target: number | null };
   bars: { trackable_key: string; unit: string; consumed: number; target: number | null }[];
   logs: unknown[];
@@ -339,9 +341,11 @@ export function NutritionPage() {
           // through here too, and it must not blank the header.
           onResult={(result) => {
             if (!isDayState(result.structuredContent)) return;
-            const shown = result.structuredContent.date;
+            const { date: shown, today } = result.structuredContent;
             setDay(result.structuredContent);
-            viewedDayRef.current = shown === todayIsoInTz(detectedTimezone()) ? null : shown;
+            // The server's `today`, not the browser's: the day was resolved in the
+            // profile zone, which can be a calendar day apart from this tab's.
+            viewedDayRef.current = shown === today ? null : shown;
           }}
           eventsUrl="/api/nutrition/events"
         />
