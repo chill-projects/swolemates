@@ -12,6 +12,7 @@ import {
   fieldIssue,
   parseNumberField,
   pendingEdits,
+  rebaseDrafts,
   stageEdit,
 } from "./drafts";
 
@@ -205,5 +206,45 @@ describe("describeDirty", () => {
     expect(describeDirty(0)).toBe("");
     expect(describeDirty(1)).toBe("1 unsaved change");
     expect(describeDirty(4)).toBe("4 unsaved changes");
+  });
+});
+
+describe("rebaseDrafts", () => {
+  const server = (overrides: Partial<SavedTargets> = {}) =>
+    new Map<string, SavedTargets>([["a", { ...SAVED, ...overrides }], ["b", HOLD]]);
+
+  it("drops what the server now holds", () => {
+    const drafts: Drafts = new Map([["a", { reps: 12, weight: 145 }]]);
+    expect(rebaseDrafts(drafts, server({ reps: 12, weight: 145 })).size).toBe(0);
+  });
+
+  // The batch stopped partway: one exercise landed, the other was rejected.
+  it("keeps what the server didn't take", () => {
+    const drafts: Drafts = new Map([
+      ["a", { reps: 12 }],
+      ["b", { sets: 4 }],
+    ]);
+    expect([...rebaseDrafts(drafts, server({ reps: 12 }))]).toEqual([["b", { sets: 4 }]]);
+  });
+
+  // Typed while the save was in flight: the reply doesn't know about it yet.
+  it("keeps an edit made after the save went out", () => {
+    const drafts: Drafts = new Map([["a", { reps: 15 }]]);
+    expect(rebaseDrafts(drafts, server({ reps: 12 })).get("a")).toEqual({ reps: 15 });
+  });
+
+  it("splits one exercise's fields by whether each landed", () => {
+    const drafts: Drafts = new Map([["a", { reps: 12, notes: "slow" }]]);
+    expect(rebaseDrafts(drafts, server({ reps: 12 })).get("a")).toEqual({ notes: "slow" });
+  });
+
+  it("treats a blank note as matching a missing one", () => {
+    const drafts: Drafts = new Map([["b", { notes: "" }]]);
+    expect(rebaseDrafts(drafts, server()).size).toBe(0);
+  });
+
+  it("forgets exercises the server no longer has", () => {
+    const drafts: Drafts = new Map([["gone", { sets: 5 }]]);
+    expect(rebaseDrafts(drafts, server()).size).toBe(0);
   });
 });

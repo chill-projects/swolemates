@@ -24,6 +24,7 @@ import {
   type DraftField,
   type Drafts,
   type NumericField,
+  type SavedTargets,
   NO_DRAFTS,
   clearEdit,
   describeDirty,
@@ -33,6 +34,7 @@ import {
   fieldIssue,
   parseNumberField,
   pendingEdits,
+  rebaseDrafts,
   stageEdit,
 } from "./drafts";
 
@@ -111,8 +113,8 @@ let pickerSupersetWith: string | null = null;
 let selectedCategory: string | null = null;
 let selectedEquipment: string | null = null;
 // Unsaved field edits, and the unsaved name. Both survive a re-render (the inputs
-// read through `effectiveValue`), and both are cleared only by a successful save
-// or an explicit discard.
+// read through `effectiveValue`), and an edit is dropped only once the server
+// holds it (see `rebaseDrafts`) or on an explicit discard.
 let drafts: Drafts = NO_DRAFTS;
 let nameDraft: string | null = null;
 // Collapsed group headers show a "3×10 reps" summary. Kept as live element
@@ -226,7 +228,7 @@ function renderExercise(e: TemplateExercise): HTMLDivElement {
   removeBtn.textContent = "×";
   removeBtn.title = "Remove exercise";
   removeBtn.onclick = () =>
-    void withPendingSaved(() =>
+    void withPendingSaved("remove an exercise", () =>
       callAndRender("update_workout_template", {
         template_id: currentPayload?.id,
         action: "remove_exercise",
@@ -279,7 +281,7 @@ function moveGroup(groups: Group[], index: number, direction: -1 | 1): void {
   const [moved] = reordered.splice(index, 1);
   if (!moved) return;
   reordered.splice(targetIndex, 0, moved);
-  void withPendingSaved(() =>
+  void withPendingSaved("reorder", () =>
     callAndRender("update_workout_template", {
       template_id: currentPayload?.id,
       action: "reorder_exercises",
@@ -393,7 +395,7 @@ function refreshDirtyUI(): void {
   const count = dirtyFieldCount(drafts, nameDraft !== null);
   const issues = draftIssues(drafts);
   saveBarEl.hidden = count === 0;
-  saveBtn.disabled = issues.length > 0;
+  saveBtn.disabled = saving || issues.length > 0;
   dirtyCountEl.textContent = issues[0]
     ? `${issues[0].field} ${issues[0].message}`
     : describeDirty(count);
@@ -401,17 +403,65 @@ function refreshDirtyUI(): void {
   for (const { el, group } of groupSummaries) el.textContent = summaryFor(group);
 }
 
+type ToolResult = Awaited<ReturnType<typeof app.callServerTool>>;
+
+/** The text a tool answered with, if any. A rejected edit arrives this way: the
+ *  backend's `catches_service_errors` turns a service ValueError into the tool's
+ *  ordinary text reply rather than a throw, and a Claude-side transport failure
+ *  comes back as an `isError` result — neither one rejects the promise. */
+function resultText(result: ToolResult): string | undefined {
+  return result.content?.find((c) => c.type === "text")?.text;
+}
+
+/** A template payload, or why there isn't one. Anything that isn't a whole
+ *  template — `isError`, or a text-only reply — counts as the call failing. */
+function templateFrom(result: ToolResult): { payload: TemplatePayload } | { error: string } {
+  const payload = result.isError ? null : extractPayload(result);
+  if (payload) return { payload };
+  return { error: resultText(result) ?? "The server didn't accept that change." };
+}
+
+function savedTargetsOf(payload: TemplatePayload): Map<string, SavedTargets> {
+  return new Map(payload.exercises.map((e) => [e.id, e]));
+}
+
+/** Drop whatever the server now agrees with and keep the rest — see rebaseDrafts. */
+function rebaseOnto(payload: TemplatePayload): void {
+  drafts = rebaseDrafts(drafts, savedTargetsOf(payload));
+  if (nameDraft === payload.name) nameDraft = null;
+}
+
+function showError(message: string): void {
+  statusEl.textContent = message;
+  statusEl.className = "error";
+}
+
+// Every server write — a field save, a structural edit — runs through this one
+// queue, so Enter, ⌘S, the Save button and a structural edit's flush can't
+// interleave their calls or render each other's stale replies. Later requests
+// wait their turn rather than being dropped.
+let queue: Promise<unknown> = Promise.resolve();
+let saving = false;
+
+function serialized<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
 /**
  * Push every pending edit, then re-render once from what came back.
  *
  * One call per edited exercise, because `update_exercise` is a one-row action —
  * but the render is the thing that used to be per-field, and now it happens once
- * at the end. Returns false if nothing was sent, so callers waiting on a clean
- * slate know not to continue.
+ * at the end. Returns false if anything wasn't saved, so callers waiting on a
+ * clean slate know not to continue. Must run inside `serialized`.
  */
-async function saveAll(): Promise<boolean> {
+async function saveNow(): Promise<boolean> {
   if (!currentPayload || draftIssues(drafts).length > 0) return false;
   const templateId = currentPayload.id;
+  // What this save sends. Edits typed while it's in flight keep landing in
+  // `drafts` and are reconciled — not wiped — when it finishes.
   const edits = pendingEdits(drafts);
   const rename = nameDraft;
   if (edits.length === 0 && rename === null) return true;
@@ -429,45 +479,86 @@ async function saveAll(): Promise<boolean> {
     });
   }
 
-  saveBtn.disabled = true;
+  saving = true;
   saveBtn.textContent = "Saving…";
+  refreshDirtyUI();
   let latest: TemplatePayload | null = null;
+  let failure: string | null = null;
   try {
     for (const args of calls) {
-      const result = await app.callServerTool({ name: "update_workout_template", arguments: args });
-      latest = extractPayload(result) ?? latest;
+      const outcome = templateFrom(
+        await app.callServerTool({ name: "update_workout_template", arguments: args }),
+      );
+      if ("error" in outcome) {
+        failure = outcome.error;
+        break;
+      }
+      latest = outcome.payload;
     }
   } catch (err) {
     console.error(err);
-    // Part of the batch may already have landed. Re-read instead of guessing, so
-    // what's on screen is what's in the database and the user can see which of
-    // their edits still need making.
-    drafts = NO_DRAFTS;
-    nameDraft = null;
-    await callAndRender("get_workout_template", { template_id: templateId });
-    statusEl.textContent = "Couldn't save everything — reloaded from the server.";
-    statusEl.className = "error";
-    return false;
+    failure = "Something went wrong talking to the server.";
   } finally {
+    saving = false;
     saveBtn.textContent = "Save changes";
-    saveBtn.disabled = false;
   }
 
-  drafts = NO_DRAFTS;
-  nameDraft = null;
-  // Every update_workout_template returns the whole template, so the last reply is
-  // already the fresh truth — one render for the batch. The re-read is only for a
-  // host that answered in plain text and gave us nothing to render.
-  if (latest) render(latest);
-  else await callAndRender("get_workout_template", { template_id: templateId });
-  return true;
+  if (failure === null && latest) {
+    // Every update_workout_template returns the whole template, so the last reply
+    // is already the fresh truth — one render for the batch.
+    rebaseOnto(latest);
+    render(latest);
+    return true;
+  }
+
+  // Part of the batch may already have landed. Re-read instead of guessing, so
+  // what's on screen is what's in the database, and keep every edit the server
+  // doesn't yet agree with — those stay outlined for another try.
+  const fresh = await fetchTemplate(templateId);
+  if (fresh) {
+    rebaseOnto(fresh);
+    render(fresh);
+  } else {
+    refreshDirtyUI();
+  }
+  showError(`${failure ?? "Couldn't save."} Unsaved changes are still marked.`);
+  return false;
+}
+
+async function fetchTemplate(templateId: string): Promise<TemplatePayload | null> {
+  try {
+    const outcome = templateFrom(
+      await app.callServerTool({ name: "get_workout_template", arguments: { template_id: templateId } }),
+    );
+    return "payload" in outcome ? outcome.payload : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
+function saveAll(): Promise<boolean> {
+  return serialized(saveNow);
 }
 
 /** Structural edits rebuild the list from the server's answer, which would throw
- *  away anything still pending — so those go out first. */
-async function withPendingSaved(run: () => Promise<void>): Promise<void> {
-  if (dirtyFieldCount(drafts, nameDraft !== null) > 0 && !(await saveAll())) return;
-  await run();
+ *  away anything still pending — so those go out first, in the same turn of the
+ *  queue so nothing can slip in between. If they can't go, say why instead of
+ *  ignoring the click. */
+function withPendingSaved(what: string, run: () => Promise<void>): Promise<void> {
+  return serialized(async () => {
+    if (dirtyFieldCount(drafts, nameDraft !== null) > 0) {
+      const issue = draftIssues(drafts)[0];
+      if (issue) {
+        showError(
+          `Can't ${what} yet: ${issue.field} ${issue.message}. Fix or discard your unsaved changes first.`,
+        );
+        return;
+      }
+      if (!(await saveNow())) return;
+    }
+    await run();
+  });
 }
 
 async function loadCatalog(): Promise<void> {
@@ -582,7 +673,7 @@ function renderPickerList(): void {
     btn.onclick = () => {
       const supersetWith = pickerSupersetWith;
       closePicker();
-      void withPendingSaved(() =>
+      void withPendingSaved("add an exercise", () =>
         callAndRender("update_workout_template", {
           template_id: currentPayload?.id,
           action: "add_exercise",
@@ -617,16 +708,11 @@ function closePicker(): void {
 async function callAndRender(name: string, args: Record<string, unknown>): Promise<void> {
   try {
     const result = await app.callServerTool({ name, arguments: args });
-    const payload = extractPayload(result);
-    if (payload) {
-      render(payload);
-      return;
-    }
-    const text = result.content?.find((c) => c.type === "text")?.text;
-    if (text) statusEl.textContent = text;
+    const outcome = templateFrom(result);
+    if ("payload" in outcome) render(outcome.payload);
+    else showError(outcome.error);
   } catch (err) {
-    statusEl.textContent = "Something went wrong talking to the server.";
-    statusEl.className = "error";
+    showError("Something went wrong talking to the server.");
     console.error(err);
   }
 }
