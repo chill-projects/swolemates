@@ -15,10 +15,11 @@ empty dict means "we don't know", never "we know it's zero".
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.meal_plan import (
@@ -31,8 +32,9 @@ from app.models.meal_plan import (
     PlannedMealStatus,
     PlannedMealValue,
 )
-from app.models.nutrition import MealTemplate
+from app.models.nutrition import Log, MealTemplate
 from app.services import nutrition as nutrition_service
+from app.services import profile as profile_service
 from app.services.errors import NotFoundError
 
 
@@ -158,9 +160,16 @@ async def _overrides(session: AsyncSession, planned_ids: list[uuid.UUID]) -> dic
 
 
 async def _resolve(
-    session: AsyncSession, user_sub: str, planned: PlannedMeal, override: dict[str, Decimal] | None
+    session: AsyncSession,
+    user_sub: str,
+    planned: PlannedMeal,
+    override: dict[str, Decimal] | None,
+    templates: list[nutrition_service.MealTemplateSummary] | None = None,
 ) -> PlannedMealOut:
-    """Turn a row into the view, working out where its numbers come from."""
+    """Turn a row into the view, working out where its numbers come from.
+
+    `templates` is the caller's saved meals, when the caller already has them — a week
+    of plans resolves against one load rather than one per planned meal."""
     if planned.template_id is not None:
         source = "template"
     elif planned.kitchen_item_id is not None:
@@ -177,7 +186,8 @@ async def _resolve(
         overridden = False
         base: dict[str, Decimal] = {}
         if planned.template_id is not None:
-            templates = await nutrition_service.list_meal_templates(session, user_sub)
+            if templates is None:
+                templates = await nutrition_service.list_meal_templates(session, user_sub)
             match = next((t for t in templates if t.id == planned.template_id), None)
             base = dict(match.totals) if match else {}
         elif planned.kitchen_item_id is not None:
@@ -222,12 +232,18 @@ async def get_meal_plan(
         .order_by(PlannedMeal.scheduled_for)
     )
     rows = list(result.scalars())
+    await _repair_orphaned_logged(session, rows)
     overrides = await _overrides(session, [r.id for r in rows])
+    templates = (
+        await nutrition_service.list_meal_templates(session, user_sub)
+        if any(r.template_id is not None for r in rows)
+        else []
+    )
 
     by_day: dict[date, list[PlannedMealOut]] = {}
     for row in rows:
         by_day.setdefault(row.scheduled_for, []).append(
-            await _resolve(session, user_sub, row, overrides.get(row.id))
+            await _resolve(session, user_sub, row, overrides.get(row.id), templates)
         )
 
     days: list[PlannedDayOut] = []
@@ -279,6 +295,28 @@ async def resolve_meal_reference(session: AsyncSession, user_sub: str, name: str
         if needle and needle in template.name.lower():
             return {"template_id": template.id}
     return {"name": name.strip()}
+
+
+async def resolve_saved_meal_names(
+    session: AsyncSession, user_sub: str, names: list[str]
+) -> list[uuid.UUID]:
+    """Turn "the saved meals that use this ingredient", said by name, into their ids.
+
+    Stricter than `resolve_meal_reference` on purpose: that one falls back to an
+    ad-hoc meal, but an ingredient linked to a meal that doesn't exist is a link to
+    nothing, so a name that matches no saved meal exactly is an error worth naming.
+    """
+    if not names:
+        return []
+    templates = await nutrition_service.list_meal_templates(session, user_sub)
+    by_name = {t.name.lower(): t.id for t in templates}
+    ids: list[uuid.UUID] = []
+    for meal_name in names:
+        match = by_name.get(meal_name.strip().lower())
+        if match is None:
+            raise NotFoundError(f"No saved meal called {meal_name!r}")
+        ids.append(match)
+    return ids
 
 
 # ------------------------------------------------------------------------ writing
@@ -368,6 +406,13 @@ async def update_planned_meal(
     target_day = scheduled_for if scheduled_for is not None else planned.scheduled_for
     target_slot = meal_type if meal_type is not None else planned.meal_type
     if (target_day, target_slot) != (planned.scheduled_for, planned.meal_type):
+        if planned.status is PlannedMealStatus.logged:
+            # The entry it became is stamped on the original day; moving the plan would
+            # leave it claiming a log that sits somewhere else.
+            raise ValueError(
+                f"{planned.name!r} has already been logged, so it stays where it is. "
+                "Delete the entry from the Nutrition tab first to move it."
+            )
         await _clear_slot(session, user_sub, target_day, target_slot, keep=planned.id)
         planned.scheduled_for = target_day
         planned.meal_type = target_slot
@@ -402,8 +447,13 @@ async def log_planned_meal(
     *,
     planned_meal_id: uuid.UUID,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> PlannedMealOut:
     """Turn a forecast into a real entry in the day.
+
+    With no `logged_at`, the entry is stamped at local noon on the planned day in `tz`
+    (the caller's stored zone when not given) — noon, like `parse_local_datetime`, so
+    neither a UTC offset nor a DST shift can tip it onto the neighbouring day.
 
     The entry is written from the plan's *resolved* values, so an edited plan logs the
     numbers the caller corrected rather than the source's originals. A meal nobody has
@@ -421,12 +471,14 @@ async def log_planned_meal(
             "Add some first, or log it from the Nutrition tab."
         )
 
-    when = logged_at or datetime.combine(planned.scheduled_for, datetime.min.time(), tzinfo=UTC)
+    if logged_at is None:
+        zone = tz or await profile_service.get_user_timezone(session, user_sub)
+        logged_at = datetime.combine(planned.scheduled_for, time(12), tzinfo=zone)
     log = await nutrition_service.log_nutrition(
         session,
         user_sub,
         entries=[{"trackable_key": key, "value": value} for key, value in view.values.items()],
-        logged_at=when,
+        logged_at=logged_at,
         name=planned.name,
         meal_type=planned.meal_type,
         source="template" if planned.template_id else "manual",
@@ -436,6 +488,86 @@ async def log_planned_meal(
     await session.flush()
 
     return await _resolve(session, user_sub, planned, overrides.get(planned.id))
+
+
+async def unlink_logs(session: AsyncSession, user_sub: str, log_ids: list[uuid.UUID]) -> None:
+    """The counterpart to `log_planned_meal`, called by `nutrition.delete_nutrition_log`
+    (and the undo in `amend_last_log`) while the entries still exist. `log_group_id` is
+    not a foreign key, so nothing clears it on its own; without this a plan would stay
+    `logged` forever, pointing at an entry that is gone. Back to `planned`: the meal it
+    was logged as no longer is."""
+    if not log_ids:
+        return
+    result = await session.execute(
+        select(PlannedMeal).where(
+            PlannedMeal.user_id == user_sub, PlannedMeal.log_group_id.in_(log_ids)
+        )
+    )
+    for planned in result.scalars():
+        planned.status = PlannedMealStatus.planned
+        planned.log_group_id = None
+    await session.flush()
+
+
+async def _repair_orphaned_logged(session: AsyncSession, rows: list[PlannedMeal]) -> None:
+    """Self-healing for plans stranded before `unlink_logs` existed (or by any delete
+    path that skips it): `logged` with no entry behind it goes back to `planned`. Same
+    idea as `planned_workouts._repair_orphaned_done`."""
+    logged = [r for r in rows if r.status is PlannedMealStatus.logged]
+    if not logged:
+        return
+    links = [r.log_group_id for r in logged if r.log_group_id is not None]
+    alive: set[uuid.UUID] = set()
+    if links:
+        result = await session.execute(
+            select(Log.id, Log.group_id).where(
+                Log.user_id == logged[0].user_id,
+                or_(Log.id.in_(links), Log.group_id.in_(links)),
+            )
+        )
+        for log_id, group_id in result.all():
+            alive.add(log_id)
+            if group_id is not None:
+                alive.add(group_id)
+    changed = False
+    for planned in logged:
+        if planned.log_group_id is None or planned.log_group_id not in alive:
+            planned.status = PlannedMealStatus.planned
+            planned.log_group_id = None
+            changed = True
+    if changed:
+        await session.flush()
+
+
+async def freeze_template_plans(
+    session: AsyncSession, user_sub: str, template_id: uuid.UUID
+) -> None:
+    """Copy a saved meal's resolved macros onto every plan that derives from it,
+    called by `nutrition.delete_meal_template` before the template goes. The FK is SET
+    NULL, so without this a planned day would silently lose its numbers along with the
+    saved meal — the same reason `remove_kitchen_item` freezes leftovers. A plan that
+    already carries its own numbers is left alone."""
+    result = await session.execute(
+        select(PlannedMeal).where(
+            PlannedMeal.user_id == user_sub, PlannedMeal.template_id == template_id
+        )
+    )
+    planned_rows = list(result.scalars())
+    if not planned_rows:
+        return
+    templates = await nutrition_service.list_meal_templates(session, user_sub)
+    match = next((t for t in templates if t.id == template_id), None)
+    base = dict(match.totals) if match else {}
+    existing = await _overrides(session, [p.id for p in planned_rows])
+    for planned in planned_rows:
+        if planned.id in existing:
+            continue
+        frozen = _scale(
+            base, Decimal(str(planned.portion)) if planned.portion is not None else None
+        )
+        if frozen:
+            await _write_values(session, planned.id, frozen)
+    await session.flush()
 
 
 async def _clear_slot(
@@ -615,12 +747,15 @@ __all__ = [
     "PlannedMealOut",
     "add_kitchen_item",
     "clear_planned_meal",
+    "freeze_template_plans",
     "get_meal_plan",
     "list_kitchen",
     "log_planned_meal",
     "plan_meal",
     "remove_kitchen_item",
     "resolve_meal_reference",
+    "resolve_saved_meal_names",
+    "unlink_logs",
     "update_kitchen_item",
     "update_planned_meal",
 ]

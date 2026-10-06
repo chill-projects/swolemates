@@ -7,7 +7,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.deps import CurrentUser, DbSession
+from app.deps import CurrentUser, DbSession, UserTimezone
 from app.schemas.meal_plan import (
     AddKitchenItemRequest,
     KitchenItemOut,
@@ -105,10 +105,12 @@ async def clear_planned_meal(
     operation_id="logPlannedMeal",
 )
 async def log_planned_meal(
-    planned_meal_id: uuid.UUID, user_sub: CurrentUser, session: DbSession
+    planned_meal_id: uuid.UUID, user_sub: CurrentUser, session: DbSession, tz: UserTimezone
 ) -> PlannedMealOut:
     try:
-        planned = await service.log_planned_meal(session, user_sub, planned_meal_id=planned_meal_id)
+        planned = await service.log_planned_meal(
+            session, user_sub, planned_meal_id=planned_meal_id, tz=tz
+        )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:

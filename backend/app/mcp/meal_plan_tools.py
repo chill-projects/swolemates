@@ -18,9 +18,7 @@ from app.auth import mcp_user_sub
 from app.mcp._adapter import catches_service_errors, tool_session
 from app.mcp.server import mcp
 from app.services import meal_plan as service
-from app.services import nutrition as nutrition_service
 from app.services import profile as profile_service
-from app.services.errors import NotFoundError
 from app.services.timezones import today_in
 
 
@@ -120,7 +118,7 @@ async def plan_meal(
         elif meal:
             target = await service.resolve_meal_reference(session, user_sub, meal)
         else:
-            return "Say what to plan: a meal name, a template_id, or a kitchen_item_id."
+            raise ValueError("Say what to plan: a meal name, a template_id, or a kitchen_item_id.")
 
         planned = await service.plan_meal(
             session,
@@ -243,16 +241,9 @@ async def add_kitchen_item(
     """
     user_sub = mcp_user_sub()
     async with tool_session() as session:
-        template_ids = []
-        for meal_name in uses_in_meals or []:
-            templates = await nutrition_service.list_meal_templates(session, user_sub)
-            match = next(
-                (t for t in templates if t.name.lower() == meal_name.strip().lower()), None
-            )
-            if match is None:
-                raise NotFoundError(f"No saved meal called {meal_name!r}")
-            template_ids.append(match.id)
-
+        template_ids = await service.resolve_saved_meal_names(
+            session, user_sub, uses_in_meals or []
+        )
         item = await service.add_kitchen_item(
             session,
             user_sub,

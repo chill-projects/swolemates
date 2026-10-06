@@ -13,12 +13,14 @@ they'd hurt to get wrong:
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import meal_plan as service
 from app.services import nutrition as nutrition_service
+from app.services import profile as profile_service
 from app.services.errors import NotFoundError
 from tests.conftest import OTHER_USER, TEST_USER
 
@@ -476,6 +478,64 @@ async def test_removing_a_leftover_leaves_the_plan_that_used_it_intact(
     assert day.meals[0].values["calories"] == Decimal("390")
 
 
+async def test_deleting_a_saved_meal_leaves_the_plan_that_used_it_intact(
+    session: AsyncSession,
+) -> None:
+    """The FK is SET NULL; the macros are frozen onto the plan first, so the day keeps
+    its numbers — scaled by the plan's portion — instead of going unestimated."""
+    template = await _template(session, TEST_USER, "Chicken and rice", calories="600")
+    await service.plan_meal(
+        session,
+        TEST_USER,
+        scheduled_for=MON,
+        meal_type="lunch",
+        template_id=template.id,
+        portion=Decimal("0.5"),
+    )
+    overridden = await service.plan_meal(
+        session, TEST_USER, scheduled_for=TUE, meal_type="lunch", template_id=template.id
+    )
+    await service.update_planned_meal(
+        session, TEST_USER, planned_meal_id=overridden.id, values={"calories": Decimal("500")}
+    )
+
+    await nutrition_service.delete_meal_template(session, TEST_USER, template.id)
+    await session.flush()
+
+    mon, tue = await service.get_meal_plan(session, TEST_USER, start=MON, end=TUE)
+    assert mon.meals[0].name == "Chicken and rice"
+    assert mon.meals[0].template_id is None
+    assert mon.meals[0].values == {"calories": Decimal("300"), "protein_g": Decimal("20")}
+    assert mon.unestimated == 0
+    # A plan that already carried its own numbers keeps exactly those.
+    assert tue.meals[0].values == {"calories": Decimal("500")}
+
+
+async def test_deleting_a_saved_meal_does_not_touch_another_users_plans(
+    session: AsyncSession,
+) -> None:
+    mine = await _template(session, TEST_USER, "Mine")
+    theirs = await _template(session, OTHER_USER, "Theirs")
+    planned = await service.plan_meal(
+        session, OTHER_USER, scheduled_for=MON, meal_type="lunch", template_id=theirs.id
+    )
+
+    await nutrition_service.delete_meal_template(session, TEST_USER, mine.id)
+
+    day = (await service.get_meal_plan(session, OTHER_USER, start=MON, end=MON))[0]
+    assert day.meals[0].id == planned.id
+    assert day.meals[0].overridden is False
+
+
+async def test_ingredient_meal_names_resolve_to_saved_meals(session: AsyncSession) -> None:
+    template = await _template(session, TEST_USER, "Coleslaw")
+
+    ids = await service.resolve_saved_meal_names(session, TEST_USER, [" coleslaw "])
+    assert ids == [template.id]
+    with pytest.raises(NotFoundError, match="Kimchi"):
+        await service.resolve_saved_meal_names(session, TEST_USER, ["Kimchi"])
+
+
 # ------------------------------------------------------------------------ logging
 
 
@@ -492,6 +552,104 @@ async def test_logging_a_planned_meal_writes_it_into_the_day(
     assert logged.status == "logged"
     day = await nutrition_service.get_nutrition_day(session, TEST_USER, day=MON)
     assert any(entry.name == "Steak" for entry in day.logs)
+
+
+async def test_logging_lands_on_the_planned_local_day_west_of_utc(
+    session: AsyncSession,
+) -> None:
+    """Midnight UTC on Monday is Sunday afternoon in Los Angeles; the entry must land
+    on the Monday that was planned, in the caller's own zone."""
+    la = ZoneInfo("America/Los_Angeles")
+    await profile_service.sync_timezone(session, TEST_USER, "America/Los_Angeles")
+    template = await _template(session, TEST_USER, "Steak", calories="720", protein="55")
+    planned = await service.plan_meal(
+        session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
+    )
+
+    await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+
+    monday = await nutrition_service.get_nutrition_day(session, TEST_USER, day=MON, tz=la)
+    sunday = await nutrition_service.get_nutrition_day(
+        session, TEST_USER, day=date(2026, 9, 27), tz=la
+    )
+    assert any(e.name == "Steak" for e in monday.logs)
+    assert not any(e.name == "Steak" for e in sunday.logs)
+
+
+async def test_deleting_the_logged_entry_puts_the_plan_back_to_planned(
+    session: AsyncSession,
+) -> None:
+    template = await _template(session, TEST_USER, "Steak")
+    planned = await service.plan_meal(
+        session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
+    )
+    logged = await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+
+    await nutrition_service.delete_nutrition_log(session, TEST_USER, logged.log_group_id)
+
+    meal = (await service.get_meal_plan(session, TEST_USER, start=MON, end=MON))[0].meals[0]
+    assert meal.status == "planned"
+    assert meal.log_group_id is None
+    # ...and it can be logged again.
+    again = await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+    assert again.status == "logged"
+
+
+async def test_undoing_the_logged_entry_puts_the_plan_back_to_planned(
+    session: AsyncSession,
+) -> None:
+    template = await _template(session, TEST_USER, "Steak")
+    planned = await service.plan_meal(
+        session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
+    )
+    await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+
+    await nutrition_service.amend_last_log(session, TEST_USER)
+
+    meal = (await service.get_meal_plan(session, TEST_USER, start=MON, end=MON))[0].meals[0]
+    assert meal.status == "planned"
+
+
+async def test_a_plan_stranded_by_an_old_delete_repairs_itself_on_read(
+    session: AsyncSession,
+) -> None:
+    """A plan left `logged` by a delete that skipped the unlink (an older build, or
+    a raw delete) reads back as `planned` rather than claiming a missing entry."""
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.nutrition import Log
+
+    template = await _template(session, TEST_USER, "Steak")
+    planned = await service.plan_meal(
+        session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
+    )
+    logged = await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+    await session.execute(sa_delete(Log).where(Log.id == logged.log_group_id))
+    await session.flush()
+
+    meal = (await service.get_meal_plan(session, TEST_USER, start=MON, end=MON))[0].meals[0]
+    assert meal.status == "planned"
+    assert meal.log_group_id is None
+
+
+async def test_a_logged_plan_cannot_be_moved(session: AsyncSession) -> None:
+    """Its entry is stamped on the original day; moving the plan would leave the two
+    disagreeing about when it was eaten."""
+    template = await _template(session, TEST_USER, "Steak")
+    planned = await service.plan_meal(
+        session, TEST_USER, scheduled_for=MON, meal_type="dinner", template_id=template.id
+    )
+    await service.log_planned_meal(session, TEST_USER, planned_meal_id=planned.id)
+
+    with pytest.raises(ValueError, match="already been logged"):
+        await service.update_planned_meal(
+            session, TEST_USER, planned_meal_id=planned.id, scheduled_for=TUE
+        )
+    # Editing in place is still fine.
+    renamed = await service.update_planned_meal(
+        session, TEST_USER, planned_meal_id=planned.id, name="Ribeye"
+    )
+    assert renamed.status == "logged"
 
 
 async def test_logging_twice_is_refused(session: AsyncSession) -> None:
