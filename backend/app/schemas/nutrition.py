@@ -137,6 +137,7 @@ class NutritionDayOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     date: date
+    today: date
     hero: TrackableProgressOut
     bars: list[TrackableProgressOut]
     streak_key: str | None

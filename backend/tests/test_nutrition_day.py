@@ -8,6 +8,22 @@ from app.services import nutrition as service
 from tests.conftest import OTHER_USER, TEST_USER
 
 
+async def test_nutrition_day_says_which_day_is_today_in_its_own_zone(
+    session: AsyncSession,
+) -> None:
+    """The component compares the shown day against this rather than its browser's
+    date: the two zones can sit on different calendar days (a Tokyo browser, an LA
+    profile), and then today got rendered as a past day."""
+    tz = ZoneInfo("Pacific/Kiritimati")  # UTC+14: almost always a day ahead of UTC
+    today = datetime.now(tz).date()
+
+    shown = await service.get_nutrition_day(session, TEST_USER, tz=tz)
+    past = await service.get_nutrition_day(session, TEST_USER, day=date(2026, 1, 5), tz=tz)
+
+    assert shown.date == shown.today == today
+    assert past.today == today
+
+
 async def test_get_nutrition_day_over_rest(client: AsyncClient) -> None:
     await client.put(
         "/api/nutrition/goals",

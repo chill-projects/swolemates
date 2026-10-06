@@ -17,6 +17,7 @@ from app.schemas.workouts import (
     StartWorkoutRequest,
     StreakOut,
     UpdateWorkoutEntryRequest,
+    UpdateWorkoutRequest,
     WorkoutLiveOut,
     WorkoutOut,
 )
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/workouts", tags=["workouts"])
 
 @router.post("/log", response_model=WorkoutOut, status_code=201, operation_id="logWorkout")
 async def log_workout(
-    body: LogWorkoutRequest, user_sub: CurrentUser, session: DbSession
+    body: LogWorkoutRequest, user_sub: CurrentUser, session: DbSession, tz: UserTimezone
 ) -> WorkoutOut:
     try:
         workout = await service.log_workout(
@@ -37,6 +38,7 @@ async def log_workout(
             title=body.title,
             notes=body.notes,
             logged_at=body.logged_at,
+            tz=tz,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -47,7 +49,7 @@ async def log_workout(
     "/log-activity", response_model=WorkoutOut, status_code=201, operation_id="logActivity"
 )
 async def log_activity(
-    body: LogActivityRequest, user_sub: CurrentUser, session: DbSession
+    body: LogActivityRequest, user_sub: CurrentUser, session: DbSession, tz: UserTimezone
 ) -> WorkoutOut:
     try:
         workout = await service.log_activity(
@@ -58,6 +60,7 @@ async def log_activity(
             title=body.title,
             notes=body.notes,
             logged_at=body.logged_at,
+            tz=tz,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -133,6 +136,35 @@ async def finish_workout(
     # None means finish_workout discarded it (no exercises were ever added) rather
     # than persisting an empty completed row.
     return WorkoutOut.model_validate(workout) if workout else None
+
+
+@router.patch("/{workout_id}", response_model=WorkoutOut, operation_id="updateWorkout")
+async def update_workout(
+    workout_id: uuid.UUID,
+    body: UpdateWorkoutRequest,
+    user_sub: CurrentUser,
+    session: DbSession,
+    tz: UserTimezone,
+) -> WorkoutOut:
+    try:
+        workout = await service.update_workout(
+            session,
+            user_sub,
+            workout_id=workout_id,
+            exercise_updates=(
+                [e.model_dump(exclude_unset=True) for e in body.exercise_updates]
+                if body.exercise_updates is not None
+                else None
+            ),
+            notes=body.notes,
+            logged_at=body.logged_at,
+            tz=tz,
+        )
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return WorkoutOut.model_validate(workout)
 
 
 @router.delete("/{workout_id}", status_code=204, operation_id="deleteWorkout")

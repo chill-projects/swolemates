@@ -67,6 +67,10 @@ class NutritionDay:
     streak_key: str | None
     logs: list[DayLog]
     templates: list[MealTemplateSummary]
+    # Today in the zone `date` was computed in. The component can't work "is this
+    # today?" out itself: its browser zone needn't match the profile zone the
+    # server used, and comparing across the two mislabels today as a past day.
+    today: date
 
 
 async def get_nutrition_day(
@@ -83,7 +87,8 @@ async def get_nutrition_day(
     REST path passes the live `X-Timezone` header instead. See `services/timezones.py`.
     """
     tz = tz or await profile_service.get_user_timezone(session, user_sub)
-    day = day or today_in(tz)
+    today = today_in(tz)
+    day = day or today
     start, end = local_day_bounds_utc(day, tz)
 
     result = await session.execute(
@@ -163,6 +168,7 @@ async def get_nutrition_day(
         streak_key=streak_key,
         logs=list(day_logs.values()),
         templates=await list_meal_templates(session, user_sub),
+        today=today,
     )
 
 

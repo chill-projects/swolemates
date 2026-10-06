@@ -482,3 +482,100 @@ async def test_patch_nutrition_log_moves_the_day_over_rest(client: AsyncClient) 
     assert log_id not in [entry["id"] for entry in today.json()["logs"]]
     moved_to = await client.get("/api/nutrition/day", params={"day": "2026-09-07"})
     assert log_id in [entry["id"] for entry in moved_to.json()["logs"]]
+
+
+async def _log_saved_breakfast(session: AsyncSession, *, logged_at: datetime | None = None):
+    first = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 200}], name="Yogurt"
+    )
+    second = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 100}], name="Granola"
+    )
+    # Stagger the source logs into the past: created_at is Postgres now(), frozen for
+    # the whole test transaction, so they'd otherwise tie with the meal logged below.
+    first.created_at = second.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    await session.flush()
+    template = await service.save_meal_template(
+        session, TEST_USER, name="Usual breakfast", log_ids=[first.id, second.id]
+    )
+    return await service.log_meal_template(
+        session, TEST_USER, template_id=template.id, logged_at=logged_at
+    )
+
+
+async def test_amend_last_log_moves_a_whole_saved_meal(session: AsyncSession) -> None:
+    """ "That was yesterday" right after log_meal_template means the meal, not just its
+    last-inserted item — moving one item would split one sitting across two days."""
+    logs = await _log_saved_breakfast(session)
+    group_id = logs[0].group_id
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+
+    updated, log_id, name = await service.amend_last_log(session, TEST_USER, logged_at=yesterday)
+
+    assert updated is not None
+    assert log_id == group_id
+    assert name == "Usual breakfast"
+    assert {entry.logged_at for entry in logs} == {yesterday}
+    values = await service.get_log_values(session, TEST_USER, log_id)
+    assert {v.trackable_key: v.value for v in values} == {"calories": Decimal(300)}
+
+
+async def test_amend_last_log_undoes_a_whole_saved_meal(session: AsyncSession) -> None:
+    logs = await _log_saved_breakfast(session)
+
+    updated, log_id, _name = await service.amend_last_log(session, TEST_USER)
+
+    assert updated is None
+    assert log_id == logs[0].group_id
+    day = await service.get_nutrition_day(session, TEST_USER)
+    assert [log.name for log in day.logs] == ["Yogurt", "Granola"]
+
+
+async def test_backdated_nutrition_writes_reject_a_future_day(session: AsyncSession) -> None:
+    """A misread "Friday" resolving to next Friday must not put food on a day that
+    hasn't happened — whether logged there or moved there."""
+    future = datetime.now(UTC) + timedelta(days=3)
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 500}], name="Burrito"
+    )
+
+    with pytest.raises(ValueError, match="in the future"):
+        await service.log_nutrition(
+            session,
+            TEST_USER,
+            entries=[{"trackable_key": "calories", "value": 500}],
+            logged_at=future,
+        )
+    with pytest.raises(ValueError, match="in the future"):
+        await service.update_nutrition_log(session, TEST_USER, log_id=log.id, logged_at=future)
+    with pytest.raises(ValueError, match="in the future"):
+        await service.amend_last_log(session, TEST_USER, logged_at=future)
+    with pytest.raises(ValueError, match="in the future"):
+        await _log_saved_breakfast(session, logged_at=future)
+
+
+async def test_later_today_is_not_the_future(session: AsyncSession) -> None:
+    """Day-granular: tonight's dinner logged this afternoon is still today."""
+    tz = ZoneInfo("UTC")
+    end_of_today = datetime.combine(datetime.now(tz).date(), datetime.max.time(), tzinfo=tz)
+
+    log = await service.log_nutrition(
+        session,
+        TEST_USER,
+        entries=[{"trackable_key": "calories", "value": 500}],
+        logged_at=end_of_today,
+    )
+
+    assert log.logged_at == end_of_today
+
+
+async def test_future_logged_at_is_a_400_over_rest(client: AsyncClient) -> None:
+    future = (datetime.now(UTC) + timedelta(days=3)).isoformat()
+
+    resp = await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "calories", "value": "250"}], "logged_at": future},
+    )
+
+    assert resp.status_code == 400
+    assert "in the future" in resp.json()["detail"]

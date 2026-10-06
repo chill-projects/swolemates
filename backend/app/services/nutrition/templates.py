@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from app.models.nutrition import (
     MealTemplateItem,
     MealTemplateItemValue,
 )
+from app.services import profile as profile_service
 from app.services.errors import NotFoundError
 
 
@@ -261,11 +263,13 @@ async def log_meal_template(
     multiplier: Decimal | float | str = 1,
     meal_type: str | None = None,
     logged_at: datetime | None = None,
+    tz: ZoneInfo | None = None,
 ) -> list[Log]:
     """Writes one new Log per template item, all sharing a fresh group_id + the
     template's name snapshotted as group_name — the day view collapses them back into
     one card. Portion scaling (`multiplier`) affects only this log instance; the
     template's own item values are never touched (#4, resolved)."""
+    await profile_service.check_backdate(session, user_sub, logged_at, tz)
     result = await session.execute(
         select(MealTemplate).where(MealTemplate.id == template_id, MealTemplate.user_id == user_sub)
     )

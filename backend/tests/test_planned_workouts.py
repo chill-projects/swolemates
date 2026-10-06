@@ -3,9 +3,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
+from app.models.workouts import (
+    PlannedWorkout,
+    PlannedWorkoutStatus,
+    WeeklyPatternDay,
+    WorkoutTemplate,
+)
 from app.services import planned_workouts as service
 from app.services import profile as profile_service
 from app.services import workout_templates as templates
@@ -597,11 +603,28 @@ async def test_start_workout_with_planned_id_over_rest(client: AsyncClient) -> N
     assert resp.json()["exercises"][0]["exercise_name"] == "Squat"
 
 
-async def _pattern_every_day(session: AsyncSession, user: str) -> None:
+async def _pattern_every_day(
+    session: AsyncSession, user: str, *, created_days_ago: int = 60
+) -> None:
     template = await _make_template(session, user, "Legs")
+    # Backdated: a backfill only claims a planned day the pattern's template existed
+    # for (see `mark_done_for_date`), and a real user's split predates this week.
+    row = await session.get(WorkoutTemplate, template.id)
+    assert row is not None
+    row.created_at = datetime.now(TZ) - timedelta(days=created_days_ago)
+    await session.flush()
     await service.set_weekly_pattern(
         session, user, days=[{"day_of_week": dow, "template_id": template.id} for dow in range(7)]
     )
+
+
+async def _rows_on(session: AsyncSession, day: date) -> list[PlannedWorkout]:
+    result = await session.execute(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == TEST_USER, PlannedWorkout.scheduled_for == day
+        )
+    )
+    return list(result.scalars())
 
 
 async def test_backfilling_a_workout_marks_that_days_planned_session_done(
@@ -670,3 +693,107 @@ async def test_moving_a_workout_moves_which_day_counts_as_done(session: AsyncSes
     by_date = {p.scheduled_for: p.status for p in days}
     assert by_date[actually] == PlannedWorkoutStatus.done
     assert by_date[logged_on] == PlannedWorkoutStatus.planned
+
+
+async def test_moving_an_in_progress_session_carries_the_plan_link_without_finishing_it(
+    session: AsyncSession,
+) -> None:
+    """A plan-started session that's still running isn't done anywhere yet. Moving it
+    must not mark the new day done early — but finishing it later should mark the day
+    it now belongs to, not the one it was started on."""
+    await _pattern_every_day(session, TEST_USER)
+    today = today_in(TZ)
+    yesterday = today - timedelta(days=1)
+    planned = await service.get_planned_workouts(session, TEST_USER, start=today, end=today)
+    started = await workouts.start_workout(session, TEST_USER, planned_id=planned[0].id)
+    await workouts.log_set(session, TEST_USER, exercise="Squat", reps=5, weight=225)
+
+    await workouts.update_workout(
+        session,
+        TEST_USER,
+        workout_id=started.id,
+        logged_at=datetime.combine(yesterday, time(10, 0), tzinfo=TZ),
+    )
+
+    [moved_to] = await _rows_on(session, yesterday)
+    [left] = await _rows_on(session, today)
+    assert (moved_to.status, moved_to.workout_id) == (PlannedWorkoutStatus.planned, started.id)
+    assert (left.status, left.workout_id) == (PlannedWorkoutStatus.planned, None)
+
+    await workouts.finish_workout(session, TEST_USER, workout_id=started.id)
+
+    assert moved_to.status == PlannedWorkoutStatus.done
+    assert left.status == PlannedWorkoutStatus.planned
+
+
+async def test_backfilling_before_the_pattern_existed_invents_no_planned_day(
+    session: AsyncSession,
+) -> None:
+    """The weekly pattern can't have scheduled a template that didn't exist yet, so a
+    backfill from before then mustn't materialize a planned row the plan never had."""
+    await _pattern_every_day(session, TEST_USER, created_days_ago=5)
+    long_ago = today_in(TZ) - timedelta(days=30)
+
+    await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+        logged_at=datetime.combine(long_ago, time(12, 0), tzinfo=TZ),
+    )
+
+    assert await _rows_on(session, long_ago) == []
+
+
+async def test_workouts_cant_be_logged_or_moved_to_a_future_day(session: AsyncSession) -> None:
+    """A misread "Friday" resolving to next Friday would otherwise mark that day's
+    planned session done before it's been trained."""
+    await _pattern_every_day(session, TEST_USER)
+    future = datetime.combine(today_in(TZ) + timedelta(days=3), time(12, 0), tzinfo=TZ)
+
+    with pytest.raises(ValueError, match="in the future"):
+        await workouts.log_workout(
+            session,
+            TEST_USER,
+            exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+            logged_at=future,
+        )
+    with pytest.raises(ValueError, match="in the future"):
+        await workouts.log_activity(
+            session, TEST_USER, activity_type="yoga", duration_minutes=30, logged_at=future
+        )
+    workout = await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+    )
+    with pytest.raises(ValueError, match="in the future"):
+        await workouts.update_workout(session, TEST_USER, workout_id=workout.id, logged_at=future)
+    assert all(p.workout_id is None for p in await _rows_on(session, future.date()))
+
+
+async def test_patch_workout_moves_it_over_rest(client: AsyncClient) -> None:
+    """Moving a session used to be MCP-only — the service took `logged_at`, but no REST
+    route passed it through."""
+    logged = await client.post(
+        "/api/workouts/log",
+        json={"exercises": [{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}]},
+    )
+    workout_id = logged.json()["id"]
+
+    resp = await client.patch(
+        f"/api/workouts/{workout_id}",
+        json={
+            "logged_at": "2026-09-07T18:00:00Z",
+            "exercise_updates": [{"exercise": "Squat", "sets": [{"set_number": 1, "reps": 6}]}],
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["started_at"].startswith("2026-09-07T18:00")
+    assert body["exercises"][0]["sets"][0]["reps"] == 6
+
+    future = await client.patch(
+        f"/api/workouts/{workout_id}", json={"logged_at": "2999-01-01T12:00:00Z"}
+    )
+    assert future.status_code == 400
