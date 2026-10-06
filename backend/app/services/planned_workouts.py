@@ -296,7 +296,15 @@ async def get_planned_workouts(
     # transaction-scoped, so this is still serialized against a concurrent read.
     await _repair_orphaned_done(session, user_sub, start, end)
     await session.flush()
+    return await list_planned_workouts(session, user_sub, start=start, end=end)
 
+
+async def list_planned_workouts(
+    session: AsyncSession, user_sub: str, *, start: date, end: date
+) -> list[PlannedWorkoutOut]:
+    """The rows already materialized in range, and nothing else — no generation, no
+    resync, no repair. For callers that must not write, e.g. a read over past dates
+    where generating would backfill sessions nobody ever scheduled."""
     result = await session.execute(
         select(PlannedWorkout)
         .where(PlannedWorkout.user_id == user_sub, PlannedWorkout.scheduled_for.between(start, end))

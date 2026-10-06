@@ -13,6 +13,7 @@ clock is one that passes on Tuesday and fails on Sunday.
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,14 @@ from tests.conftest import TEST_USER
 TZ = ZoneInfo("UTC")
 # A Sunday — the day the check-in is designed around.
 SUNDAY = date(2026, 9, 13)
+
+
+@pytest.fixture(autouse=True)
+def _today_is_sunday(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin "today" as well as `as_of`: the ahead window only generates from today
+    onward, so a suite whose `as_of` drifts into the past relative to the real clock
+    would otherwise stop seeing the week ahead at all."""
+    monkeypatch.setattr(service, "today_in", lambda tz: SUNDAY)
 
 
 async def _template(session: AsyncSession, name: str) -> templates.TemplateOut:
@@ -98,6 +107,38 @@ async def test_sessions_planned_comes_from_the_pattern_and_writes_nothing(
         )
     )
     assert list(rows.scalars()) == [], "the review generated planned rows in the past"
+
+
+async def test_a_past_as_of_never_generates_planned_rows_before_today(
+    session: AsyncSession,
+) -> None:
+    """`as_of` is caller-supplied, so the "ahead" window can lie partly or wholly in the
+    past. The generating read is only for today onward — anything earlier would
+    backfill sessions nobody ever scheduled. Today is pinned to SUNDAY (see fixture)."""
+    legs = await _template(session, "Legs")
+    await planned_workouts.set_weekly_pattern(
+        session,
+        TEST_USER,
+        days=[{"day_of_week": dow, "template_id": legs.id} for dow in range(7)],
+    )
+
+    # Wholly in the past: ahead window is the week before last.
+    await service.get_weekly_checkin(session, TEST_USER, as_of=SUNDAY - timedelta(days=14), tz=TZ)
+    # Straddling today: Thursday's ahead window is Fri..Thu, today being Sunday.
+    straddling = await service.get_weekly_checkin(
+        session, TEST_USER, as_of=SUNDAY - timedelta(days=3), tz=TZ
+    )
+
+    rows = await session.execute(
+        select(PlannedWorkout.scheduled_for).where(
+            PlannedWorkout.user_id == TEST_USER, PlannedWorkout.scheduled_for < SUNDAY
+        )
+    )
+    assert list(rows.scalars()) == [], "the check-in generated planned rows in the past"
+    # Today onward is still generated and shown.
+    assert [s.scheduled_for for s in straddling.upcoming] == [
+        SUNDAY + timedelta(days=i) for i in range(5)
+    ]
 
 
 async def test_carried_notes_surface_the_most_recent_note_per_exercise(
@@ -204,8 +245,50 @@ async def test_summary_stands_alone(session: AsyncSession) -> None:
 
     checkin = await service.get_weekly_checkin(session, TEST_USER, as_of=SUNDAY, tz=TZ)
 
-    assert "1 of 1 sessions" in checkin.summary
+    assert "1 session, 1 planned" in checkin.summary
     assert "Legs (Mon)" in checkin.summary
+
+
+async def test_completed_is_not_presented_as_a_share_of_planned(session: AsyncSession) -> None:
+    """Completed counts every workout (bonus sessions too, same as the streak), so it can
+    exceed planned. "3 of 1" would be nonsense; the two are reported side by side."""
+    legs = await _template(session, "Legs")
+    await planned_workouts.set_weekly_pattern(
+        session, TEST_USER, days=[{"day_of_week": 0, "template_id": legs.id}]
+    )
+    for days_ago in (1, 2, 3):
+        await _log_on(session, SUNDAY - timedelta(days=days_ago))
+
+    checkin = await service.get_weekly_checkin(session, TEST_USER, as_of=SUNDAY, tz=TZ)
+
+    assert checkin.review.sessions_completed == 3
+    assert checkin.review.sessions_planned == 1
+    assert "3 sessions, 1 planned" in checkin.summary
+    assert " of " not in checkin.summary.split(".")[0]
+
+
+async def test_sessions_planned_excludes_days_on_an_archived_template(
+    session: AsyncSession,
+) -> None:
+    """Generation treats an archived template's day as rest, so it was never asked of
+    anyone — counting it would report a shortfall against a session that didn't exist."""
+    legs = await _template(session, "Legs")
+    push = await _template(session, "Push")
+    await planned_workouts.set_weekly_pattern(
+        session,
+        TEST_USER,
+        days=[
+            {"day_of_week": 0, "template_id": legs.id},
+            {"day_of_week": 2, "template_id": push.id},
+            {"day_of_week": 4, "template_id": legs.id},
+        ],
+    )
+    await templates.archive_workout_template(session, TEST_USER, push.id)
+
+    checkin = await service.get_weekly_checkin(session, TEST_USER, as_of=SUNDAY, tz=TZ)
+
+    assert checkin.review.sessions_planned == 2
+    assert "archived_template" in [d.kind for d in checkin.decisions]
 
 
 async def test_windows_are_bucketed_in_the_callers_zone(session: AsyncSession) -> None:
