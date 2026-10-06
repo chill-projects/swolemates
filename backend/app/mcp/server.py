@@ -1,8 +1,11 @@
 """The MCP front door.
 
-Stateless Streamable HTTP per the 2026-07-28 spec. AuthKitProvider handles discovery,
-JWT validation, and audience binding; without it configured (local dev) the server runs
-unauthenticated and app.auth.mcp_user_sub() falls back to DEV_USER_SUB.
+Stateless Streamable HTTP by configuration, not by protocol: this server negotiates
+2025-11-25 (see main.py), where sessions are optional and we decline them.
+
+AuthKitProvider handles discovery, JWT validation, and audience binding; without it
+configured (local dev) the server runs unauthenticated and app.auth.mcp_user_sub()
+falls back to DEV_USER_SUB.
 """
 
 import logging

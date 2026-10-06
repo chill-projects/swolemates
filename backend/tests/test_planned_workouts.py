@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
 from app.services import planned_workouts as service
+from app.services import profile as profile_service
 from app.services import workout_templates as templates
 from app.services import workouts
 from app.services.timezones import today_in
@@ -286,7 +287,13 @@ async def test_get_planned_workouts_resyncs_a_row_that_went_stale_earlier(
     again."""
     legs = await _make_template(session, TEST_USER, "Legs")
     pool = await _make_template(session, TEST_USER, "Pool")
-    today = date.today()
+    # Not `date.today()`. The resync only reaches rows dated today-or-later, and the
+    # "today" it compares against is `today_in(stored profile zone)` — UTC here, since
+    # TEST_USER has no zone set. `date.today()` is the *machine's* date, so anywhere
+    # west of UTC this test spends its evening asking the service to resync a row the
+    # service correctly considers yesterday's, and fails for the rest of the day. Ask
+    # for the same "today" the code under test uses; see services/timezones.py.
+    today = today_in(await profile_service.get_user_timezone(session, TEST_USER))
     # Materialize today under the wrong template, bypassing set_weekly_pattern
     # entirely, then point the pattern at the right one.
     planned = await service.plan_workout(
