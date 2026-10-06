@@ -127,6 +127,28 @@ export function draftIssues(drafts: Drafts): DraftIssue[] {
   return issues;
 }
 
+/**
+ * Re-base pending edits on a fresh read of the server, after a save (whole or
+ * partial). A field survives only while it still differs from what the server
+ * holds now — so whatever landed drops out, and whatever didn't (a rejected
+ * edit, the rest of a batch cut short, or an edit typed while the save was in
+ * flight) stays staged and outlined. Exercises the server no longer has take
+ * their drafts with them.
+ */
+export function rebaseDrafts(drafts: Drafts, server: ReadonlyMap<string, SavedTargets>): Drafts {
+  const next = new Map<string, Draft>();
+  for (const [id, entry] of drafts) {
+    const saved = server.get(id);
+    if (!saved) continue;
+    const kept: Draft = {};
+    for (const [field, value] of Object.entries(entry) as [DraftField, number | string][]) {
+      if (!matchesSaved(field, value, saved)) Object.assign(kept, { [field]: value });
+    }
+    if (Object.keys(kept).length > 0) next.set(id, kept);
+  }
+  return next.size === 0 ? NO_DRAFTS : next;
+}
+
 /** One `update_exercise` call's arguments per edited exercise. Batching by
  *  exercise rather than by field is what turns "I changed five things" into at
  *  most a handful of round trips instead of five. */

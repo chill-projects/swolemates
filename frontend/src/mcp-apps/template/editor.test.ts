@@ -249,7 +249,7 @@ describe("the template editor", () => {
     ]);
   });
 
-  it("re-reads from the server when part of a batch fails", async () => {
+  it("re-reads from the server when part of a batch fails, keeping the edit", async () => {
     typeInto(fieldFor("Back Squat", "reps"), "8");
     callServerTool.mockRejectedValueOnce(new Error("boom"));
     callServerTool.mockResolvedValue(toolResult(payload()));
@@ -257,7 +257,117 @@ describe("the template editor", () => {
     saveBtn().click();
     await vi.waitFor(() => expect($<HTMLElement>("#status").className).toBe("error"));
     expect(callServerTool.mock.calls[1]![0].name).toBe("get_workout_template");
-    expect(saveBar().hidden).toBe(true);
-    expect(fieldFor("Back Squat", "reps").value).toBe("5");
+    expect(saveBar().hidden).toBe(false);
+    expect(fieldFor("Back Squat", "reps").value).toBe("8");
+    expect(fieldFor("Back Squat", "reps").classList.contains("dirty")).toBe(true);
+  });
+
+  // catches_service_errors answers a rejected edit with plain text, not a throw.
+  it("treats a text-only reply as a rejected edit", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    callServerTool.mockResolvedValueOnce({ content: [{ type: "text", text: "Reps must be positive." }] });
+    callServerTool.mockResolvedValue(toolResult(payload()));
+
+    saveBtn().click();
+    await vi.waitFor(() => expect($<HTMLElement>("#status").className).toBe("error"));
+    expect($<HTMLElement>("#status").textContent).toMatch(/Reps must be positive\./);
+    expect(fieldFor("Back Squat", "reps").value).toBe("8");
+    expect(dirtyCount().textContent).toBe("1 unsaved change");
+  });
+
+  it("treats an isError result as a failure", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    callServerTool.mockResolvedValueOnce({
+      isError: true,
+      content: [{ type: "text", text: "Tool call failed." }],
+    });
+    callServerTool.mockResolvedValue(toolResult(payload()));
+
+    saveBtn().click();
+    await vi.waitFor(() => expect($<HTMLElement>("#status").textContent).toMatch(/Tool call failed/));
+    expect(saveBar().hidden).toBe(false);
+  });
+
+  it("stops at the first rejection and keeps only what didn't land", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    typeInto(fieldFor("Barbell Row", "sets"), "5");
+    const landed = payload([{ ...SQUAT, reps: 8 }, ROW]);
+    callServerTool
+      .mockResolvedValueOnce(toolResult(landed))
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "Nope." }] })
+      .mockResolvedValue(toolResult(landed));
+
+    saveBtn().click();
+    await vi.waitFor(() => expect($<HTMLElement>("#status").className).toBe("error"));
+    expect(callServerTool.mock.calls.map(([c]) => c.name)).toEqual([
+      "update_workout_template",
+      "update_workout_template",
+      "get_workout_template",
+    ]);
+    expect(fieldFor("Back Squat", "reps").classList.contains("dirty")).toBe(false);
+    expect(fieldFor("Barbell Row", "sets").value).toBe("5");
+    expect(fieldFor("Barbell Row", "sets").classList.contains("dirty")).toBe(true);
+    expect(dirtyCount().textContent).toBe("1 unsaved change");
+  });
+
+  it("keeps an edit typed while the save is in flight", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    let land!: (value: unknown) => void;
+    callServerTool.mockReturnValueOnce(new Promise((resolve) => (land = resolve)));
+
+    saveBtn().click();
+    await vi.waitFor(() => expect(callServerTool).toHaveBeenCalledTimes(1));
+    typeInto(fieldFor("Barbell Row", "sets"), "5");
+    land(toolResult(payload([{ ...SQUAT, reps: 8 }, ROW])));
+
+    await vi.waitFor(() => expect(fieldFor("Back Squat", "reps").classList.contains("dirty")).toBe(false));
+    expect(fieldFor("Barbell Row", "sets").value).toBe("5");
+    expect(dirtyCount().textContent).toBe("1 unsaved change");
+  });
+
+  it("queues a second save behind one in flight instead of overlapping it", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    let land!: (value: unknown) => void;
+    callServerTool.mockReturnValueOnce(new Promise((resolve) => (land = resolve)));
+    callServerTool.mockResolvedValue(toolResult(payload([{ ...SQUAT, reps: 8 }, { ...ROW, sets: 5 }])));
+
+    saveBtn().click();
+    await vi.waitFor(() => expect(callServerTool).toHaveBeenCalledTimes(1));
+    typeInto(fieldFor("Barbell Row", "sets"), "5");
+    fieldFor("Barbell Row", "sets").focus();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await Promise.resolve();
+    expect(callServerTool).toHaveBeenCalledTimes(1);
+
+    land(toolResult(payload([{ ...SQUAT, reps: 8 }, ROW])));
+    await vi.waitFor(() => expect(callServerTool).toHaveBeenCalledTimes(2));
+    expect(callServerTool.mock.calls[1]![0].arguments).toEqual({
+      template_id: "tpl-1",
+      action: "update_exercise",
+      template_exercise_id: "ex-row",
+      sets: 5,
+    });
+    await vi.waitFor(() => expect(saveBar().hidden).toBe(true));
+  });
+
+  it("says why a structural edit is blocked by an invalid draft", async () => {
+    typeInto(fieldFor("Back Squat", "sets"), "0");
+    $<HTMLButtonElement>('button[title="Remove exercise"]').click();
+
+    await vi.waitFor(() => expect($<HTMLElement>("#status").className).toBe("error"));
+    expect($<HTMLElement>("#status").textContent).toMatch(/Can't remove an exercise yet: sets needs to be at least 1/);
+    expect(callServerTool).not.toHaveBeenCalled();
+  });
+
+  it("doesn't run a structural edit when the flush fails", async () => {
+    typeInto(fieldFor("Back Squat", "reps"), "8");
+    callServerTool.mockResolvedValueOnce({ content: [{ type: "text", text: "Nope." }] });
+    callServerTool.mockResolvedValue(toolResult(payload()));
+
+    $<HTMLButtonElement>('button[title="Remove exercise"]').click();
+    await vi.waitFor(() => expect($<HTMLElement>("#status").className).toBe("error"));
+    expect(callServerTool.mock.calls.map(([c]) => c.arguments.action ?? c.name)).not.toContain(
+      "remove_exercise",
+    );
   });
 });
