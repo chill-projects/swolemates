@@ -3,12 +3,13 @@
  *  - Claude, via the `ui://swolemates/nutrition-day.html` MCP resource
  *  - the SPA, via AppRenderer (an iframe + AppBridge backed by the REST API)
  *
- * Any tool call that changes today's totals (`log_nutrition`, `get_nutrition_day`,
+ * Any tool call that changes a day's totals (`log_nutrition`, `get_nutrition_day`,
  * `save_meal_template`, `log_meal_template`) returns this same payload shape, so the
  * component re-renders fully from whichever result the host pushes — no separate
- * fetch, same pattern as tmpx. `search_food_facts` is the one exception: it renders
- * into its own results list, not the day payload, and only feeds `log_nutrition` when
- * a result is picked.
+ * fetch, same pattern as tmpx. That payload names its own day, which is what lets the
+ * day-nav arrows work the same way: they're just another `get_nutrition_day` call.
+ * `search_food_facts` is the one exception: it renders into its own results list, not
+ * the day payload, and only feeds `log_nutrition` when a result is picked.
  *
  * No delete-template button here: `delete_meal_template` is a REST-only action (the
  * resolved tool spec deliberately keeps chat delete-free), and this bundle runs
@@ -17,6 +18,7 @@
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
+import { dayLabel, shiftIso, todayIso, withViewedDay } from "./day";
 import { MEAL_TYPES, populateMealTypeSelect, renderMealTypeEdit } from "./mealType";
 
 interface TrackableProgress {
@@ -115,6 +117,12 @@ const saveBarEl = $<HTMLDivElement>("save-template-bar");
 const templateNameInput = $<HTMLInputElement>("template-name");
 const saveTemplateMealTypeEl = $<HTMLSelectElement>("save-template-meal-type");
 const saveTemplateBtn = $<HTMLButtonElement>("save-template-btn");
+const dayPrevBtn = $<HTMLButtonElement>("day-prev");
+const dayNextBtn = $<HTMLButtonElement>("day-next");
+const dayLabelEl = $<HTMLSpanElement>("day-label");
+const dayBackBtn = $<HTMLButtonElement>("day-back");
+const logsHeadingEl = $<HTMLHeadingElement>("logs-heading");
+const remainingHeadingEl = $<HTMLHeadingElement>("remaining-heading");
 const foodSearchInput = $<HTMLInputElement>("food-search-input");
 const foodSearchBtn = $<HTMLButtonElement>("food-search-btn");
 const foodSearchResultsEl = $<HTMLUListElement>("food-search-results");
@@ -137,6 +145,14 @@ populateMealTypeSelect(saveTemplateMealTypeEl, { includeUnset: true });
 let currentPayload: NutritionDayPayload | null = null;
 
 const app = new App({ name: "Swolemates Nutrition", version: "1.0.0" });
+
+/** The day being shown, but only when it isn't today — every tool defaults to today
+ *  on its own, so passing nothing keeps the default path byte-for-byte unchanged and
+ *  lets a component left open overnight roll forward instead of pinning to yesterday. */
+function viewedDate(): string | null {
+  const shown = currentPayload?.date;
+  return shown && shown !== todayIso() ? shown : null;
+}
 
 function extractPayload(result: {
   structuredContent?: unknown;
@@ -679,8 +695,21 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
   return li;
 }
 
+function renderDayNav(iso: string): void {
+  const isToday = iso === todayIso();
+  const label = dayLabel(iso);
+  dayLabelEl.textContent = label;
+  dayNextBtn.disabled = isToday;
+  dayBackBtn.hidden = isToday;
+  // The two headings name the day too — "Today's log" over Monday's food is the kind
+  // of small lie that makes someone distrust the numbers under it.
+  logsHeadingEl.textContent = isToday ? "Today's log" : `${label}'s log`;
+  remainingHeadingEl.textContent = isToday ? "Left today" : `Left on ${label.toLowerCase()}`;
+}
+
 function render(payload: NutritionDayPayload): void {
   currentPayload = payload;
+  renderDayNav(payload.date);
   statusEl.textContent = payload.summary;
 
   ringValueEl.textContent = Math.round(payload.hero.consumed).toLocaleString();
@@ -725,6 +754,7 @@ function render(payload: NutritionDayPayload): void {
 }
 
 async function callAndRender(name: string, args: Record<string, unknown>): Promise<boolean> {
+  args = withViewedDay(name, args, viewedDate());
   try {
     const result = await app.callServerTool({ name, arguments: args });
     const payload = extractPayload(result);
@@ -878,10 +908,22 @@ mealFilterEl.oninput = () => {
   if (currentPayload) render(currentPayload);
 };
 
+// `date` is passed explicitly here, so callAndRender's injection stands aside — this
+// is the one place that means to *change* the day rather than stay on it.
+function goToDay(iso: string): void {
+  void callAndRender("get_nutrition_day", { date: iso });
+}
+
+dayPrevBtn.onclick = () => goToDay(shiftIso(currentPayload?.date ?? todayIso(), -1));
+dayNextBtn.onclick = () => goToDay(shiftIso(currentPayload?.date ?? todayIso(), 1));
+dayBackBtn.onclick = () => goToDay(todayIso());
+
 // Hosts with a push channel (the SPA) send fresh results proactively; hosts without
 // one (a chat widget) at least get freshness whenever the user returns to the tab.
 // No interval polling: in chat hosts every server call may prompt for approval.
 document.addEventListener("visibilitychange", () => {
+  // No argument: callAndRender re-asks for whichever day is on screen, so coming back
+  // to the tab refreshes a past day rather than yanking the view to today.
   if (document.visibilityState === "visible") void callAndRender("get_nutrition_day", {});
 });
 

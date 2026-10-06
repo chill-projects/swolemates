@@ -348,6 +348,18 @@
       .btn-teal { background: var(--teal); border-color: var(--teal); color: var(--card-bg); }
       .btn-teal:hover { background: var(--teal); border-color: var(--teal); color: var(--card-bg); opacity: 0.88; }
 
+      /* Day navigation. Lives in the bundle rather than in either host so Claude and
+         the SPA get one implementation — the SPA's page hero reads the same payload,
+         so its rings and heading follow whatever day this lands on. */
+      .day-nav { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+      .day-nav-arrow { padding: 0.3rem 0.6rem; line-height: 1; font-size: 0.95rem; }
+      .day-nav-arrow:disabled { opacity: 0.35; cursor: default; border-color: var(--line); color: var(--ink-soft); }
+      .day-label {
+        font-family: var(--font-display); font-weight: 600; font-size: 0.95rem;
+        flex: 1; min-width: 0;
+      }
+      .day-back { flex-shrink: 0; }
+
       .food-search-row { display: flex; gap: 0.5rem; }
       .food-search-row input {
         flex: 1; min-width: 0; padding: 0.5rem 0.6rem; border: 1px solid var(--line);
@@ -395,6 +407,15 @@
       <div id="bars" class="bars"></div>
     </div>
 
+    <!-- Forward is disabled on today: there's no logging into the future, and an
+         empty tomorrow reads as a bug rather than an empty day. -->
+    <div class="day-nav">
+      <button type="button" id="day-prev" class="day-nav-arrow" aria-label="Previous day">&lsaquo;</button>
+      <button type="button" id="day-next" class="day-nav-arrow" aria-label="Next day">&rsaquo;</button>
+      <span id="day-label" class="day-label">Today</span>
+      <button type="button" id="day-back" class="day-back btn-outline" hidden>Back to today</button>
+    </div>
+
     <p id="status" class="muted">Connecting…</p>
 
     <!-- Two columns once there's room, one below — the iframe's own width is what
@@ -405,7 +426,7 @@
       <div class="column">
         <section>
           <div class="section-head">
-            <h2>Today's log</h2>
+            <h2 id="logs-heading">Today's log</h2>
             <span class="section-meta">Select entries to save as a meal</span>
           </div>
           <ul id="logs"></ul>
@@ -440,7 +461,7 @@
       <div class="column">
         <section class="remaining-card">
           <div class="section-head">
-            <h2>Left today</h2>
+            <h2 id="remaining-heading">Left today</h2>
           </div>
           <div id="remaining-grid" class="remaining-grid"></div>
           <div id="remaining-tip" class="remaining-tip"></div>

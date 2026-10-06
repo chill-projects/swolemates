@@ -32,6 +32,7 @@ class UpdateNutritionLogRequest(BaseModel):
     name: str | None = None
     meal_type: str | None = None
     values: dict[str, Decimal] | None = None
+    logged_at: datetime | None = None
 
 
 class NutritionLogOut(BaseModel):
