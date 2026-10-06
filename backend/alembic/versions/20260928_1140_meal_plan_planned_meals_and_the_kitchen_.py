@@ -1,7 +1,7 @@
 """meal plan: planned meals and the kitchen tray
 
 Revision ID: 991c39c7eaf7
-Revises: a1c4e7f09b22
+Revises: 937641e786e2
 Create Date: 2026-09-28 11:40:53.145833
 
 Blue-green note: additive only. Four new tables, nothing touched on the existing ones,
@@ -30,7 +30,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "991c39c7eaf7"
-down_revision: str | None = "a1c4e7f09b22"
+down_revision: str | None = "937641e786e2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

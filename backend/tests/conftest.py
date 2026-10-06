@@ -70,6 +70,12 @@ def migrated_database() -> str:
 
     os.environ["DATABASE_URL"] = test_url
     os.environ["ENVIRONMENT"] = "test"
+    # Neutralize any real VAPID keys a developer has in backend/.env.local. Without this
+    # the suite behaves differently on a machine that has them — push-disabled tests fail
+    # locally and pass in CI, which is the worst direction for that to break. Tests that
+    # want push on set them explicitly (see tests/test_reminders.py).
+    os.environ["VAPID_PUBLIC_KEY"] = ""
+    os.environ["VAPID_PRIVATE_KEY"] = ""
     get_settings.cache_clear()
 
     command.upgrade(Config(str(BACKEND_ROOT / "alembic.ini")), "head")

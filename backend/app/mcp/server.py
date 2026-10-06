@@ -1,8 +1,11 @@
 """The MCP front door.
 
-Stateless Streamable HTTP per the 2026-07-28 spec. AuthKitProvider handles discovery,
-JWT validation, and audience binding; without it configured (local dev) the server runs
-unauthenticated and app.auth.mcp_user_sub() falls back to DEV_USER_SUB.
+Stateless Streamable HTTP by configuration, not by protocol: this server negotiates
+2025-11-25 (see main.py), where sessions are optional and we decline them.
+
+AuthKitProvider handles discovery, JWT validation, and audience binding; without it
+configured (local dev) the server runs unauthenticated and app.auth.mcp_user_sub()
+falls back to DEV_USER_SUB.
 """
 
 import logging
@@ -55,7 +58,7 @@ async def whoami() -> str:
     return f"Authenticated as {mcp_user_sub()}."
 
 
-# Registers tools/prompts on the server above. Imported for the side effect.
+# Registers tools/prompts/skills on the server above. Imported for the side effect.
 from app.mcp import (  # noqa: E402,F401
     coach_prompt,
     food_facts_tools,
@@ -64,6 +67,7 @@ from app.mcp import (  # noqa: E402,F401
     planned_workouts_tools,
     profile_tools,
     progress_tools,
+    skill,
     tdee_tools,
     templates_tools,
     workouts_tools,

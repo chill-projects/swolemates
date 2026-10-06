@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import PlannedWorkout, PlannedWorkoutStatus, WeeklyPatternDay
 from app.services import planned_workouts as service
+from app.services import profile as profile_service
 from app.services import workout_templates as templates
 from app.services import workouts
 from app.services.timezones import today_in
@@ -286,7 +287,13 @@ async def test_get_planned_workouts_resyncs_a_row_that_went_stale_earlier(
     again."""
     legs = await _make_template(session, TEST_USER, "Legs")
     pool = await _make_template(session, TEST_USER, "Pool")
-    today = date.today()
+    # Not `date.today()`. The resync only reaches rows dated today-or-later, and the
+    # "today" it compares against is `today_in(stored profile zone)` — UTC here, since
+    # TEST_USER has no zone set. `date.today()` is the *machine's* date, so anywhere
+    # west of UTC this test spends its evening asking the service to resync a row the
+    # service correctly considers yesterday's, and fails for the rest of the day. Ask
+    # for the same "today" the code under test uses; see services/timezones.py.
+    today = today_in(await profile_service.get_user_timezone(session, TEST_USER))
     # Materialize today under the wrong template, bypassing set_weekly_pattern
     # entirely, then point the pattern at the right one.
     planned = await service.plan_workout(
@@ -588,3 +595,78 @@ async def test_start_workout_with_planned_id_over_rest(client: AsyncClient) -> N
 
     assert resp.status_code == 201
     assert resp.json()["exercises"][0]["exercise_name"] == "Squat"
+
+
+async def _pattern_every_day(session: AsyncSession, user: str) -> None:
+    template = await _make_template(session, user, "Legs")
+    await service.set_weekly_pattern(
+        session, user, days=[{"day_of_week": dow, "template_id": template.id} for dow in range(7)]
+    )
+
+
+async def test_backfilling_a_workout_marks_that_days_planned_session_done(
+    session: AsyncSession,
+) -> None:
+    """The whole point of backfilling a forgotten day: the plan has to stop claiming
+    the session is still owed. The one-shot path never had a planned entry to be
+    started from, so `mark_done_if_planned`'s workout_id lookup finds nothing."""
+    await _pattern_every_day(session, TEST_USER)
+    monday = today_in(TZ) - timedelta(days=2)
+
+    workout = await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+        logged_at=datetime.combine(monday, time(12, 0), tzinfo=TZ),
+    )
+
+    planned = await service.get_planned_workouts(session, TEST_USER, start=monday, end=monday)
+    assert [p.status for p in planned] == [PlannedWorkoutStatus.done]
+    assert planned[0].workout_id == workout.id
+
+
+async def test_backfilling_leaves_a_day_the_user_skipped_alone(session: AsyncSession) -> None:
+    """ "Skipped" is an explicit decision. Overruling it from a log would silently undo
+    something the user chose; `update_planned_workout(action="unskip")` is the way back."""
+    await _pattern_every_day(session, TEST_USER)
+    monday = today_in(TZ) - timedelta(days=2)
+    planned = await service.get_planned_workouts(session, TEST_USER, start=monday, end=monday)
+    await service.update_planned_workout(
+        session, TEST_USER, planned_id=planned[0].id, action="skip"
+    )
+
+    await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+        logged_at=datetime.combine(monday, time(12, 0), tzinfo=TZ),
+    )
+
+    after = await service.get_planned_workouts(session, TEST_USER, start=monday, end=monday)
+    assert [p.status for p in after] == [PlannedWorkoutStatus.skipped]
+
+
+async def test_moving_a_workout_moves_which_day_counts_as_done(session: AsyncSession) -> None:
+    """Leaving the old day marked done would credit a day nothing happened on — the
+    mirror of the stale `done` that `_repair_orphaned_done` exists to clean up."""
+    await _pattern_every_day(session, TEST_USER)
+    logged_on = today_in(TZ) - timedelta(days=1)
+    actually = today_in(TZ) - timedelta(days=3)
+
+    workout = await workouts.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"exercise": "Squat", "sets": [{"weight": 225, "reps": 5}]}],
+        logged_at=datetime.combine(logged_on, time(12, 0), tzinfo=TZ),
+    )
+    await workouts.update_workout(
+        session,
+        TEST_USER,
+        workout_id=workout.id,
+        logged_at=datetime.combine(actually, time(12, 0), tzinfo=TZ),
+    )
+
+    days = await service.get_planned_workouts(session, TEST_USER, start=actually, end=logged_on)
+    by_date = {p.scheduled_for: p.status for p in days}
+    assert by_date[actually] == PlannedWorkoutStatus.done
+    assert by_date[logged_on] == PlannedWorkoutStatus.planned

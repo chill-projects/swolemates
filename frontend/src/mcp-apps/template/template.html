@@ -140,6 +140,25 @@
 
       #controls { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 
+      /* Sits directly under the last exercise, which is where you are when you
+         finish editing one. ⌘S and Enter cover the case where you aren't. */
+      #save-bar:not([hidden]) {
+        display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem;
+        padding: 0.5rem 0.6rem; border-radius: 0.55rem;
+        border: 1px solid var(--teal); background: var(--teal-pale);
+      }
+      #dirty-count { flex: 1; font-family: var(--font-mono); font-size: 0.7rem; }
+      #save-btn {
+        background: var(--teal); border-color: var(--teal); color: var(--card-bg);
+      }
+      #save-btn:hover:not(:disabled) { color: var(--card-bg); filter: brightness(1.1); }
+      #save-btn:disabled { opacity: 0.5; cursor: default; }
+
+      /* An edited-but-unsaved box. The template is only ever one Save away from
+         matching the database, and this is how you tell which fields are waiting. */
+      input.dirty { border-color: var(--teal); background: var(--card-bg); }
+      input.invalid { border-color: var(--red); color: var(--red); }
+
       #picker:not([hidden]) {
         background: var(--card-bg); border: 1px solid var(--line); border-radius: 0.6rem;
         padding: 0.7rem 0.8rem; margin-top: 0.6rem;
@@ -195,6 +214,12 @@
       <input id="name-input" type="text" aria-label="Template name" />
 
       <div id="groups"></div>
+
+      <div id="save-bar" hidden>
+        <span id="dirty-count" class="muted"></span>
+        <button type="button" id="discard-btn">Discard</button>
+        <button type="button" id="save-btn">Save changes</button>
+      </div>
 
       <div id="picker" hidden>
         <div id="picker-filter-row">

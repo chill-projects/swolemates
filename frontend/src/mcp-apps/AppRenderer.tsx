@@ -55,6 +55,14 @@ export function AppRenderer({
   // down and re-seed the iframe on every render of the host page.
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
+  // Same treatment, and it matters more here. PlanPage's template handler closes
+  // over a TanStack Query result, whose identity changes every time the query
+  // refetches — which that handler itself triggers after a write. As a dependency
+  // that made each save tear the iframe down and rebuild it: state lost, height
+  // snapped back to the fallback, and the page scrolled out from under whoever was
+  // editing. The bundle only ever needs the latest handler, never a re-seed.
+  const onCallToolRef = useRef(onCallTool);
+  onCallToolRef.current = onCallTool;
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +103,7 @@ export function AppRenderer({
         if (newHeight) setContentHeight(newHeight);
       });
       bridge.oncalltool = async (params) => {
-        const result = await onCallTool(
+        const result = await onCallToolRef.current(
           params.name,
           (params.arguments ?? {}) as Record<string, unknown>,
         );
@@ -104,7 +112,7 @@ export function AppRenderer({
       };
       const pushCurrent = async () => {
         if (!bridge || closed) return;
-        const result = await onCallTool(initialTool, {});
+        const result = await onCallToolRef.current(initialTool, {});
         onResultRef.current?.(result);
         await bridge.sendToolResult(result);
       };
@@ -166,7 +174,7 @@ export function AppRenderer({
       abort.abort();
       void bridge?.close();
     };
-  }, [html, initialTool, onCallTool, eventsUrl]);
+  }, [html, initialTool, eventsUrl]);
 
   if (error) return <p className="error">{error}</p>;
   if (!html) return <p className="muted">Loading component…</p>;

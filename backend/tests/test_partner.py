@@ -1,11 +1,13 @@
 import dataclasses
+import logging
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.partner import InviteStatus, PartnerInvite
+from app.models.partner import InviteStatus, PartnerInvite, Partnership, PartnershipMember
 from app.schemas.partner import PartnerSummaryOut
 from app.services import nutrition as nutrition_service
 from app.services import partner as service
@@ -230,3 +232,70 @@ async def test_get_partner_endpoint_returns_null_when_unlinked(client: AsyncClie
 
     assert resp.status_code == 200
     assert resp.json() is None
+
+
+async def test_get_partner_user_id_degrades_instead_of_500ing_on_two_memberships(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#40's real cost was that the corruption was *permanent*: `scalar_one_or_none()`
+    turned a second membership row into a `MultipleResultsFound` on every subsequent
+    partner request, so all three endpoints 500'd for that account until someone
+    deleted a row by hand.
+
+    `UNIQUE(user_id)` now makes two rows unreachable through the app, which is also why
+    reaching the state at all takes dropping the constraint — done inside the test's own
+    transaction, which Postgres rolls back along with everything else.
+    """
+    await session.execute(
+        text("ALTER TABLE partnership_members DROP CONSTRAINT uq_partnership_members_user_id")
+    )
+    older, newer = Partnership(), Partnership()
+    session.add_all([older, newer])
+    await session.flush()
+    # Explicit stamps, not the server default: `now()` is the *transaction* timestamp in
+    # Postgres, so rows written together are indistinguishable and "oldest" would come
+    # down to a random UUID tiebreak. A real race writes them from separate
+    # transactions, seconds or days apart; this reproduces that, not the flush.
+    then = datetime.now(UTC) - timedelta(days=2)
+    session.add_all(
+        [
+            PartnershipMember(partnership_id=older.id, user_id=TEST_USER, created_at=then),
+            PartnershipMember(partnership_id=older.id, user_id=OTHER_USER, created_at=then),
+            PartnershipMember(partnership_id=newer.id, user_id=TEST_USER),
+            PartnershipMember(partnership_id=newer.id, user_id="third_wheel"),
+        ]
+    )
+    await session.flush()
+
+    with caplog.at_level(logging.WARNING, logger="app.services.partner"):
+        partner = await service.get_partner_user_id(session, TEST_USER)
+
+    assert partner == OTHER_USER, "the older partnership wins"
+    assert "more than one partnership" in caplog.text
+
+
+async def test_get_partner_summary_rejects_someone_elses_partner(session: AsyncSession) -> None:
+    """The privacy boundary (#12) has to reject a target who *is* partnered, just not
+    with the caller — not merely one who's partnered with nobody. Reading membership
+    without scoping to the caller's own partnership would let anyone name any linked
+    user and read their aggregates."""
+    invite = await service.generate_invite(session, TEST_USER)
+    await service.redeem_invite(session, OTHER_USER, invite.code)
+
+    stranger, their_partner = "stranger_one", "stranger_two"
+    theirs = Partnership()
+    session.add(theirs)
+    await session.flush()
+    session.add_all(
+        [
+            PartnershipMember(partnership_id=theirs.id, user_id=stranger),
+            PartnershipMember(partnership_id=theirs.id, user_id=their_partner),
+        ]
+    )
+    await session.flush()
+
+    try:
+        await service.get_partner_summary(session, TEST_USER, stranger)
+        raise AssertionError("expected NotFoundError")
+    except NotFoundError:
+        pass

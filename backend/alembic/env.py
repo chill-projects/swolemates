@@ -13,7 +13,12 @@ from app.models import Base  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # `disable_existing_loggers=False` because this runs in-process in the test suite
+    # (conftest migrates before every session) as well as standalone in Railway's
+    # pre-deploy. The default, True, silently sets `disabled` on every logger that was
+    # already imported — which is all of `app.*` — so anything the app logged afterwards
+    # vanished, including in tests asserting on a warning.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", get_settings().normalize_database_url())
 
