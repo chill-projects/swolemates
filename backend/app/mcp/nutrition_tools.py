@@ -341,7 +341,8 @@ async def save_meal_template(
     Args:
         name: What to call it, e.g. "my usual breakfast".
         log_ids: ids of already-logged entries to bundle into this template (from a
-            prior log_nutrition/get_nutrition_day result).
+            prior log_nutrition/get_nutrition_day result). A saved-meal row's id
+            brings in all of that meal's items. Errors if none of them are yours.
         default_meal_type: breakfast/lunch/dinner/snack, if this template usually goes
             under one.
         template_id: revise this existing template instead of creating a new one.
