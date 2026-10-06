@@ -531,74 +531,6 @@ function visibleTemplates(templates: MealTemplateSummary[]): MealTemplateSummary
   });
 }
 
-function renderGroupedLog(log: DayLogEntry): HTMLLIElement {
-  const li = document.createElement("li");
-  li.className = "grouped-log log-entry";
-
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "group-toggle";
-  const arrow = document.createElement("span");
-  arrow.textContent = "▸ ";
-  const label = document.createElement("span");
-  label.textContent = log.name ?? "Meal";
-  toggle.append(arrow, label);
-
-  const kcal = document.createElement("span");
-  kcal.className = "log-kcal";
-  kcal.textContent = String(Math.round(log.values.calories ?? 0));
-
-  const time = document.createElement("span");
-  time.className = "log-time";
-  time.textContent = timeLabel(log.logged_at);
-
-  const spacer = document.createElement("span");
-  spacer.className = "log-spacer";
-
-  const header = document.createElement("div");
-  header.className = "log-top log-name";
-  const mealTypeSelect = renderMealTypeEdit(
-    { label: log.name ?? "entry", mealType: log.meal_type, allowUnset: false },
-    (mealType) =>
-      void callAndRender("update_nutrition_log", { log_id: log.id, meal_type: mealType }),
-  );
-  header.append(toggle, mealTypeSelect, time, spacer, kcal);
-
-  const values = document.createElement("div");
-  values.className = "log-values";
-  const count = `${log.items.length} item${log.items.length === 1 ? "" : "s"}`;
-  const detail = logDetail(log.values);
-  values.textContent = detail ? `${detail} · ${count}` : count;
-
-  const items = document.createElement("ul");
-  items.className = "grouped-log-items";
-  items.hidden = true;
-  items.replaceChildren(
-    ...log.items.map((item) => {
-      const itemLi = document.createElement("li");
-      itemLi.textContent =
-        `${item.name ?? "Item"}: ` +
-        Object.entries(item.values)
-          .map(([key, value]) => `${key}=${value}`)
-          .join(", ");
-      return itemLi;
-    }),
-  );
-  toggle.onclick = () => {
-    items.hidden = !items.hidden;
-    arrow.textContent = items.hidden ? "▸ " : "▾ ";
-  };
-
-  const body = document.createElement("div");
-  body.append(header, values, items);
-
-  const confirm = renderDeleteLogControl(log, body);
-  const deleteBtn = renderDeleteLogBtn(log, body, confirm);
-
-  li.append(deleteBtn, body, confirm);
-  return li;
-}
-
 function renderDeleteLogControl(log: DayLogEntry, body: HTMLElement): HTMLDivElement {
   // Same confirm-behind-a-small-× pattern as the meal template card — deleting a
   // logged entry is unrecoverable, so a stray tap shouldn't be enough on its own.
@@ -640,9 +572,13 @@ function renderDeleteLogBtn(log: DayLogEntry, body: HTMLElement, confirm: HTMLEl
   return deleteBtn;
 }
 
+/** One row per logged entry, the same shape whether or not it came from a saved
+ *  meal. Entries with items used to render as a separate expandable variant whose
+ *  disclosure arrow sat where every other row has its checkbox — so the rows didn't
+ *  line up, and the ones from a saved meal couldn't be selected into a new one. What
+ *  the expander revealed was a raw `calories=51, protein_g=7` dump of values the row
+ *  already shows; the item count survives it, on the macro line. */
 function renderLog(log: DayLogEntry): HTMLLIElement {
-  if (log.items.length > 0) return renderGroupedLog(log);
-
   const li = document.createElement("li");
   li.className = "log-entry";
 
@@ -663,7 +599,10 @@ function renderLog(log: DayLogEntry): HTMLLIElement {
 
   const values = document.createElement("div");
   values.className = "log-values";
-  values.textContent = logDetail(log.values);
+  const count = log.items.length
+    ? `${log.items.length} item${log.items.length === 1 ? "" : "s"}`
+    : "";
+  values.textContent = [logDetail(log.values), count].filter(Boolean).join(" · ");
 
   const kcal = document.createElement("span");
   kcal.className = "log-kcal";
