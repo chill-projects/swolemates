@@ -1,6 +1,16 @@
 """Every model must be imported here — Alembic autogenerate only sees registered tables."""
 
 from app.models.base import Base, TimestampMixin
+from app.models.meal_plan import (
+    MEAL_TYPES,
+    KitchenItem,
+    KitchenItemKind,
+    KitchenItemTemplate,
+    KitchenItemValue,
+    PlannedMeal,
+    PlannedMealStatus,
+    PlannedMealValue,
+)
 from app.models.nutrition import (
     Goal,
     Log,
@@ -37,4 +47,12 @@ __all__ = [
     "PartnerLink",
     "PushSubscription",
     "InviteStatus",
+    "MEAL_TYPES",
+    "KitchenItem",
+    "KitchenItemKind",
+    "KitchenItemTemplate",
+    "KitchenItemValue",
+    "PlannedMeal",
+    "PlannedMealStatus",
+    "PlannedMealValue",
 ]

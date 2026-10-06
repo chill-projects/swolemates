@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.api import (
     auth,
     food_facts,
+    meal_plan,
     nutrition,
     partner,
     planned_workouts,
@@ -30,6 +31,7 @@ api_router.include_router(workouts.router)
 api_router.include_router(templates.router)
 api_router.include_router(planned_workouts.router)
 api_router.include_router(partner.router)
+api_router.include_router(meal_plan.router)
 api_router.include_router(reminders.router)
 
 

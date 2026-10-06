@@ -249,6 +249,12 @@ async def delete_meal_template(
     template = result.scalar_one_or_none()
     if template is None:
         raise NotFoundError(f"No meal template {template_id}")
+    # Before the row goes, while the plans can still resolve against it: the FK from
+    # planned_meals is SET NULL, which would otherwise blank every planned day that
+    # used this meal. Imported here because meal_plan already depends on this package.
+    from app.services import meal_plan
+
+    await meal_plan.freeze_template_plans(session, user_sub, template.id)
     await session.delete(template)
     events.publish(user_sub, "nutrition")
 
