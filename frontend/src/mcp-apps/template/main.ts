@@ -11,9 +11,30 @@
  * as workout-live's, but editing targets (sets/reps/weight) instead of logging
  * actuals. Unlike workout-live, "remove exercise" has no 0-sets gate — a template
  * exercise has no logged history to protect.
+ *
+ * Field edits are batched: they collect in `drafts` and go out together when the
+ * user hits Save. Structural edits (add, remove, reorder, superset) still apply
+ * immediately — they change the shape of the list you're looking at, so deferring
+ * them would be stranger than not. See drafts.ts for why the batching exists.
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
+
+import {
+  type DraftField,
+  type Drafts,
+  type NumericField,
+  NO_DRAFTS,
+  clearEdit,
+  describeDirty,
+  dirtyFieldCount,
+  draftIssues,
+  effectiveValue,
+  fieldIssue,
+  parseNumberField,
+  pendingEdits,
+  stageEdit,
+} from "./drafts";
 
 interface TemplateExercise {
   id: string;
@@ -71,6 +92,10 @@ const pickerListEl = $<HTMLUListElement>("picker-list");
 const pickerCancelEl = $<HTMLButtonElement>("picker-cancel");
 const addExerciseBtn = $<HTMLButtonElement>("add-exercise-btn");
 const archiveBtn = $<HTMLButtonElement>("archive-btn");
+const saveBarEl = $<HTMLDivElement>("save-bar");
+const dirtyCountEl = $<HTMLSpanElement>("dirty-count");
+const saveBtn = $<HTMLButtonElement>("save-btn");
+const discardBtn = $<HTMLButtonElement>("discard-btn");
 
 const openGroups = new Set<string>();
 // Only the very first render defaults a group open — `openGroups.size === 0` isn't
@@ -85,6 +110,15 @@ let pickerSupersetWith: string | null = null;
 // exercises in a row.
 let selectedCategory: string | null = null;
 let selectedEquipment: string | null = null;
+// Unsaved field edits, and the unsaved name. Both survive a re-render (the inputs
+// read through `effectiveValue`), and both are cleared only by a successful save
+// or an explicit discard.
+let drafts: Drafts = NO_DRAFTS;
+let nameDraft: string | null = null;
+// Collapsed group headers show a "3×10 reps" summary. Kept as live element
+// references so an in-progress edit can update them without a re-render — which
+// would yank focus out of the box being typed in.
+let groupSummaries: { el: HTMLElement; group: Group }[] = [];
 
 const app = new App({ name: "Swolemates Templates", version: "1.0.0" });
 
@@ -123,8 +157,57 @@ function groupExercises(exercises: TemplateExercise[]): Group[] {
   return [...byKey.values()];
 }
 
+/** The "10 reps" / "45s" half of a group summary, read through any pending edit so
+ *  a collapsed header doesn't contradict the box you just typed in. */
 function targetLabel(e: TemplateExercise): string {
-  return e.seconds != null ? `${e.seconds}s` : `${e.reps ?? "?"} reps`;
+  const field: NumericField = e.seconds != null ? "seconds" : "reps";
+  const value = effectiveValue(drafts, e.id, field, e) ?? "?";
+  return field === "seconds" ? `${value}s` : `${value} reps`;
+}
+
+function summaryFor(g: Group): string {
+  return g.exercises
+    .map((e) => `${effectiveValue(drafts, e.id, "sets", e) ?? e.sets}×${targetLabel(e)}`)
+    .join(", ");
+}
+
+/** Outline an input that holds an unsaved value, and flag it red when that value
+ *  can't be saved (0 sets, half a rep) with the reason in its tooltip. */
+function markField(input: HTMLInputElement, id: string, field: DraftField): void {
+  const entry = drafts.get(id);
+  const staged = entry !== undefined && field in entry;
+  const issue = staged ? fieldIssue(field, entry[field] as number | string) : null;
+  input.classList.toggle("dirty", staged);
+  input.classList.toggle("invalid", issue !== null);
+  input.title = issue ?? "";
+}
+
+/** One editable number box. Edits land in `drafts` on input rather than on blur:
+ *  waiting for blur is what made tabbing between two boxes fire two saves. */
+function numberField(e: TemplateExercise, field: NumericField, labelText: string): HTMLLabelElement {
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  const input = document.createElement("input");
+  input.type = "number";
+  if (field === "weight") input.step = "5";
+  const current = effectiveValue(drafts, e.id, field, e);
+  input.value = current == null ? "" : String(current);
+  input.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} ${labelText}`);
+  input.oninput = () => {
+    const parsed = parseNumberField(input.value);
+    // Blank un-stages rather than staging a null: `update_exercise` reads a missing
+    // field as "leave it alone", so there is no way to spell "clear this" — and
+    // emptying a box mid-retype shouldn't count as an edit either way.
+    drafts =
+      parsed === null
+        ? clearEdit(drafts, e.id, field)
+        : stageEdit(drafts, e.id, field, parsed, e);
+    markField(input, e.id, field);
+    refreshDirtyUI();
+  };
+  markField(input, e.id, field);
+  label.appendChild(input);
+  return label;
 }
 
 function renderExercise(e: TemplateExercise): HTMLDivElement {
@@ -143,11 +226,13 @@ function renderExercise(e: TemplateExercise): HTMLDivElement {
   removeBtn.textContent = "×";
   removeBtn.title = "Remove exercise";
   removeBtn.onclick = () =>
-    void callAndRender("update_workout_template", {
-      template_id: currentPayload?.id,
-      action: "remove_exercise",
-      template_exercise_id: e.id,
-    });
+    void withPendingSaved(() =>
+      callAndRender("update_workout_template", {
+        template_id: currentPayload?.id,
+        action: "remove_exercise",
+        template_exercise_id: e.id,
+      }),
+    );
   header.appendChild(removeBtn);
 
   const supersetBtn = document.createElement("button");
@@ -160,83 +245,25 @@ function renderExercise(e: TemplateExercise): HTMLDivElement {
 
   const targets = document.createElement("div");
   targets.className = "targets";
-
-  const setsLabel = document.createElement("label");
-  setsLabel.textContent = "sets";
-  const setsInput = document.createElement("input");
-  setsInput.type = "number";
-  setsInput.value = String(e.sets);
-  setsInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} sets`);
-  setsInput.onblur = () => {
-    const value = Number(setsInput.value);
-    if (!value || value === e.sets) return;
-    void callAndRender("update_workout_template", {
-      template_id: currentPayload?.id,
-      action: "update_exercise",
-      template_exercise_id: e.id,
-      sets: value,
-    });
-  };
-  setsLabel.appendChild(setsInput);
-
-  const targetLabelEl = document.createElement("label");
-  targetLabelEl.textContent = e.seconds != null ? "seconds" : "reps";
-  const targetInput = document.createElement("input");
-  targetInput.type = "number";
-  targetInput.value = String(e.seconds ?? e.reps ?? "");
-  targetInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} ${targetLabelEl.textContent}`);
-  targetInput.onblur = () => {
-    const value = Number(targetInput.value);
-    if (!value) return;
-    const field = e.seconds != null ? "seconds" : "reps";
-    if (value === (e.seconds ?? e.reps)) return;
-    void callAndRender("update_workout_template", {
-      template_id: currentPayload?.id,
-      action: "update_exercise",
-      template_exercise_id: e.id,
-      [field]: value,
-    });
-  };
-  targetLabelEl.appendChild(targetInput);
-
-  const weightLabel = document.createElement("label");
-  weightLabel.textContent = "lbs";
-  const weightInput = document.createElement("input");
-  weightInput.type = "number";
-  weightInput.step = "5";
-  weightInput.value = e.weight != null ? String(e.weight) : "";
-  weightInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} weight`);
-  weightInput.onblur = () => {
-    if (weightInput.value === "") return;
-    const value = Number(weightInput.value);
-    if (value === e.weight) return;
-    void callAndRender("update_workout_template", {
-      template_id: currentPayload?.id,
-      action: "update_exercise",
-      template_exercise_id: e.id,
-      weight: value,
-    });
-  };
-  weightLabel.appendChild(weightInput);
-
-  targets.append(setsLabel, targetLabelEl, weightLabel);
+  targets.append(
+    numberField(e, "sets", "sets"),
+    numberField(e, e.seconds != null ? "seconds" : "reps", e.seconds != null ? "seconds" : "reps"),
+    numberField(e, "weight", "lbs"),
+  );
   wrap.appendChild(targets);
 
   const notesInput = document.createElement("input");
   notesInput.type = "text";
   notesInput.className = "notes-input";
   notesInput.placeholder = "Notes";
-  notesInput.value = e.notes ?? "";
+  notesInput.value = String(effectiveValue(drafts, e.id, "notes", e) ?? "");
   notesInput.setAttribute("aria-label", `${e.exercise_name ?? "Exercise"} notes`);
-  notesInput.onblur = () => {
-    if (notesInput.value === (e.notes ?? "")) return;
-    void callAndRender("update_workout_template", {
-      template_id: currentPayload?.id,
-      action: "update_exercise",
-      template_exercise_id: e.id,
-      notes: notesInput.value,
-    });
+  notesInput.oninput = () => {
+    drafts = stageEdit(drafts, e.id, "notes", notesInput.value, e);
+    markField(notesInput, e.id, "notes");
+    refreshDirtyUI();
   };
+  markField(notesInput, e.id, "notes");
   wrap.appendChild(notesInput);
 
   return wrap;
@@ -252,11 +279,13 @@ function moveGroup(groups: Group[], index: number, direction: -1 | 1): void {
   const [moved] = reordered.splice(index, 1);
   if (!moved) return;
   reordered.splice(targetIndex, 0, moved);
-  void callAndRender("update_workout_template", {
-    template_id: currentPayload?.id,
-    action: "reorder_exercises",
-    order: reordered.flatMap((group) => group.exercises.map((e) => e.id)),
-  });
+  void withPendingSaved(() =>
+    callAndRender("update_workout_template", {
+      template_id: currentPayload?.id,
+      action: "reorder_exercises",
+      order: reordered.flatMap((group) => group.exercises.map((e) => e.id)),
+    }),
+  );
 }
 
 function renderGroup(g: Group, index: number, groups: Group[]): HTMLDivElement {
@@ -286,7 +315,8 @@ function renderGroup(g: Group, index: number, groups: Group[]): HTMLDivElement {
   const targetsSummary = document.createElement("span");
   targetsSummary.className = "group-summary";
   targetsSummary.style.marginLeft = "auto";
-  targetsSummary.textContent = g.exercises.map((e) => `${e.sets}×${targetLabel(e)}`).join(", ");
+  targetsSummary.textContent = summaryFor(g);
+  groupSummaries.push({ el: targetsSummary, group: g });
   toggle.appendChild(targetsSummary);
   toggle.onclick = () => {
     if (openGroups.has(g.key)) openGroups.delete(g.key);
@@ -344,7 +374,7 @@ function render(payload: TemplatePayload): void {
   templateEl.hidden = false;
   closePicker();
 
-  if (document.activeElement !== nameInputEl) nameInputEl.value = payload.name;
+  if (document.activeElement !== nameInputEl) nameInputEl.value = nameDraft ?? payload.name;
 
   const groups = groupExercises(payload.exercises);
   const firstGroup = groups[0];
@@ -352,7 +382,92 @@ function render(payload: TemplatePayload): void {
     openGroups.add(firstGroup.key);
     hasSetDefaultOpenGroup = true;
   }
+  groupSummaries = [];
   groupsEl.replaceChildren(...groups.map((g, i) => renderGroup(g, i, groups)));
+  refreshDirtyUI();
+}
+
+/** Everything that reflects unsaved state, updated without rebuilding the list —
+ *  this runs on every keystroke, and a re-render would take focus with it. */
+function refreshDirtyUI(): void {
+  const count = dirtyFieldCount(drafts, nameDraft !== null);
+  const issues = draftIssues(drafts);
+  saveBarEl.hidden = count === 0;
+  saveBtn.disabled = issues.length > 0;
+  dirtyCountEl.textContent = issues[0]
+    ? `${issues[0].field} ${issues[0].message}`
+    : describeDirty(count);
+  dirtyCountEl.className = issues.length > 0 ? "error" : "muted";
+  for (const { el, group } of groupSummaries) el.textContent = summaryFor(group);
+}
+
+/**
+ * Push every pending edit, then re-render once from what came back.
+ *
+ * One call per edited exercise, because `update_exercise` is a one-row action —
+ * but the render is the thing that used to be per-field, and now it happens once
+ * at the end. Returns false if nothing was sent, so callers waiting on a clean
+ * slate know not to continue.
+ */
+async function saveAll(): Promise<boolean> {
+  if (!currentPayload || draftIssues(drafts).length > 0) return false;
+  const templateId = currentPayload.id;
+  const edits = pendingEdits(drafts);
+  const rename = nameDraft;
+  if (edits.length === 0 && rename === null) return true;
+
+  const calls: Record<string, unknown>[] = [];
+  if (rename !== null) {
+    calls.push({ template_id: templateId, action: "rename", name: rename });
+  }
+  for (const edit of edits) {
+    calls.push({
+      template_id: templateId,
+      action: "update_exercise",
+      template_exercise_id: edit.template_exercise_id,
+      ...edit.fields,
+    });
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+  let latest: TemplatePayload | null = null;
+  try {
+    for (const args of calls) {
+      const result = await app.callServerTool({ name: "update_workout_template", arguments: args });
+      latest = extractPayload(result) ?? latest;
+    }
+  } catch (err) {
+    console.error(err);
+    // Part of the batch may already have landed. Re-read instead of guessing, so
+    // what's on screen is what's in the database and the user can see which of
+    // their edits still need making.
+    drafts = NO_DRAFTS;
+    nameDraft = null;
+    await callAndRender("get_workout_template", { template_id: templateId });
+    statusEl.textContent = "Couldn't save everything — reloaded from the server.";
+    statusEl.className = "error";
+    return false;
+  } finally {
+    saveBtn.textContent = "Save changes";
+    saveBtn.disabled = false;
+  }
+
+  drafts = NO_DRAFTS;
+  nameDraft = null;
+  // Every update_workout_template returns the whole template, so the last reply is
+  // already the fresh truth — one render for the batch. The re-read is only for a
+  // host that answered in plain text and gave us nothing to render.
+  if (latest) render(latest);
+  else await callAndRender("get_workout_template", { template_id: templateId });
+  return true;
+}
+
+/** Structural edits rebuild the list from the server's answer, which would throw
+ *  away anything still pending — so those go out first. */
+async function withPendingSaved(run: () => Promise<void>): Promise<void> {
+  if (dirtyFieldCount(drafts, nameDraft !== null) > 0 && !(await saveAll())) return;
+  await run();
 }
 
 async function loadCatalog(): Promise<void> {
@@ -467,14 +582,16 @@ function renderPickerList(): void {
     btn.onclick = () => {
       const supersetWith = pickerSupersetWith;
       closePicker();
-      void callAndRender("update_workout_template", {
-        template_id: currentPayload?.id,
-        action: "add_exercise",
-        exercise: ex.name,
-        sets: 3,
-        reps: 10,
-        ...(supersetWith ? { superset_with: supersetWith } : {}),
-      });
+      void withPendingSaved(() =>
+        callAndRender("update_workout_template", {
+          template_id: currentPayload?.id,
+          action: "add_exercise",
+          exercise: ex.name,
+          sets: 3,
+          reps: 10,
+          ...(supersetWith ? { superset_with: supersetWith } : {}),
+        }),
+      );
     };
     li.appendChild(btn);
     items.push(li);
@@ -514,14 +631,35 @@ async function callAndRender(name: string, args: Record<string, unknown>): Promi
   }
 }
 
-nameInputEl.onblur = () => {
-  if (!currentPayload || nameInputEl.value.trim() === "" || nameInputEl.value === currentPayload.name) return;
-  void callAndRender("update_workout_template", {
-    template_id: currentPayload.id,
-    action: "rename",
-    name: nameInputEl.value,
-  });
+nameInputEl.oninput = () => {
+  const value = nameInputEl.value;
+  // A blank name is a rename the server would reject, so it reads as "not changed
+  // yet" rather than as a pending edit — same guard the old on-blur save had.
+  nameDraft =
+    !currentPayload || value.trim() === "" || value === currentPayload.name ? null : value;
+  refreshDirtyUI();
 };
+
+saveBtn.onclick = () => void saveAll();
+discardBtn.onclick = () => {
+  drafts = NO_DRAFTS;
+  nameDraft = null;
+  if (currentPayload) render(currentPayload);
+};
+
+// Enter and ⌘/Ctrl-S both save, so finishing an edit near the bottom of a long
+// template doesn't mean scrolling to find the button.
+document.addEventListener("keydown", (event) => {
+  const chord = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s";
+  const enterInField =
+    event.key === "Enter" &&
+    document.activeElement instanceof HTMLInputElement &&
+    document.activeElement !== pickerFilterEl;
+  if (!chord && !enterInField) return;
+  event.preventDefault();
+  void saveAll();
+});
+
 addExerciseBtn.onclick = () => openPicker(null);
 pickerFilterEl.oninput = () => renderPickerList();
 pickerFilterToggleEl.onclick = () => {
