@@ -698,6 +698,70 @@ class ExerciseHistoryOut:
     latest_next_time_note: str | None = None
 
 
+@dataclass
+class NextTimeNoteOut:
+    exercise_name: str
+    note: str
+    logged_on: date
+
+
+async def list_next_time_notes(
+    session: AsyncSession,
+    user_sub: str,
+    *,
+    start: date,
+    end: date,
+    tz: ZoneInfo,
+    limit: int | None = None,
+) -> list[NextTimeNoteOut]:
+    """The notes people left themselves, across a date range — "felt heavy, hold the
+    weight next time".
+
+    `get_exercise_history` already returns these, but only for one exercise at a time
+    and only when you already know to ask. Read like this they are the raw material of
+    preparing for a week: the user wrote them for their future self, and nothing
+    surfaced them outside the session that recorded them.
+
+    One note per exercise, the most recent, because a note is guidance for the *next*
+    time you do the movement — an older one for the same lift has already been
+    superseded by the newer. Bucketed by `completed_at` in `tz`, so "this week's notes"
+    means the user's week; `end` is inclusive.
+    """
+    start_dt, _ = local_day_bounds_utc(start, tz)
+    _, end_dt = local_day_bounds_utc(end, tz)
+    result = await session.execute(
+        select(Exercise.name, WorkoutExercise.next_time_note, Workout.completed_at)
+        .join(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
+        .join(Exercise, Exercise.id == WorkoutExercise.exercise_id)
+        .where(
+            Workout.user_id == user_sub,
+            Workout.completed_at.isnot(None),
+            Workout.completed_at >= start_dt,
+            Workout.completed_at < end_dt,
+            WorkoutExercise.next_time_note.isnot(None),
+            WorkoutExercise.next_time_note != "",
+        )
+        .order_by(Workout.completed_at.desc())
+    )
+
+    seen: set[str] = set()
+    notes: list[NextTimeNoteOut] = []
+    for exercise_name, note, completed_at in result.all():
+        if exercise_name in seen:
+            continue
+        seen.add(exercise_name)
+        notes.append(
+            NextTimeNoteOut(
+                exercise_name=exercise_name,
+                note=note,
+                logged_on=local_date(completed_at, tz),
+            )
+        )
+        if limit is not None and len(notes) >= limit:
+            break
+    return notes
+
+
 async def get_exercise_history(
     session: AsyncSession, user_sub: str, *, exercise: str, limit: int = 5
 ) -> ExerciseHistoryOut:

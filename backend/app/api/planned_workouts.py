@@ -9,9 +9,11 @@ from app.schemas.planned_workouts import (
     PlanWorkoutRequest,
     SetWeeklyPatternRequest,
     UpdatePlannedWorkoutRequest,
+    WeeklyCheckinOut,
     WeeklyPatternDayOut,
 )
 from app.services import planned_workouts as service
+from app.services import weekly_checkin as checkin_service
 from app.services.timezones import today_in
 
 router = APIRouter(tags=["planned-workouts"])
@@ -25,6 +27,17 @@ async def get_weekly_pattern(
 ) -> list[WeeklyPatternDayOut]:
     days = await service.get_weekly_pattern(session, user_sub)
     return [WeeklyPatternDayOut.model_validate(d) for d in days]
+
+
+@router.get("/weekly-checkin", response_model=WeeklyCheckinOut, operation_id="getWeeklyCheckin")
+async def get_weekly_checkin(
+    user_sub: CurrentUser, session: DbSession, tz: UserTimezone, as_of: date | None = None
+) -> WeeklyCheckinOut:
+    """The week behind and the week ahead in one read. `as_of` is for looking at the
+    check-in from another day (and for tests); it defaults to today in `tz`."""
+    return WeeklyCheckinOut.model_validate(
+        await checkin_service.get_weekly_checkin(session, user_sub, as_of=as_of, tz=tz)
+    )
 
 
 @router.put(

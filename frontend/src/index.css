@@ -1516,6 +1516,84 @@ li {
   color: var(--ink-soft);
 }
 
+/* Weekly check-in. Decisions read as a callout rather than a list item because they're
+   the only part that has to be acted on *before* the week starts — everything else in
+   the card is information, and information styled the same way as a to-do gets skimmed
+   at the same rate. */
+.checkin-decisions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.8rem;
+  list-style: none;
+  border-radius: 0.55rem;
+  border: 1px solid var(--gold);
+  background: var(--gold-pale);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+/* The card's generic list styling rules each row off; inside a callout that reads as
+   a divider between two warnings when there is only one. */
+.checkin-decisions li {
+  border: none;
+  padding: 0;
+}
+
+.checkin-block + .checkin-block {
+  margin-top: 0.9rem;
+}
+
+.checkin-heading {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.checkin-notes {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Stacked, not name-left/note-right: the note is a sentence the user wrote, and
+   right-aligning ragged italic text against a column edge makes it read as a data
+   value rather than as their own voice. */
+.checkin-notes li {
+  display: flex;
+  flex-direction: column;
+  /* Explicit: a column flex container centres nothing by default, but the card's own
+     list styling does, and inheriting centred body text here would read as a pull
+     quote rather than a note the user has to act on. */
+  align-items: flex-start;
+  text-align: left;
+  gap: 0.15rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.checkin-notes li:last-child {
+  border-bottom: none;
+}
+
+.checkin-note-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.checkin-note-text {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
 .card-note strong {
   color: var(--ink);
 }
