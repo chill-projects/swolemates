@@ -99,7 +99,7 @@ No deploy YAML — Railway builds from the repo, gated on CI ("Wait for CI"). Sl
 
 ## 6. Key constraints & decisions
 
-- MCP: stateless Streamable HTTP — by our `stateless_http=True`, not by the protocol. The server negotiates **2025-11-25** (the `mcp` SDK 1.x ceiling), where sessions exist and are optional; the current 2026-07-28 revision removes them outright, along with the `initialize` handshake — adopt its semantics when the SDK does, not before. FastMCP 3.x now, 4 when stable; combine FastMCP's lifespan into FastAPI's; validate token audience.
+- MCP: stateless Streamable HTTP — by our `stateless_http=True`, not by the protocol. The server negotiates the installed `mcp` SDK's `mcp.types.LATEST_PROTOCOL_VERSION` (2025-11-25 as of writing — check the constant, not this line), where sessions exist and are optional; the current 2026-07-28 revision removes them outright, along with the `initialize` handshake — adopt its semantics when the SDK does, not before. FastMCP 3.x now, 4 when stable; combine FastMCP's lifespan into FastAPI's; validate token audience.
 - Tools are task-shaped, not a REST mirror; every UI tool also returns plain text for non-UI hosts.
 - Components: iframes get no external network by default — inline assets; external domains are explicit `_meta.ui.csp` decisions; no widget-state persistence (persist via tool calls).
 - Frontend: no SSR; built in CI into the backend image — no separate host. TanStack Query for all `/api` data fetching; API types generated from FastAPI's OpenAPI schema (`openapi-typescript` + `openapi-fetch`) in CI — end-to-end type safety, no tRPC/GraphQL.

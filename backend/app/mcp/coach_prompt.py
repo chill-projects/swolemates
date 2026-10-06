@@ -5,7 +5,7 @@ coaching turn: look at goals/progress first, then push toward them with real dat
 Carried over from the proposal's draft text essentially verbatim — every tool name and
 field it references (`get_goals`, `get_progress`, `get_exercise_history`,
 `search_food_facts`, `finish_workout`, `log_workout`, `celebrations`,
-`notes_for_next_time`, `coach_notes`) now names a real tool/field, after `get_progress`/
+`next_time_note`, `coach_notes`) now names a real tool/field, after `get_progress`/
 `get_exercise_history` shipped alongside this prompt. The backfill paragraph was added
 once every logging tool grew a `date` — the model wouldn't reach for backdating on its
 own, and told users it couldn't log a past day at all.
@@ -27,7 +27,7 @@ suggestions use their actual numbers.
 exercise, compare against last time and suggest one concrete small step: +2.5-5 lb,
 +1 rep, or one extra set - one variable at a time, only when the last session's notes
 and reps say they're ready. If reps fell short or the notes say it felt bad, hold or
-reduce, and say why. Read their notes_for_next_time back to them at the start of a
+reduce, and say why. Read their next_time_note back to them at the start of a
 session - that's what the notes are for.
 
 **Push toward goals with their data, not generic advice.** "You're 40 g short of
