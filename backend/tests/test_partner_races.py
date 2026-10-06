@@ -21,8 +21,10 @@ have to leave the schema as they found it for whatever runs next.
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 
+import psycopg.errors
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.partner import PartnerInvite, PartnerLink, Partnership, PartnershipMember
@@ -223,3 +225,93 @@ async def test_the_second_redeemer_is_told_the_code_was_used(
     )
 
     assert sorted(messages) == ["", "This invite has already been used."]
+
+
+async def test_mutual_redemption_rejects_one_cleanly_instead_of_deadlocking(
+    sessions: async_sessionmaker[AsyncSession],
+    race_at_the_guard: Callable[[], None],
+) -> None:
+    """Alice and Bob each send the other a code and both tap at once. The two
+    transactions lock different invites, so nothing serializes them until the
+    membership inserts — and inserted inviter-first, Alice's transaction took Bob's
+    `user_id` slot while Bob's took Alice's, each then waiting on the other: a Postgres
+    deadlock, raised as `OperationalError` (a 500), not the `IntegrityError` the
+    redeem path handles. Inserting both members in `user_id` order means the loser
+    blocks on the first slot, then fails on the constraint once the winner commits.
+
+    Both rows go in one multi-row INSERT, so the deadlock window is microseconds and
+    this rarely reproduces it even unfixed — it pins the clean outcome. The ordering
+    itself is pinned deterministically by the next test."""
+    from_alice = await _invite_code(sessions, ALICE)
+    from_bob = await _invite_code(sessions, BOB)
+    race_at_the_guard()
+
+    messages = list(
+        await asyncio.gather(
+            _redeem_error(sessions, BOB, from_alice), _redeem_error(sessions, ALICE, from_bob)
+        )
+    )
+
+    # The loser now *has* a partner — the winner's redemption linked them — so the
+    # already-linked message is the true one here.
+    assert sorted(messages) == ["", "You already have a partner linked."]
+    assert await _partner_count(sessions, ALICE) == 1
+    assert await _partner_count(sessions, BOB) == 1
+
+
+async def test_redeeming_an_invite_whose_sender_has_since_linked_says_so(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Alice shared a code, then linked with Dave through Dave's code. Her own invite is
+    still `pending`, so Bob passes every guard and fails on *Alice's* membership row.
+    That used to tell Bob "You already have a partner linked." — and he doesn't."""
+    from_alice = await _invite_code(sessions, ALICE)
+    from_dave = await _invite_code(sessions, DAVE)
+    assert await _redeem(sessions, ALICE, from_dave) == DAVE
+
+    assert await _redeem_error(sessions, BOB, from_alice) == "This invite is no longer available."
+    assert await _partner_count(sessions, BOB) == 0
+
+
+async def test_members_are_inserted_in_user_id_order(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """The deadlock fix, pinned without needing to win a microsecond race: Dave's code
+    redeemed by Bob must still write Bob's membership row before Dave's."""
+    from_dave = await _invite_code(sessions, DAVE)
+    engine = sessions.kw["bind"].sync_engine
+    order: list[str] = []
+
+    def capture(_conn, _cursor, statement, parameters, _context, _executemany) -> None:  # noqa: ANN001
+        if statement.lstrip().upper().startswith("INSERT INTO PARTNERSHIP_MEMBERS"):
+            flat = parameters.values() if isinstance(parameters, dict) else parameters
+            order.extend(v for v in flat if v in EVERYONE)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        assert await _redeem(sessions, BOB, from_dave) == DAVE
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    assert order == sorted([BOB, DAVE])
+
+
+async def test_a_deadlock_is_reported_as_a_lost_race_not_a_500(
+    sessions: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Belt and braces for the ordering above: if Postgres aborts the redemption with
+    deadlock_detected anyway, the caller gets a ValueError (a 4xx), like any lost race."""
+    from_alice = await _invite_code(sessions, ALICE)
+    real_flush = AsyncSession.flush
+
+    async def deadlocking_flush(self: AsyncSession, *args: object, **kwargs: object) -> None:
+        if any(isinstance(obj, PartnershipMember) for obj in self.new):
+            raise OperationalError("INSERT", {}, psycopg.errors.DeadlockDetected())
+        await real_flush(self, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "flush", deadlocking_flush)
+
+    assert await _redeem_error(sessions, BOB, from_alice) == "This invite is no longer available."
+    monkeypatch.undo()
+    assert await _partner_count(sessions, BOB) == 0
