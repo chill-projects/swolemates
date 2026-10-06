@@ -7,6 +7,7 @@ import {
   dayLetter,
   dayMacros,
   isoDate,
+  macroEditValues,
   macroLabel,
   macrosFromForm,
   ribbonDays,
@@ -263,5 +264,35 @@ describe("clampSelectedDay", () => {
 
   it("copes with an empty week", () => {
     expect(clampSelectedDay("2026-10-05", [], "2026-11-01")).toBe("2026-10-05");
+  });
+});
+
+describe("macroEditValues", () => {
+  const current = { calories: "780.00", protein_g: "48", fiber_g: "6" };
+  const formOf = (v: Record<string, string>) => ({
+    calories: tidyNumber(v.calories),
+    protein_g: tidyNumber(v.protein_g),
+    carbs_g: tidyNumber(v.carbs_g),
+    fat_g: tidyNumber(v.fat_g),
+  });
+
+  it("sends nothing when the numbers weren't touched, so a rename stays derived", () => {
+    expect(macroEditValues(current, formOf(current))).toBeUndefined();
+  });
+
+  it("keeps trackables the form doesn't show when the numbers change", () => {
+    expect(macroEditValues(current, { ...formOf(current), calories: "650" })).toEqual({
+      calories: "650",
+      protein_g: "48",
+      fiber_g: "6",
+    });
+  });
+
+  it("sends {} when every field is blanked, which clears the override", () => {
+    expect(macroEditValues(current, { calories: "", protein_g: "" })).toEqual({});
+  });
+
+  it("sends nothing for an unestimated meal left blank", () => {
+    expect(macroEditValues({}, { calories: "" })).toBeUndefined();
   });
 });

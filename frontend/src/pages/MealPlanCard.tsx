@@ -24,6 +24,7 @@ import {
   dayLabel,
   dayMacros,
   isoDate,
+  macroEditValues,
   macroLabel,
   macrosFromForm,
   ribbonDays,
@@ -513,12 +514,24 @@ function MacroEditor({ meal, onClose }: { meal: PlannedMeal; onClose: () => void
           type="button"
           className="primary"
           disabled={update.isPending}
-          onClick={() =>
+          onClick={() => {
+            const values = macroEditValues(meal.values, form);
+            const renamed = name.trim() !== "" && name !== meal.name;
+            if (values === undefined && !renamed) {
+              onClose();
+              return;
+            }
             update.mutate(
-              { id: meal.id, body: { name, values: macros } },
+              {
+                id: meal.id,
+                body: {
+                  ...(renamed ? { name } : {}),
+                  ...(values !== undefined ? { values } : {}),
+                },
+              },
               { onSuccess: onClose },
-            )
-          }
+            );
+          }}
         >
           {update.isPending ? "Saving…" : "Save"}
         </button>

@@ -118,6 +118,31 @@ export function macrosFromForm(form: Record<string, string>): Record<string, str
   return out;
 }
 
+/** What the macro editor should send as `values`, given the meal's current values and
+ *  the edit form — or `undefined` when the four editable numbers weren't changed, so a
+ *  rename alone doesn't turn derived numbers into a frozen override.
+ *
+ *  When they were changed, trackables the form doesn't show (fibre, sodium…) are
+ *  carried over from the current values, because an override replaces the whole set
+ *  and would otherwise drop them. An entirely blank form is `{}`: stop overriding. */
+export function macroEditValues(
+  current: Record<string, string>,
+  form: Record<string, string>,
+): Record<string, string> | undefined {
+  const before = macrosFromForm(
+    Object.fromEntries(EDITABLE_TRACKABLES.map((key) => [key, tidyNumber(current[key])])),
+  );
+  const after = macrosFromForm(form);
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  if ([...keys].every((key) => before[key] === after[key])) return undefined;
+  if (Object.keys(after).length === 0) return {};
+  const editable = EDITABLE_TRACKABLES as readonly string[];
+  const others = Object.fromEntries(
+    Object.entries(current).filter(([key]) => !editable.includes(key)),
+  );
+  return { ...others, ...after };
+}
+
 /** The single initial the phone ribbon shows. Two of them are "T" and two are "S",
  *  which is fine — position carries the rest, and the selected day is named in full
  *  above the list. */

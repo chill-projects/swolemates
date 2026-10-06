@@ -34,14 +34,18 @@ export function useKitchen() {
   });
 }
 
-/** Both the plan and the nutrition day can move underneath a write — logging a
- *  planned meal writes a real entry — so every mutation invalidates both. */
+/** Logging a planned meal writes a real nutrition entry, so every mutation also
+ *  invalidates the React Query reads built on logged food: the dashboard's
+ *  `nutritionCalendar` and the Plan tab's `weeklyCheckin` (days logged). The Nutrition
+ *  tab itself isn't a query — it refetches off the "nutrition" SSE event the log
+ *  publishes. */
 function useInvalidatePlan() {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: ["mealPlan"] });
     void queryClient.invalidateQueries({ queryKey: KITCHEN_KEY });
-    void queryClient.invalidateQueries({ queryKey: ["nutritionDay"] });
+    void queryClient.invalidateQueries({ queryKey: ["nutritionCalendar"] });
+    void queryClient.invalidateQueries({ queryKey: ["weeklyCheckin"] });
   };
 }
 
