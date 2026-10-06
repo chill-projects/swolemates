@@ -14,6 +14,8 @@
 
 import { App } from "@modelcontextprotocol/ext-apps";
 
+import { applyHostChrome } from "../hostChrome";
+
 interface PlannedEntry {
   id: string;
   template_id: string;
@@ -287,7 +289,7 @@ await app.connect();
 // The SPA edits the weekly pattern itself, in the page hero band above this iframe,
 // so the pattern section is dropped in that host and kept everywhere else — in a
 // chat host this component is the only thing on screen and owns it.
-const inSpa = app.getHostVersion()?.name === "swolemates-web";
+const inSpa = applyHostChrome(app.getHostVersion());
 if (inSpa) patternSectionEl.hidden = true;
 
 statusEl.textContent = "Loading…";

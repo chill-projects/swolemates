@@ -82,6 +82,9 @@
         }
       }
       body { margin: 0; padding: 0.85rem; background: var(--page-bg); color: var(--ink); }
+      /* Hosted by the SPA, this sits in a card grid: the iframe edge *is* the
+         card edge, so its own padding would inset it from its siblings. */
+      body.in-spa { padding: 0; background: transparent; }
 
       /* Ring + macro bars. The band the mockup puts these on belongs to the SPA
          shell's page hero, so inside the bundle they sit on a plain card. */
