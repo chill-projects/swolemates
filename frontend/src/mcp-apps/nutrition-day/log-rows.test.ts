@@ -151,4 +151,25 @@ describe("today's log rows", () => {
     checkbox.dispatchEvent(new Event("change", { bubbles: true }));
     expect(document.querySelector<HTMLElement>("#save-template-bar")!.hidden).toBe(false);
   });
+
+  // The row's id is the meal's group id, not any one item's log id; the server
+  // expands it into the meal's items. Pin that the app sends the row ids as-is.
+  it("sends the meal row's own id alongside plain entries when saving", () => {
+    for (const name of ["Usual breakfast", "chicken and rice"]) {
+      const checkbox = rowFor(name)!.querySelector<HTMLInputElement>("input.log-select")!;
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    document.querySelector<HTMLInputElement>("#template-name")!.value = "Big day";
+    callServerTool.mockClear();
+    document.querySelector<HTMLButtonElement>("#save-template-btn")!.click();
+
+    expect(callServerTool).toHaveBeenCalledTimes(1);
+    const { name, arguments: args } = callServerTool.mock.calls[0]![0] as {
+      name: string;
+      arguments: { log_ids: string[] };
+    };
+    expect(name).toBe("save_meal_template");
+    expect([...args.log_ids].sort()).toEqual(["log-meal", "log-plain"]);
+  });
 });
