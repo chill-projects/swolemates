@@ -199,6 +199,16 @@ async def update_nutrition_log(
     return log
 
 
+async def _unlink_planned_meals(session: AsyncSession, user_sub: str, logs: list[Log]) -> None:
+    """A planned meal logged as one of these entries goes back to `planned` — see
+    `meal_plan.unlink_logs`. Imported here, not at module top, because meal_plan
+    already depends on this package."""
+    from app.services import meal_plan
+
+    ids = {log.id for log in logs} | {log.group_id for log in logs if log.group_id is not None}
+    await meal_plan.unlink_logs(session, user_sub, list(ids))
+
+
 async def delete_nutrition_log(session: AsyncSession, user_sub: str, log_id: uuid.UUID) -> None:
     """Self-service delete for a mistakenly-logged entry — the general case of
     amend_last_log's no-fields-given branch, for any entry, not just the latest.
@@ -209,6 +219,7 @@ async def delete_nutrition_log(session: AsyncSession, user_sub: str, log_id: uui
     logs = await _resolve_logs(session, user_sub, log_id)
     if not logs:
         raise NotFoundError(f"No log {log_id}")
+    await _unlink_planned_meals(session, user_sub, logs)
     for log in logs:
         await session.delete(log)
     await session.flush()
@@ -241,6 +252,7 @@ async def amend_last_log(
 
     log_id, log_name = log.id, log.name
     if name is None and meal_type is None and logged_at is None and not values:
+        await _unlink_planned_meals(session, user_sub, [log])
         await session.delete(log)
         await session.flush()
         events.publish(user_sub, "nutrition")

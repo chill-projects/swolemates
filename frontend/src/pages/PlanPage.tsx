@@ -11,6 +11,7 @@ import {
 import type { components } from "../api/generated";
 import { Card, PageHero } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
+import { MealPlanCard } from "./MealPlanCard";
 
 type TemplateOut = components["schemas"]["TemplateOut"];
 type TemplateExerciseOut = components["schemas"]["TemplateExerciseOut"];
@@ -335,6 +336,9 @@ export function PlanPage() {
               onCallTool={plannedTools}
               eventsUrl="/api/workouts/events"
             />
+            {/* Eating sits under training in the same column: the tab plans days, and
+                a day has both halves. */}
+            <MealPlanCard />
           </div>
 
           <div className="page-grid">

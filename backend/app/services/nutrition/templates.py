@@ -17,6 +17,7 @@ from app.models.nutrition import (
     MealTemplateItemValue,
 )
 from app.services.errors import NotFoundError
+from app.services.nutrition.logs import _resolve_logs
 
 
 @dataclass
@@ -91,7 +92,25 @@ async def save_meal_template(
 ) -> MealTemplateSummary:
     """Save-from-log only (#4, resolved) — snapshots the named/valued items of the
     caller's own already-logged entries into a template. `template_id` revises an
-    existing template in place (items are replaced wholesale, not merged)."""
+    existing template in place (items are replaced wholesale, not merged).
+
+    An id may be a saved-meal row's `group_id` (the day view collapses a template-
+    logged meal into one row keyed that way — see `_resolve_logs`); it expands in
+    place into that meal's individual items, so "Usual breakfast" + "banana" makes a
+    template of breakfast's items plus the banana. Ids that resolve to none of the
+    caller's logs are skipped, but if *nothing* resolves this raises rather than
+    saving an empty template.
+    """
+    logs: list[Log] = []
+    seen: set[uuid.UUID] = set()
+    for log_id in log_ids:
+        for log in await _resolve_logs(session, user_sub, log_id):
+            if log.id not in seen:  # a group and one of its items both selected
+                seen.add(log.id)
+                logs.append(log)
+    if not logs:
+        raise ValueError("None of those entries are in your log — nothing to save.")
+
     template = None
     if template_id is not None:
         result = await session.execute(
@@ -114,22 +133,16 @@ async def save_meal_template(
             delete(MealTemplateItem).where(MealTemplateItem.template_id == template.id)
         )
 
-    logs_result = await session.execute(
-        select(Log, LogValue)
-        .outerjoin(LogValue, LogValue.log_id == Log.id)
-        .where(Log.user_id == user_sub, Log.id.in_(log_ids))
+    values_result = await session.execute(
+        select(LogValue)
+        .join(Log, LogValue.log_id == Log.id)
+        .where(Log.user_id == user_sub, Log.id.in_(seen))
     )
-    logs_by_id: dict[uuid.UUID, Log] = {}
     values_by_log: dict[uuid.UUID, dict[str, Decimal]] = {}
-    for log, value in logs_result.all():
-        logs_by_id.setdefault(log.id, log)
-        if value is not None:
-            values_by_log.setdefault(log.id, {})[value.trackable_key] = value.value
+    for value in values_result.scalars():
+        values_by_log.setdefault(value.log_id, {})[value.trackable_key] = value.value
 
-    for order, log_id in enumerate(log_ids):
-        log = logs_by_id.get(log_id)
-        if log is None:
-            continue  # not this user's log (or already gone) — skip rather than fail the batch
+    for order, log in enumerate(logs):
         item = MealTemplateItem(
             template_id=template.id,
             name=log.name or "Item",
@@ -138,7 +151,7 @@ async def save_meal_template(
         )
         session.add(item)
         await session.flush()
-        for trackable_key, value in values_by_log.get(log_id, {}).items():
+        for trackable_key, value in values_by_log.get(log.id, {}).items():
             session.add(
                 MealTemplateItemValue(
                     template_item_id=item.id, trackable_key=trackable_key, value=value
@@ -249,6 +262,12 @@ async def delete_meal_template(
     template = result.scalar_one_or_none()
     if template is None:
         raise NotFoundError(f"No meal template {template_id}")
+    # Before the row goes, while the plans can still resolve against it: the FK from
+    # planned_meals is SET NULL, which would otherwise blank every planned day that
+    # used this meal. Imported here because meal_plan already depends on this package.
+    from app.services import meal_plan
+
+    await meal_plan.freeze_template_plans(session, user_sub, template.id)
     await session.delete(template)
     events.publish(user_sub, "nutrition")
 

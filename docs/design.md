@@ -99,11 +99,12 @@ No deploy YAML — Railway builds from the repo, gated on CI ("Wait for CI"). Sl
 
 ## 6. Key constraints & decisions
 
-- MCP: stateless Streamable HTTP — by our `stateless_http=True`, not by the protocol. The server negotiates **2025-11-25** (the `mcp` SDK 1.x ceiling), where sessions exist and are optional; the current 2026-07-28 revision removes them outright, along with the `initialize` handshake — adopt its semantics when the SDK does, not before. FastMCP 3.x now, 4 when stable; combine FastMCP's lifespan into FastAPI's; validate token audience.
+- MCP: stateless Streamable HTTP — by our `stateless_http=True`, not by the protocol. The server negotiates the installed `mcp` SDK's `mcp.types.LATEST_PROTOCOL_VERSION` (2025-11-25 as of writing — check the constant, not this line), where sessions exist and are optional; the current 2026-07-28 revision removes them outright, along with the `initialize` handshake — adopt its semantics when the SDK does, not before. FastMCP 3.x now, 4 when stable; combine FastMCP's lifespan into FastAPI's; validate token audience.
 - Tools are task-shaped, not a REST mirror; every UI tool also returns plain text for non-UI hosts.
 - Components: iframes get no external network by default — inline assets; external domains are explicit `_meta.ui.csp` decisions; no widget-state persistence (persist via tool calls).
 - Frontend: no SSR; built in CI into the backend image — no separate host. TanStack Query for all `/api` data fetching; API types generated from FastAPI's OpenAPI schema (`openapi-typescript` + `openapi-fetch`) in CI — end-to-end type safety, no tRPC/GraphQL.
 - Python tooling: **uv** (lockfile, used in Dockerfile and CI); ruff for lint/format.
+- Pending drop of `partner_links` (superseded by `partnerships`/`partnership_members` in #41; still dual-written). The drop migration must first handle links the backfills *skipped* — rows in `partner_links` with no matching partnership because a user in them already belonged to an earlier one. They're logged as `skipped partner_links row …` by revisions `c7a13f5e6d84` and `5b9e2d41c0a7`; query `partner_links` rows whose pair isn't in one partnership and decide explicitly (archive or delete) rather than letting `DROP TABLE` discard them silently.
 - Postgres is plain — swap Railway→Neon later for branch-per-PR DBs, zero code change. Priced exit: same container on Cloud Run ≈ $17–20/mo.
 
 ## 7. Costs
