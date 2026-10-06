@@ -6,8 +6,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # `.env` is rewritten wholesale by `make db`, so anything hand-written there is lost
+    # on the next run. `.env.local` is read after it, is never generated, and is covered
+    # by the `.env.*` gitignore — it's where a local secret (VAPID, WorkOS) belongs.
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.local"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -35,6 +38,19 @@ class Settings(BaseSettings):
     # accepted audience alongside PUBLIC_URL. Distinct from workos_client_id, which is
     # the Connect application the SPA authenticates as.
     workos_environment_client_id: str = ""
+
+    # Web Push (VAPID). Both empty disables push entirely: subscribing returns a clear
+    # "not configured" and the weekly reminder never fires, which is the right local
+    # default — same shape as AuthKit being unset. `vapid_subject` is the contact a push
+    # service is told to reach if our requests misbehave; a mailto: is what the spec
+    # expects.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:hello@swolemates.app"
+
+    @property
+    def push_enabled(self) -> bool:
+        return bool(self.vapid_public_key and self.vapid_private_key)
 
     # Local-only auth bypass so the dev loop doesn't need an OAuth round trip per call.
     # Ignored unless environment == "local"; see require_user() in app/auth.py.

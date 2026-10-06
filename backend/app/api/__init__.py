@@ -10,6 +10,7 @@ from app.api import (
     partner,
     planned_workouts,
     profile,
+    reminders,
     tdee,
     templates,
     workouts,
@@ -29,6 +30,7 @@ api_router.include_router(workouts.router)
 api_router.include_router(templates.router)
 api_router.include_router(planned_workouts.router)
 api_router.include_router(partner.router)
+api_router.include_router(reminders.router)
 
 
 class WhoamiOut(BaseModel):
