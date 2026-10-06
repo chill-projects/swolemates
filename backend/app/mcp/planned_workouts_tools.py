@@ -161,7 +161,8 @@ def _checkin_text(checkin: service_checkin.WeeklyCheckin) -> str:
     review = checkin.review
     lines = [
         f"Week of {review.start:%-d %b} - {review.end:%-d %b}: "
-        f"{review.sessions_completed} of {review.sessions_planned} planned sessions, "
+        f"{review.sessions_completed} session(s) completed, "
+        f"{review.sessions_planned} planned by your pattern, "
         f"{review.nutrition_days_logged} of 7 days logged."
     ]
     if checkin.streak is not None:

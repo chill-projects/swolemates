@@ -1,7 +1,13 @@
 import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
-import { useSetWeeklyPattern, useTemplates, useWeeklyCheckin, useWeeklyPattern } from "../api/plan";
+import {
+  useArchiveTemplate,
+  useSetWeeklyPattern,
+  useTemplates,
+  useWeeklyCheckin,
+  useWeeklyPattern,
+} from "../api/plan";
 import type { components } from "../api/generated";
 import { Card, PageHero } from "../components/ui";
 import { AppRenderer, type ToolResultPayload } from "../mcp-apps/AppRenderer";
@@ -66,9 +72,10 @@ function patternHeadline(pattern: PatternDay[] | undefined): string {
 type CheckinReview = components["schemas"]["WeeklyReviewOut"];
 
 function reviewLine(review: CheckinReview): string {
-  const planned = review.sessions_planned
-    ? `${review.sessions_completed}/${review.sessions_planned} sessions`
-    : `${review.sessions_completed} sessions`;
+  // Not "x/y": completed counts every workout (bonus sessions and activities too, same
+  // as the streak), so it isn't a subset of planned and can exceed it.
+  const sessions = `${review.sessions_completed} ${review.sessions_completed === 1 ? "session" : "sessions"}`;
+  const planned = review.sessions_planned ? `${sessions} · ${review.sessions_planned} planned` : sessions;
   return `${planned} · ${review.nutrition_days_logged}/7 days logged`;
 }
 
@@ -138,6 +145,7 @@ export function PlanPage() {
   const pattern = useWeeklyPattern();
   const templates = useTemplates();
   const setPattern = useSetWeeklyPattern();
+  const { mutateAsync: archiveTemplate } = useArchiveTemplate();
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const byDay = new Map((pattern.data ?? []).map((d) => [d.day_of_week, d]));
@@ -228,12 +236,8 @@ export function PlanPage() {
 
       if (name === "archive_workout_template") {
         const templateId = String(args.template_id ?? editingId ?? "");
-        const { error } = await api.POST("/api/templates/{template_id}/archive", {
-          params: { path: { template_id: templateId } },
-        });
-        if (error) throw new Error("archive failed");
+        await archiveTemplate(templateId);
         setEditingId(null);
-        void templates.refetch();
         return { content: [{ type: "text", text: "Archived." }] };
       }
 
@@ -274,7 +278,7 @@ export function PlanPage() {
       if (error || !data) throw new Error("template fetch failed");
       return toTemplatePayload(data);
     },
-    [editingId, templates],
+    [editingId, templates, archiveTemplate],
   );
 
   const editing = templates.data?.find((t) => t.id === editingId);

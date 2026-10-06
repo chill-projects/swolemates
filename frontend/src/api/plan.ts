@@ -61,3 +61,25 @@ export function useTemplates() {
     },
   });
 }
+
+/** Archiving a template changes more than the library: a patterned day pointing at it
+ *  becomes a silent rest day, which the check-in surfaces as a decision and the next
+ *  seven days stop showing. So every view derived from the pattern is invalidated, not
+ *  just the template list. */
+export function useArchiveTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (templateId: string) => {
+      const { error } = await api.POST("/api/templates/{template_id}/archive", {
+        params: { path: { template_id: templateId } },
+      });
+      if (error) throw new Error("archive failed");
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY });
+      void queryClient.invalidateQueries({ queryKey: PATTERN_KEY });
+      void queryClient.invalidateQueries({ queryKey: CHECKIN_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["plannedWorkouts"] });
+    },
+  });
+}

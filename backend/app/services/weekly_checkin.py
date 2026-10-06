@@ -70,10 +70,16 @@ class CarriedNote:
 class WeeklyReview:
     start: date
     end: date
+    # Every completed workout in the window — strength, activity, unplanned bonus — the
+    # same "anything counts" rule the streak uses. So it is *not* a subset of
+    # `sessions_planned` and can exceed it; present the two side by side ("5 sessions,
+    # 4 planned"), never as "5 of 4".
     sessions_completed: int
     # From the weekly pattern, not from generated rows: reading the plan for a past
     # range would materialize planned entries retroactively (see
-    # `planned_workouts._generate_missing`), and a review must not write.
+    # `planned_workouts._generate_missing`), and a review must not write. Days pointing
+    # at an archived template are excluded — generation treats them as rest, so they
+    # were never actually asked of anyone.
     sessions_planned: int
     nutrition_days_logged: int
 
@@ -97,11 +103,10 @@ class WeeklyCheckin:
     summary: str = ""
 
 
-async def _decisions(
-    session: AsyncSession,
-    user_sub: str,
+def _decisions(
     *,
     pattern: list[planned_workouts.WeeklyPatternDayOut],
+    templates: dict[uuid.UUID, workout_templates.TemplateOut],
     upcoming: list[UpcomingSession],
 ) -> list[CheckinDecision]:
     """Only states that are certainly wrong, never opinions about training.
@@ -125,15 +130,9 @@ async def _decisions(
     # An archived template on a patterned day is a silent rest day: `_generate_missing`
     # treats it as "nothing to schedule" rather than failing, which is right at write
     # time and invisible at read time. This is the one place it becomes visible.
-    templates: dict[uuid.UUID, workout_templates.TemplateOut] = {}
     for day in scheduled:
         assert day.template_id is not None  # narrowed by `scheduled`
-        template = templates.get(day.template_id)
-        if template is None:
-            template = await workout_templates.get_workout_template(
-                session, user_sub, day.template_id
-            )
-            templates[day.template_id] = template
+        template = templates[day.template_id]
         if template.archived_at is not None:
             decisions.append(
                 CheckinDecision(
@@ -168,10 +167,11 @@ def _summary(checkin: WeeklyCheckin) -> str:
     body a push notification would carry. Written so that reading only this is enough to
     decide whether to open anything."""
     review = checkin.review
+    sessions = f"Last week: {review.sessions_completed} session" + (
+        "" if review.sessions_completed == 1 else "s"
+    )
     parts = [
-        f"Last week: {review.sessions_completed} of {review.sessions_planned} sessions"
-        if review.sessions_planned
-        else f"Last week: {review.sessions_completed} sessions",
+        f"{sessions}, {review.sessions_planned} planned" if review.sessions_planned else sessions,
         f"{review.nutrition_days_logged}/{WINDOW_DAYS} days logged",
     ]
     if checkin.upcoming:
@@ -189,6 +189,29 @@ def _summary(checkin: WeeklyCheckin) -> str:
         count = len(checkin.decisions)
         parts.append(f"{count} thing{'s' if count != 1 else ''} to sort out")
     return ". ".join(parts) + "."
+
+
+async def _ahead(
+    session: AsyncSession, user_sub: str, *, start: date, end: date, today: date
+) -> list[planned_workouts.PlannedWorkoutOut]:
+    """The plan for the ahead window, without ever generating into the past.
+
+    `as_of` can be any date, so the "ahead" window can start before today. Generating
+    there would backfill planned rows for days already gone — exactly what the review's
+    no-write rule exists to prevent — so the part before today is read as-is and only
+    today onward goes through the generating read."""
+    past_end = min(end, today - timedelta(days=1))
+    future_start = max(start, today)
+    planned: list[planned_workouts.PlannedWorkoutOut] = []
+    if start <= past_end:
+        planned += await planned_workouts.list_planned_workouts(
+            session, user_sub, start=start, end=past_end
+        )
+    if future_start <= end:
+        planned += await planned_workouts.get_planned_workouts(
+            session, user_sub, start=future_start, end=end
+        )
+    return planned
 
 
 async def get_weekly_checkin(
@@ -213,12 +236,19 @@ async def get_weekly_checkin(
     calendar = await nutrition_service.get_nutrition_calendar(
         session, user_sub, start=review_start, end=as_of, tz=tz
     )
-    planned = await planned_workouts.get_planned_workouts(
-        session, user_sub, start=ahead_start, end=ahead_end
-    )
+    planned = await _ahead(session, user_sub, start=ahead_start, end=ahead_end, today=today_in(tz))
     notes = await workouts_service.list_next_time_notes(
         session, user_sub, start=review_start, end=as_of, tz=tz, limit=MAX_CARRIED_NOTES
     )
+
+    # Loaded once for both the planned count and the decisions. User-scoped lookup, so a
+    # pattern can't surface someone else's template.
+    templates: dict[uuid.UUID, workout_templates.TemplateOut] = {}
+    for day in pattern:
+        if day.template_id is not None and day.template_id not in templates:
+            templates[day.template_id] = await workout_templates.get_workout_template(
+                session, user_sub, day.template_id
+            )
 
     upcoming = [
         UpcomingSession(
@@ -234,7 +264,11 @@ async def get_weekly_checkin(
             start=review_start,
             end=as_of,
             sessions_completed=frequency.workouts_last_7_days,
-            sessions_planned=sum(1 for d in pattern if d.template_id is not None),
+            sessions_planned=sum(
+                1
+                for d in pattern
+                if d.template_id is not None and templates[d.template_id].archived_at is None
+            ),
             # "Logged", not "hit" — the same bar `get_nutrition_streak` uses, and the
             # honest one for a review: a day you tracked and went over is a day you
             # tracked, and counting it as a miss punishes the behaviour being built.
@@ -245,7 +279,7 @@ async def get_weekly_checkin(
             CarriedNote(exercise_name=n.exercise_name, note=n.note, logged_on=n.logged_on)
             for n in notes
         ],
-        decisions=await _decisions(session, user_sub, pattern=pattern, upcoming=upcoming),
+        decisions=_decisions(pattern=pattern, templates=templates, upcoming=upcoming),
         streak=await celebrations.get_streak(session, user_sub, as_of=as_of, tz=tz),
         nutrition_streak=await nutrition_service.get_nutrition_streak(
             session, user_sub, as_of=as_of, tz=tz
