@@ -18,6 +18,8 @@
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
+
+import { applyHostChrome } from "../hostChrome";
 import { dayLabel, shiftIso, todayIso, withViewedDay } from "./day";
 import { MEAL_TYPES, populateMealTypeSelect, renderMealTypeEdit } from "./mealType";
 
@@ -882,6 +884,6 @@ await app.connect();
 // this iframe (it reads the same payload — see AppRenderer's `onResult`). Drawing
 // them here too would show the day twice, so the block is dropped in that host and
 // kept everywhere else, where this component is the only thing on screen.
-if (app.getHostVersion()?.name === "swolemates-web") dayHeroEl.hidden = true;
+if (applyHostChrome(app.getHostVersion())) dayHeroEl.hidden = true;
 
 statusEl.textContent = "Loading…";

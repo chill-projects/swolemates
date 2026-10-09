@@ -18,6 +18,8 @@
  */
 
 import { App } from "@modelcontextprotocol/ext-apps";
+
+import { applyHostChrome } from "../hostChrome";
 import { prefillWeight, type LastTimeSet } from "./prefill";
 
 interface LastTime {
@@ -953,4 +955,6 @@ app.ontoolresult = (result) => {
 };
 
 await app.connect();
+// The SPA frames this in a card grid; a chat host gives it the whole window.
+applyHostChrome(app.getHostVersion());
 statusEl.textContent = "Loading…";
