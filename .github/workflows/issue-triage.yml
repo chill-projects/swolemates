@@ -1,0 +1,52 @@
+# Provisional intake labels for new and edited issues.
+# Design: docs/research/issue-triage.md. Logic: .github/scripts/issue_triage.py.
+name: Issue triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+# Only what this job needs: read the script, edit issue labels.
+permissions:
+  contents: read
+  issues: write
+
+# One run per issue at a time; a newer edit cancels an older in-flight run.
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Classify with Claude
+        id: classify
+        # Untrusted issue text goes in as env vars, never pasted into the command.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVENT_ACTION: ${{ github.event.action }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+        run: python3 .github/scripts/issue_triage.py
+
+      - name: Apply label changes
+        if: steps.classify.outputs.add != '' || steps.classify.outputs.remove != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          ADD: ${{ steps.classify.outputs.add }}
+          REMOVE: ${{ steps.classify.outputs.remove }}
+        run: |
+          args=()
+          [ -n "$ADD" ] && args+=(--add-label "$ADD")
+          [ -n "$REMOVE" ] && args+=(--remove-label "$REMOVE")
+          gh issue edit "$NUMBER" "${args[@]}"
