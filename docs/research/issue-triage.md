@@ -60,6 +60,21 @@ author adds steps.
 - Rapid saves: a per-issue `concurrency` group cancels older runs; only the latest edit is
   classified.
 
+## Backfill (manual runs)
+
+Issues opened before the workflow existed never get an `opened`/`edited` event. A
+`workflow_dispatch` trigger with an `issue_number` input triages them on demand:
+
+```zsh
+gh workflow run issue-triage.yml -R chill-projects/swolemates -f issue_number=31
+```
+
+- The workflow fetches the issue with `gh issue view` (manual runs carry no issue in the event) and
+  feeds the same env vars to the same script.
+- `issue_number` must be digits only; title/body are passed through step outputs with a random
+  delimiter so issue text can't inject other values.
+- Manual runs respect human takeover like edits: an issue with any non-`intake:` label is skipped.
+
 ## The questions
 
 | Question | Choices |
