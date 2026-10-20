@@ -215,6 +215,7 @@ export function WorkoutLivePage() {
               set_type: (args.set_type as string | undefined) ?? "reps",
               work_seconds: (args.work_seconds as number | undefined) ?? null,
               sets: 1,
+              continue_session: (args.continue_session as boolean | undefined) ?? null,
             },
           });
           if (error) throw new Error("log set failed");
