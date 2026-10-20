@@ -319,7 +319,10 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
     logBtn.onclick = () => {
       if (!weightInput || !mainInput || !warmupInput) return;
       if (mainInput.value === "") return;
-      const weight = weightInput.value === "" ? undefined : Number(weightInput.value);
+      // A blank weight on a rep set means bodyweight — the service rejects a rep set
+      // with no weight, so send 0 rather than leaving it out.
+      const weight =
+        weightInput.value === "" ? (isTimed ? undefined : 0) : Number(weightInput.value);
       void callAndRender("log_set", {
         exercise: e.exercise_name,
         weight,
