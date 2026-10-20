@@ -327,6 +327,9 @@ function renderExercise(e: ExerciseEntry, finished: boolean): HTMLDivElement {
         exercise: e.exercise_name,
         weight,
         is_warmup: warmupInput.checked,
+        // Logging from this card is logging into the open workout it shows, so
+        // skip the "continue or start fresh?" question that a long gap triggers.
+        continue_session: true,
         ...(isTimed
           ? { set_type: "time", work_seconds: Number(mainInput.value) }
           : { reps: Number(mainInput.value) }),
