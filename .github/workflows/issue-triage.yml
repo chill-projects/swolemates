@@ -1,19 +1,27 @@
-# Provisional intake labels for new and edited issues.
+# Provisional intake labels for new and edited issues, plus a manual run for existing ones.
 # Design: docs/research/issue-triage.md. Logic: .github/scripts/issue_triage.py.
 name: Issue triage
 
 on:
   issues:
     types: [opened, edited]
+  # Backfill: triage an issue that existed before this workflow, e.g.
+  #   gh workflow run issue-triage.yml -f issue_number=31
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to triage
+        required: true
+        type: string
 
-# Only what this job needs: read the script, edit issue labels.
+# Only what this job needs: read the script, read and edit issue labels.
 permissions:
   contents: read
   issues: write
 
-# One run per issue at a time; a newer edit cancels an older in-flight run.
+# One run per issue at a time; a newer event cancels an older in-flight run.
 concurrency:
-  group: issue-triage-${{ github.event.issue.number }}
+  group: issue-triage-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: true
 
 jobs:
@@ -26,15 +34,38 @@ jobs:
           sparse-checkout: .github/scripts
           persist-credentials: false
 
+      # Manual runs don't carry the issue in the event, so fetch it. Issue events skip this.
+      - name: Load issue (manual run)
+        id: load
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ inputs.issue_number }}
+        run: |
+          if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::issue_number must be digits only."
+            exit 1
+          fi
+          gh issue view "$NUMBER" --json title,body,labels > issue.json
+          # Multi-line values go to step outputs with a random delimiter, so issue text
+          # can't end the value early and inject other outputs.
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "title<<$delim"; jq -r '.title' issue.json; echo "$delim"
+            echo "body<<$delim"; jq -r '.body // ""' issue.json; echo "$delim"
+            echo "labels=$(jq -c '[.labels[].name]' issue.json)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Classify with Claude
         id: classify
         # Untrusted issue text goes in as env vars, never pasted into the command.
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EVENT_ACTION: ${{ github.event.action }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          EVENT_ACTION: ${{ github.event_name == 'workflow_dispatch' && 'manual' || github.event.action }}
+          ISSUE_TITLE: ${{ github.event_name == 'workflow_dispatch' && steps.load.outputs.title || github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event_name == 'workflow_dispatch' && steps.load.outputs.body || github.event.issue.body }}
+          ISSUE_LABELS: ${{ github.event_name == 'workflow_dispatch' && steps.load.outputs.labels || toJSON(github.event.issue.labels.*.name) }}
         run: python3 .github/scripts/issue_triage.py
 
       - name: Apply label changes
@@ -42,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.issue.number }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
           ADD: ${{ steps.classify.outputs.add }}
           REMOVE: ${{ steps.classify.outputs.remove }}
         run: |

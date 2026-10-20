@@ -7,7 +7,7 @@ checks the answer, and writes which `intake:*` labels to add and remove to $GITH
 It never edits the issue itself (the workflow does) and never fails the job:
 on any problem it prints a warning and outputs no changes.
 
-On `edited`, it skips issues a human has already triaged (any non-`intake:` label).
+On `edited` and manual runs, it skips issues a human has already triaged (any non-`intake:` label).
 """
 
 from __future__ import annotations
@@ -243,7 +243,8 @@ def main() -> None:
     if current is None:
         warn("Could not read the issue's current labels.")
         return write_output(*no_change)
-    if os.environ.get("EVENT_ACTION") == "edited" and human_triaged(current):
+    # Edits and manual (backfill) runs respect human triage; a brand-new issue has nothing to respect.
+    if os.environ.get("EVENT_ACTION") in ("edited", "manual") and human_triaged(current):
         print("Issue already has non-intake labels; a human has triaged it. Skipping.")
         return write_output(*no_change)
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
