@@ -13,6 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workouts import (
@@ -78,34 +79,58 @@ async def _maybe_upsert_pr(
     achieved_at: datetime,
 ) -> tuple[Decimal, Decimal | None] | None:
     """Returns `(value, previous)` if this beat the cached record (or there wasn't
-    one), else `None`. A tie doesn't count as a new record."""
+    one), else `None`. A tie doesn't count as a new record.
+
+    The read locks the row (`FOR UPDATE`) because the decision is made here in Python,
+    between the read and the write: without the lock, two concurrent requests could
+    both read the old record and the lower one would commit last, silently replacing
+    the higher (a lost update). With it, the second request waits for the first to
+    commit, then decides against the real current value."""
     result = await session.execute(
-        select(PersonalRecord).where(
+        select(PersonalRecord)
+        .where(
             PersonalRecord.user_id == user_sub,
             PersonalRecord.exercise_id == exercise_id,
             PersonalRecord.kind == kind,
         )
+        .with_for_update()
     )
     existing = result.scalar_one_or_none()
     if existing is not None and existing.value >= value:
         return None
 
-    previous = existing.value if existing is not None else None
     if existing is None:
-        session.add(
-            PersonalRecord(
-                user_id=user_sub,
-                exercise_id=exercise_id,
-                kind=kind,
-                value=value,
-                workout_set_id=workout_set_id,
-                achieved_at=achieved_at,
-            )
+        # No row yet, so nothing for FOR UPDATE to have locked: a concurrent first PR
+        # can insert between our read and this write. ON CONFLICT turns that into a
+        # compare-and-update Postgres does atomically — keep whichever value is higher,
+        # no unique-violation 500. A loss there means someone else's PR beat this one.
+        # (When this one wins it, `previous` stays None rather than the other request's
+        # value — getting that back needs Postgres 18's RETURNING old.)
+        stmt = insert(PersonalRecord).values(
+            user_id=user_sub,
+            exercise_id=exercise_id,
+            kind=kind,
+            value=value,
+            workout_set_id=workout_set_id,
+            achieved_at=achieved_at,
         )
-    else:
-        existing.value = value
-        existing.workout_set_id = workout_set_id
-        existing.achieved_at = achieved_at
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_personal_records_user_id_exercise_id_kind",
+            set_={
+                "value": stmt.excluded.value,
+                "workout_set_id": stmt.excluded.workout_set_id,
+                "achieved_at": stmt.excluded.achieved_at,
+            },
+            where=PersonalRecord.value < stmt.excluded.value,
+        ).returning(PersonalRecord.id)
+        if (await session.execute(stmt)).first() is None:
+            return None
+        return value, None
+
+    previous = existing.value
+    existing.value = value
+    existing.workout_set_id = workout_set_id
+    existing.achieved_at = achieved_at
     return value, previous
 
 
