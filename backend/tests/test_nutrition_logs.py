@@ -579,3 +579,86 @@ async def test_future_logged_at_is_a_400_over_rest(client: AsyncClient) -> None:
 
     assert resp.status_code == 400
     assert "in the future" in resp.json()["detail"]
+
+
+async def test_log_nutrition_rejects_an_unknown_trackable(session: AsyncSession) -> None:
+    """A guessed key ("sodium_mg") is a friendly ValueError naming the real ones — not
+    an IntegrityError from the trackable_types FK at flush time — and nothing is logged."""
+    with pytest.raises(ValueError, match="sodium_mg.*calories"):
+        await service.log_nutrition(
+            session,
+            TEST_USER,
+            entries=[
+                {"trackable_key": "calories", "value": 200},
+                {"trackable_key": "sodium_mg", "value": 400},
+            ],
+            name="Soup",
+        )
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    assert day.logs == []
+
+
+async def test_unknown_trackable_is_a_400_over_rest(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/api/nutrition/logs",
+        json={"entries": [{"trackable_key": "sodium_mg", "value": "400"}]},
+    )
+
+    assert resp.status_code == 400
+    assert "sodium_mg" in resp.json()["detail"]
+
+
+async def test_log_nutrition_rejects_no_entries(session: AsyncSession) -> None:
+    """REST's schema already 422s this; the MCP tool's `list[dict]` doesn't, and a
+    values-less log would show up in the day view as a blank row."""
+    with pytest.raises(ValueError, match="at least one"):
+        await service.log_nutrition(session, TEST_USER, entries=[], name="Lunch")
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    assert day.logs == []
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [{"key": "calories", "value": 450}, {"trackable_key": "calories"}],
+    ids=["no-trackable_key", "no-value"],
+)
+async def test_log_nutrition_rejects_an_entry_missing_a_field(
+    session: AsyncSession, entry: dict
+) -> None:
+    """A KeyError would get past the MCP adapter (it only turns ValueError into a
+    reply), reaching the model as a broken tool call instead of something to fix."""
+    with pytest.raises(ValueError, match="trackable_key.*value"):
+        await service.log_nutrition(session, TEST_USER, entries=[entry], name="Rice")
+
+
+async def test_log_nutrition_rejects_a_non_numeric_value(session: AsyncSession) -> None:
+    """Decimal() raises InvalidOperation — an ArithmeticError, not a ValueError — so
+    without this the MCP adapter lets it through as a broken tool call."""
+    with pytest.raises(ValueError, match="about 450"):
+        await service.log_nutrition(
+            session,
+            TEST_USER,
+            entries=[{"trackable_key": "calories", "value": "about 450"}],
+            name="Burrito",
+        )
+
+    day = await service.get_nutrition_day(session, TEST_USER)
+    assert day.logs == []
+
+
+async def test_editing_a_log_rejects_an_unknown_trackable(session: AsyncSession) -> None:
+    log = await service.log_nutrition(
+        session, TEST_USER, entries=[{"trackable_key": "calories", "value": 500}], name="Burrito"
+    )
+
+    with pytest.raises(ValueError, match="sodium_mg"):
+        await service.update_nutrition_log(
+            session, TEST_USER, log_id=log.id, values={"sodium_mg": Decimal(400)}
+        )
+    with pytest.raises(ValueError, match="sodium_mg"):
+        await service.amend_last_log(session, TEST_USER, values={"sodium_mg": Decimal(400)})
+
+    values = await service.get_log_values(session, TEST_USER, log.id)
+    assert {v.trackable_key: v.value for v in values} == {"calories": Decimal(500)}
