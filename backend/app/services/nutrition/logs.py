@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from app import events
 from app.models.nutrition import Log, LogValue
 from app.services import profile as profile_service
 from app.services.errors import NotFoundError
+from app.services.nutrition.trackables import list_trackable_types
 
 
 def _round_trackable_value(trackable_key: str, value: object) -> Decimal:
@@ -25,6 +26,18 @@ def _round_trackable_value(trackable_key: str, value: object) -> Decimal:
     return decimal_value.quantize(Decimal("0.1"))
 
 
+async def _check_trackable_keys(session: AsyncSession, keys: set[str]) -> None:
+    """An unknown key would otherwise surface as an IntegrityError from the
+    trackable_types FK at flush time — a 500 over REST, an opaque tool error over MCP.
+    Naming the valid keys lets a model that guessed one ("sodium_mg") retry on its own."""
+    known = {t.key for t in await list_trackable_types(session)}
+    unknown = sorted(keys - known)
+    if unknown:
+        raise ValueError(
+            f"Unknown trackable {', '.join(unknown)}. Valid: {', '.join(sorted(known))}."
+        )
+
+
 async def log_nutrition(
     session: AsyncSession,
     user_sub: str,
@@ -36,7 +49,19 @@ async def log_nutrition(
     source: str = "manual",
     tz: ZoneInfo | None = None,
 ) -> Log:
+    if not entries:
+        raise ValueError("Log at least one value.")
+    for entry in entries:
+        if "trackable_key" not in entry or "value" not in entry:
+            raise ValueError('Each entry needs a "trackable_key" and a "value".')
+        try:
+            Decimal(str(entry["value"]))
+        except InvalidOperation:
+            raise ValueError(
+                f"{entry['value']!r} isn't a number (for {entry['trackable_key']})."
+            ) from None
     await profile_service.check_backdate(session, user_sub, logged_at, tz)
+    await _check_trackable_keys(session, {entry["trackable_key"] for entry in entries})
     log = Log(
         user_id=user_sub,
         logged_at=logged_at or datetime.now(UTC),
@@ -177,6 +202,8 @@ async def update_nutrition_log(
     two days. A move to a day after today is rejected (`profile.check_backdate`).
     """
     await profile_service.check_backdate(session, user_sub, logged_at, tz)
+    if values:
+        await _check_trackable_keys(session, set(values))
     logs = await _resolve_logs(session, user_sub, log_id)
     if not logs:
         raise NotFoundError(f"No log {log_id}")
