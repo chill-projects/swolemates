@@ -32,6 +32,12 @@ persistQueryCache(queryClient);
 const root = document.getElementById("root");
 if (!root) throw new Error("#root is missing from index.html");
 
+// PROTOTYPE - throwaway. Fake data, no auth or backend, dev builds only.
+if (import.meta.env.DEV && window.location.pathname === "/prototype/kitchen") {
+  void import("./pages/kitchenPrototype/KitchenPrototype").then(({ KitchenPrototype }) => {
+    createRoot(root).render(<KitchenPrototype />);
+  });
+} else
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

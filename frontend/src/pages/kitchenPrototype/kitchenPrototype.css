@@ -1,0 +1,768 @@
+/* PROTOTYPE - throwaway. Never merge to main. */
+
+.kp-page {
+  max-width: 44rem;
+  margin-inline: auto;
+  padding-bottom: 9rem; /* room for the switcher */
+}
+.kp-stack,
+.kp-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.kp-switch {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--card);
+}
+.kp-switch button {
+  flex: 1;
+  min-height: 2.5rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--ink-soft);
+}
+.kp-switch button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--sand);
+}
+
+.kp-search {
+  width: 100%;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+  padding: 0 0.8rem;
+  font: inherit;
+  font-size: 1rem; /* under 16px, iOS zooms the page on focus */
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.kp-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.kp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+.kp-row:first-child {
+  border-top: 0;
+}
+.kp-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.kp-row-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.kp-row-detail {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+.kp-row.is-check .kp-row-name {
+  color: var(--ink-soft);
+}
+.kp-row.is-check .kp-row-detail {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.kp-remove,
+.kp-flag {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.15rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--dim);
+}
+.kp-remove:hover {
+  color: var(--red);
+}
+.kp-flag.is-on {
+  color: var(--gold);
+}
+
+.kp-chip-group .meal-picker-group:first-child {
+  margin-top: 0.2rem;
+}
+.kp-chips {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.kp-chips li {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--sand);
+}
+.kp-chips li.is-check {
+  border-color: var(--amber);
+  border-style: dashed;
+}
+.kp-chip-main,
+.kp-chip-x {
+  min-height: 2.4rem;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.kp-chip-main {
+  padding: 0 0.15rem 0 0.55rem;
+  font-weight: 600;
+}
+.kp-chip-x {
+  padding: 0 0.5rem;
+  color: var(--dim);
+}
+
+.kp-pills {
+  display: flex;
+  gap: 0.3rem;
+}
+.kp-pills button {
+  flex: 1;
+  min-height: 2.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.kp-pills button[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--sand);
+}
+
+.kp-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.kp-link {
+  display: block;
+  width: 100%;
+  margin-top: 0.7rem;
+  min-height: 2.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px dashed var(--amber);
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--amber);
+}
+
+/* Round 2: D, E, F */
+.kp-type {
+  margin: 0.9rem 0 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+div:first-child > .kp-type {
+  margin-top: 0;
+}
+.kp-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  border-top: 1px solid var(--line-soft);
+}
+.kp-line:first-child {
+  border-top: 0;
+}
+.kp-line-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.kp-line-qty {
+  margin-left: 0.4rem;
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+.kp-line-date {
+  flex: none;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.kp-line .kp-remove {
+  width: 2.2rem;
+  margin-right: -0.5rem;
+}
+.kp-line.is-soon .kp-line-date {
+  color: var(--amber);
+  font-weight: 600;
+}
+.kp-line.is-check .kp-line-name {
+  color: var(--dim);
+}
+.kp-line.is-check .kp-line-date {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.kp-datechips {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.kp-datechips li {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--sand);
+}
+.kp-datechips li.is-soon {
+  border-color: var(--gold);
+  background: var(--gold-pale);
+}
+.kp-datechips li.is-check {
+  border-color: var(--red);
+  border-style: dashed;
+  background: transparent;
+}
+.kp-datechip-main {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0 0.25rem 0.55rem;
+  line-height: 1.2;
+}
+.kp-datechip-main b {
+  font-size: 0.82rem;
+}
+.kp-datechip-main small {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+
+.kp-datechip-tap {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.kp-star {
+  color: var(--gold);
+}
+.kp-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.8rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.kp-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.kp-legend i {
+  width: 0.85rem;
+  height: 0.85rem;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 0.2rem;
+  background: var(--sand);
+}
+.kp-legend .is-soon i {
+  border-color: var(--gold);
+  background: var(--gold-pale);
+}
+.kp-legend .is-check i {
+  border: 1px dashed var(--red);
+  background: transparent;
+}
+.kp-datechips li.kp-confirm {
+  gap: 0.35rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.55rem;
+  border-color: var(--red);
+  background: var(--card);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.kp-confirm button {
+  min-height: 2.2rem;
+  padding: 0 0.55rem;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-confirm .kp-confirm-yes {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--card);
+}
+
+/* Round 4: three looks */
+.kp-look .kp-group + .kp-group {
+  margin-top: 0.8rem;
+}
+.kp-look .kp-type {
+  margin: 0 0 0.25rem;
+}
+.kp-look .kp-group--star .kp-type {
+  color: var(--amber);
+}
+.kp-look .kp-chip-x {
+  opacity: 0.55;
+}
+.kp-look .kp-legend {
+  margin-top: 0.9rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* H: equal-width chips, so the edges line up */
+.kp-look--H .kp-datechips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.35rem;
+  margin-top: 0;
+}
+.kp-look--H .kp-datechips li {
+  min-width: 0;
+}
+.kp-look--H .kp-datechips li.kp-confirm {
+  grid-column: 1 / -1;
+}
+.kp-look--H .kp-datechip-main {
+  flex: 1;
+  min-width: 0;
+}
+.kp-look--H .kp-group--star {
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* I: quiet chips with a stripe, food types in their own column */
+.kp-look--I .kp-group {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line-soft);
+}
+.kp-look--I .kp-group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.kp-look--I .kp-group + .kp-group {
+  margin-top: 0.7rem;
+}
+.kp-look--I .kp-type {
+  padding-top: 0.45rem;
+}
+.kp-look--I .kp-datechips {
+  margin-top: 0;
+}
+.kp-look--I .kp-datechips li,
+.kp-look--I .kp-datechips li.is-soon,
+.kp-look--I .kp-datechips li.is-check {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+}
+.kp-look--I .kp-datechips li.is-soon {
+  border-left-color: var(--gold);
+}
+.kp-look--I .kp-datechips li.is-check {
+  border-left-color: var(--red);
+}
+.kp-look--I .kp-legend i,
+.kp-look--I .kp-legend .is-soon i,
+.kp-look--I .kp-legend .is-check i {
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  background: var(--card);
+}
+.kp-look--I .kp-legend .is-soon i {
+  border-left-color: var(--gold);
+}
+.kp-look--I .kp-legend .is-check i {
+  border-left-color: var(--red);
+}
+@media (max-width: 34rem) {
+  .kp-look--I .kp-group {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+}
+
+/* J: a band like the app's heroes, color only as a dot beside the date */
+.kp-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0.8rem;
+  background: var(--ink);
+  color: var(--sand);
+}
+.kp-hero h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+}
+.kp-look--J .kp-hero .kp-type {
+  color: var(--gold);
+}
+.kp-look--J .kp-hero .card-note {
+  margin: 0;
+  color: var(--sand);
+}
+.kp-look--J > .kp-group {
+  margin-top: 1rem;
+}
+.kp-look--J > .kp-group .kp-type {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.kp-look--J .kp-datechips li,
+.kp-look--J .kp-datechips li.is-soon,
+.kp-look--J .kp-datechips li.is-check {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-look--J .kp-datechips li small::before {
+  content: "●";
+  margin-right: 0.25rem;
+  font-size: 0.6rem;
+  color: var(--dim);
+}
+.kp-look--J .kp-datechips li.is-soon small::before {
+  color: var(--gold);
+}
+.kp-look--J .kp-datechips li.is-check small::before {
+  color: var(--red);
+}
+.kp-look--J .kp-hero .kp-legend {
+  margin-top: 0.1rem;
+  padding-top: 0;
+  border-top: 0;
+  color: var(--sand);
+}
+.kp-look--J .kp-legend i,
+.kp-look--J .kp-legend .is-soon i,
+.kp-look--J .kp-legend .is-check i {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.kp-look--J .kp-legend .is-soon i {
+  background: var(--gold);
+}
+.kp-look--J .kp-legend .is-check i {
+  background: var(--red);
+}
+
+/* Round 5: the band in the site's hero colors (see .page-hero, .hero-eyebrow) */
+.kp-look--K .kp-hero {
+  background: var(--teal-pale);
+  border: 1px solid var(--teal-line);
+  color: var(--ink);
+}
+.kp-look--K .kp-hero .kp-type {
+  letter-spacing: 0.14em;
+  color: var(--red);
+}
+.kp-look--K .kp-hero .card-note {
+  color: var(--ink-soft);
+}
+.kp-look--K .kp-hero .kp-legend {
+  color: var(--ink-soft);
+}
+.kp-look--K .kp-datechip-main {
+  padding: 0.35rem 0.65rem;
+}
+
+/* The box: a sheet from the bottom on phones, centered above that */
+.kp-box-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 35%);
+}
+.kp-box {
+  width: 100%;
+  max-width: 26rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  border-radius: 0.9rem 0.9rem 0 0;
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-box-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.kp-box-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+.kp-box-head p {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.kp-box-close,
+.kp-box-star,
+.kp-box-remove,
+.kp-box-confirm button {
+  min-height: 2.75rem;
+  padding: 0 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-box-star.is-on {
+  border-color: var(--gold);
+  background: var(--gold-pale);
+}
+.kp-box-label {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.kp-box .kp-pills {
+  margin-top: -0.3rem;
+}
+.kp-box-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.kp-box-date input {
+  min-height: 2.75rem;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-box-remove {
+  color: var(--red);
+}
+.kp-box-remove.is-armed {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--card);
+}
+.kp-box-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.5rem;
+}
+.kp-box-fields input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.kp-box-date select {
+  min-height: 2.75rem;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--ink);
+}
+.kp-box-add {
+  min-height: 2.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--teal);
+  border-radius: 0.5rem;
+  background: var(--teal);
+  color: var(--card);
+}
+.kp-box-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kp-search-row {
+  display: flex;
+  gap: 0.4rem;
+}
+.kp-search-row .kp-search {
+  flex: 1;
+  min-width: 0;
+}
+.kp-add {
+  flex: none;
+  min-height: 2.75rem;
+  padding: 0 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--teal);
+  border-radius: 0.55rem;
+  background: var(--teal);
+  color: var(--card);
+}
+.kp-box-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.kp-box-confirm span {
+  flex: 1;
+}
+.kp-box-confirm .kp-confirm-yes {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--card);
+}
+@media (min-width: 34rem) {
+  .kp-box-backdrop {
+    align-items: center;
+  }
+  .kp-box {
+    border-radius: 0.9rem;
+  }
+}
+
+/* Deliberately loud, so it can't be mistaken for part of the design being judged. */
+.kp-bar {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(26rem, calc(100vw - 1.5rem));
+  box-sizing: border-box;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.8rem;
+  background: #111;
+  color: #fff;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 40%);
+  font-size: 0.8rem;
+}
+.kp-bar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: center;
+}
+.kp-bar-row button {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: none;
+  font-size: 1.05rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #333;
+  color: #fff;
+}
+.kp-bar-state {
+  margin-top: 0.15rem;
+  text-align: center;
+  font-size: 0.68rem;
+  color: #bbb;
+}
+.kp-bar-state button {
+  margin-left: 0.4rem;
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #ffd27a;
+  text-decoration: underline;
+}
+
+@media (min-width: 52.01rem) {
+  .kp-bar {
+    bottom: 1rem;
+  }
+}
