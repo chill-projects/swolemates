@@ -337,16 +337,13 @@ async def test_update_and_amend_nutrition_log_over_rest(client: AsyncClient) -> 
 async def test_weight_history_returns_weigh_ins_oldest_first(client: AsyncClient) -> None:
     """Ordered by `logged_at`, not insertion order — these go in newest-first to make
     sure the endpoint sorts rather than echoing the write order back."""
-    for logged_at, value in [
-        ("2026-08-25T08:00:00Z", 149),
-        ("2026-08-04T08:00:00Z", 152),
-        ("2026-08-11T08:00:00Z", 151),
-    ]:
+    now = datetime.now(UTC)
+    for days_ago, value in [(7, 149), (28, 152), (21, 151)]:
         await client.post(
             "/api/nutrition/logs",
             json={
                 "entries": [{"trackable_key": "weight_lbs", "value": value}],
-                "logged_at": logged_at,
+                "logged_at": (now - timedelta(days=days_ago)).isoformat(),
             },
         )
 
