@@ -35,7 +35,7 @@ async def test_skill_body_names_the_look_first_tools() -> None:
 
 async def test_tool_shapes_reference_is_served() -> None:
     """Exercises SkillProvider's supporting-file template path. Deliberately doesn't
-    pin the #31/#32/#33 workaround wording — that text should go away when those
+    pin the #32/#33 workaround wording — that text should go away when those
     issues are fixed, not be defended by a test."""
     result = await mcp.read_resource("skill://swolemates/references/tool-shapes.md")
 

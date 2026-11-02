@@ -5,9 +5,6 @@ correction call of a conversation; don't reload if it's already in context.
 
 ## log_workout
 
-<!-- Workaround for #31 — remove when #31 is fixed. -->
-Items key the exercise as `"exercise"`, not `"name"`:
-
 ```json
 {"exercises": [{"exercise": "Barbell Back Squat",
                 "sets": [{"weight": 225, "reps": 5}]}]}

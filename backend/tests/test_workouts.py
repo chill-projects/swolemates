@@ -71,6 +71,27 @@ async def test_log_workout_writes_exercises_and_sets(session: AsyncSession) -> N
     assert entry.sets[1].is_warmup is True
 
 
+async def test_log_workout_accepts_name_as_an_alias_for_exercise(session: AsyncSession) -> None:
+    """`name` is the natural guess for this key (#31), and the MCP tool's list[dict]
+    has no per-item schema to steer a model away from it."""
+    workout = await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[{"name": "Leg Press", "sets": [{"reps": 8, "weight": 220}]}],
+    )
+
+    assert [e.exercise_name for e in workout.exercises] == ["Leg Press"]
+
+
+async def test_log_workout_rejects_an_item_with_no_exercise_name(session: AsyncSession) -> None:
+    """A KeyError would get past the MCP adapter (it only turns ValueError into a
+    reply), reaching the model as a broken tool call instead of something to fix."""
+    with pytest.raises(ValueError, match='"exercise"'):
+        await service.log_workout(
+            session, TEST_USER, exercises=[{"sets": [{"reps": 8, "weight": 220}]}]
+        )
+
+
 async def test_log_workout_never_estimates_calories(session: AsyncSession) -> None:
     """log_workout is retroactive and never captures a real duration — inventing
     one would be worse than no estimate. Deliberate scope boundary, not a gap."""
