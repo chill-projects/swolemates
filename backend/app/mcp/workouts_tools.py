@@ -227,7 +227,8 @@ async def log_workout(
 
     Args:
         exercises: [{"exercise": "Barbell Back Squat", "sets": [{"weight": 225, "reps": 5}, ...],
-            "notes"?, "next_time_note"?, "muscle_group"?}, ...]. Each set: reps sets
+            "notes"?, "next_time_note"?, "muscle_group"?}, ...]. "name" is accepted in
+            place of "exercise". Each set: reps sets
             need "reps" > 0 and "weight" >= 0 (0 for bodyweight); timed sets need
             "set_type": "time" and "work_seconds" > 0. Add "is_warmup": true to
             exclude a set from PR checks. "muscle_group" only matters when this

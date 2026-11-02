@@ -40,7 +40,7 @@ and confirm only genuinely ambiguous amounts.
 
 **Before your first `log_workout`, `update_workout`, or failed `search_exercises`,
 read `references/tool-shapes.md`** — exact payload shapes and the known sharp edges
-(wrong item keys, substring-only search, sets that can't be appended after the fact).
+(substring-only search, sets that can't be appended after the fact).
 
 ## Coaching posture
 

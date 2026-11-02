@@ -528,6 +528,15 @@ async def _find_or_create_workout_exercise(
     return workout_exercise
 
 
+def _entry_exercise_name(entry: dict) -> str:
+    """`name` is the natural guess for this key (#31). The MCP tool's list[dict] has no
+    per-item schema, so a missing name has to be a ValueError here, not a KeyError."""
+    name = entry.get("exercise") or entry.get("name")
+    if not name:
+        raise ValueError('Each exercise needs a name, as "exercise".')
+    return name
+
+
 async def log_workout(
     session: AsyncSession,
     user_sub: str,
@@ -544,13 +553,14 @@ async def log_workout(
 
     `exercises`: [{"exercise": "Back Squat", "sets": [{"weight"?, "reps"?,
     "set_type"?, "work_seconds"?, "is_warmup"?}], "notes"?, "muscle_group"?}].
+    "name" is accepted in place of "exercise".
     Validated in full (workoutValidation.ts port) before anything is written.
     """
     if not exercises:
         raise ValueError("Add at least one exercise.")
     await profile_service.check_backdate(session, user_sub, logged_at, tz)
     for entry in exercises:
-        _validate_sets(entry["exercise"], entry.get("sets", []))
+        _validate_sets(_entry_exercise_name(entry), entry.get("sets", []))
 
     when = logged_at or datetime.now(UTC)
     workout = Workout(
@@ -567,7 +577,7 @@ async def log_workout(
     new_sets_by_exercise: list[tuple[uuid.UUID, str, list[WorkoutSet]]] = []
     for order, entry in enumerate(exercises):
         exercise = await _resolve_exercise(
-            session, user_sub, entry["exercise"], muscle_group=entry.get("muscle_group")
+            session, user_sub, _entry_exercise_name(entry), muscle_group=entry.get("muscle_group")
         )
         workout_exercise = WorkoutExercise(
             workout_id=workout.id,
