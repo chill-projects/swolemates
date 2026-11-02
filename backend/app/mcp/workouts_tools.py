@@ -181,9 +181,10 @@ def _live_payload(live: service.WorkoutLiveOut) -> dict:
 @mcp.tool
 @catches_service_errors
 async def search_exercises(query: str) -> str:
-    """Look up real catalog exercise names matching a query (substring, case-
-    insensitive) — call this before log_workout/create_workout_template/log_set and
-    use one of the returned names verbatim when there's a good match. Exercise
+    """Look up real catalog exercise names matching a query, closest first. Words match
+    in any order, ignoring case, hyphens and plurals, and common abbreviations work
+    ("RDL", "OHP", "db row") — call this before log_workout/create_workout_template/
+    log_set and use one of the returned names verbatim when there's a good match. Exercise
     resolution only matches an *exact* name; a close-but-not-exact guess ("Back
     Squat" for the catalog's "Barbell Back Squat") silently creates a new custom
     exercise with no real muscle group, so it never lights up on the workout view's
