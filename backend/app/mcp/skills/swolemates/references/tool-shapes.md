@@ -23,13 +23,15 @@ Items key the exercise as `"exercise"`, not `"name"`:
 
 ## search_exercises
 
-<!-- Workaround for #33 — remove when #33 is fixed. -->
-Matches one **contiguous, case-insensitive substring** of the catalog name.
-"incline bench" hits "Incline Bench Press"; "incline press" hits nothing, because
-the words aren't adjacent in any catalog name. On no results, retry with a shorter
-fragment or a single distinctive word ("incline", "row") before concluding the
-exercise isn't in the catalog. Then use a returned name **verbatim** — a
-close-but-not-exact name silently creates a custom exercise with no muscle-map data.
+Matches all the query's words in any order, each against a whole word or the start of
+one ("lat" finds "Lat Pulldown" and "Lateral Raise"), ignoring case, hyphens and plurals.
+Understands common abbreviations and shorthand ("RDL", "db row", "pull ups", "incline
+bench"), but not typos. Results come closest first, capped at 15. Use a returned name
+**verbatim** — a close-but-not-exact name silently creates a custom exercise with no
+muscle-map data.
+
+On no results, fix any typo and try fewer words ("row", not "single arm chest supported
+row"). If that still finds nothing close, ask the user rather than guessing.
 
 ## update_workout
 

@@ -18,6 +18,7 @@ from app.models.workouts import (
 )
 from app.services import nutrition as nutrition_service
 from app.services import workouts as service
+from app.services.exercise_matching import STARTER_EXERCISES
 from tests.conftest import OTHER_USER, TEST_USER
 
 
@@ -154,11 +155,233 @@ async def test_log_workout_matches_the_catalog_case_insensitively(session: Async
     assert first.exercises[0].exercise_id == second.exercises[0].exercise_id
 
 
-async def test_search_exercises_matches_substring_case_insensitively(
+async def test_search_exercises_finds_every_catalog_name_by_its_own_name(
+    session: AsyncSession,
+) -> None:
+    """Callers are told to pass a returned name on verbatim, so searching any real name
+    has to surface it — the 15-result limit must never bury an exact match."""
+    missing = []
+    for exercise in await service.list_exercises(session, TEST_USER):
+        matches = await service.search_exercises(session, TEST_USER, exercise.name)
+        if exercise.name not in [e.name for e in matches]:
+            missing.append(exercise.name)
+
+    assert missing == []
+
+
+async def test_search_exercises_matches_case_insensitively(
     session: AsyncSession,
 ) -> None:
     matches = await service.search_exercises(session, TEST_USER, "bArBeLl bAcK sQuAt")
     assert any(e.name == "Barbell Back Squat" for e in matches)
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("incline press", "Incline Dumbbell Press"),
+        ("seated row", "Seated Cable Row"),
+        ("squat barbell", "Barbell Back Squat"),
+    ],
+)
+async def test_search_exercises_matches_words_in_any_order_with_gaps(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("pull up", "Pull-up"),
+        ("pullups", "Pull-up"),
+        ("chin up", "Chin-up"),
+        ("chinup", "Chin-up"),
+        ("push ups", "Push-up"),
+        ("pushup", "Push-up"),
+        ("sit up", "Sit-Up"),
+        ("situp", "Sit-Up"),
+        ("close grip bench", "Close-Grip Bench Press"),
+        ("t bar row", "T-Bar Row with Handle"),
+        ("lat pull down", "Lat Pulldown"),
+        ("skullcrusher", "Skull Crusher"),
+        ("lunges", "Walking Lunge"),
+        ("face pulls", "Face Pull"),
+        ("crunches", "Cable Crunch"),
+        ("triceps pushdown", "Tricep Pushdown"),
+        ("stiff leg deadlift", "Stiff-Legged Barbell Deadlift"),
+        ("lat raise", "Lateral Raise"),
+        ("dumbbell fly", "Dumbbell Flyes"),
+        ("flies", "Cable Fly"),
+    ],
+)
+async def test_search_exercises_ignores_hyphens_spacing_and_plurals(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("rdl", "Romanian Deadlift"),
+        ("RDL", "Romanian Deadlift"),
+        ("rdls", "Romanian Deadlift"),
+        ("ohp", "Overhead Press"),
+        ("bss", "Bulgarian Split Squat"),
+        ("cgbp", "Close-Grip Bench Press"),
+        ("db row", "Dumbbell Row"),
+        ("db curl", "Dumbbell Curl"),
+        ("db bench", "Dumbbell Bench Press"),
+        ("incline db press", "Incline Dumbbell Press"),
+        ("bb row", "Barbell Row"),
+        ("sldl", "Stiff-Legged Barbell Deadlift"),
+        ("kb swing", "One-Arm Kettlebell Swings"),
+    ],
+)
+async def test_search_exercises_expands_abbreviations(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+async def test_search_exercises_does_not_match_inside_a_word(session: AsyncSession) -> None:
+    rdl = [e.name for e in await service.search_exercises(session, TEST_USER, "rdl")]
+    row = [e.name for e in await service.search_exercises(session, TEST_USER, "row")]
+
+    assert "Hurdle Hops" not in rdl
+    assert "Backward Medicine Ball Throw" not in row
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("bench", "Dumbbell Bench Press"),
+        ("squat", "Front Squat"),
+        ("squat", "Goblet Squat"),
+        ("squat", "Hack Squat"),
+        ("deadlift", "Sumo Deadlift"),
+        ("row", "Seated Cable Row"),
+        ("curl", "Dumbbell Curl"),
+        ("curl", "Hammer Curl"),
+        ("curl", "Leg Curl"),
+    ],
+)
+async def test_search_exercises_keeps_common_lifts_within_the_limit(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("push-up", "Push-up"),
+        ("push ups", "Push-up"),
+        ("pull up", "Pull-up"),
+        ("pullups", "Pull-up"),
+        ("deadlift", "Deadlift"),
+        ("dip", "Dip"),
+        ("rdl", "Romanian Deadlift"),
+        ("ohp", "Overhead Press"),
+    ],
+)
+async def test_search_exercises_ranks_the_closest_name_first(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert matches[0].name == expected
+
+
+async def test_search_exercises_surfaces_the_users_own_custom_exercise(
+    session: AsyncSession,
+) -> None:
+    await service.log_workout(
+        session,
+        TEST_USER,
+        exercises=[
+            {"exercise": "My Zebra Grip Curl Variation", "sets": [{"weight": 20, "reps": 8}]}
+        ],
+    )
+
+    matches = await service.search_exercises(session, TEST_USER, "curl")
+
+    assert "My Zebra Grip Curl Variation" in [e.name for e in matches]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("incline dumbbell bench press", "Incline Dumbbell Press"),
+        ("incline barbell bench", "Incline Barbell Press"),
+        ("incline bench", "Incline Barbell Press"),
+        ("incline bench", "Incline Dumbbell Press"),
+        ("incline bench", "Incline Bench Pull"),
+        ("flat bench", "Barbell Bench Press"),
+        ("side raise", "Lateral Raise"),
+        ("ab wheel", "Ab Roller"),
+        ("military press", "Overhead Press"),
+    ],
+)
+async def test_search_exercises_understands_lifter_synonyms(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+@pytest.mark.parametrize("query", ["", "   ", "-", "/ ()"])
+async def test_search_exercises_finds_nothing_for_a_query_without_words(
+    session: AsyncSession, query: str
+) -> None:
+    assert await service.search_exercises(session, TEST_USER, query) == []
+
+
+async def test_search_exercises_ranks_whole_words_above_prefixes(session: AsyncSession) -> None:
+    matches = await service.search_exercises(session, TEST_USER, "lat")
+    names = [e.name for e in matches]
+
+    assert names[0] == "Lat Pulldown"
+    assert names.index("Overhead Lat") < names.index("Lateral Raise")
+
+
+async def test_search_exercises_counts_a_compound_as_one_word_when_ranking(
+    session: AsyncSession,
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, "pull", limit=100)
+    names = [e.name for e in matches]
+
+    assert names.index("V-Bar Pulldown") < names.index("Weighted Pull Ups")
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("dead lift", "Deadlift"),
+        ("dead-lift", "Deadlift"),
+        ("stepups", "Dumbbell Step Ups"),
+        ("step up", "Dumbbell Step Ups"),
+        ("muscleups", "Muscle Up"),
+        ("ezbar curl", "EZ-Bar Curl"),
+        ("calves", "Calf Raise"),
+    ],
+)
+async def test_search_exercises_handles_more_compounds_and_irregular_plurals(
+    session: AsyncSession, query: str, expected: str
+) -> None:
+    matches = await service.search_exercises(session, TEST_USER, query)
+    assert expected in [e.name for e in matches]
+
+
+async def test_starter_exercises_ranked_by_search_are_all_in_the_catalog(
+    session: AsyncSession,
+) -> None:
+    names = {e.name for e in await service.list_exercises(session, TEST_USER)}
+    assert STARTER_EXERCISES <= names
 
 
 async def test_search_exercises_scopes_custom_exercises_to_their_owner(
