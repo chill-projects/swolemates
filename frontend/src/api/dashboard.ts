@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
 
@@ -14,6 +14,8 @@ export function useNutritionCalendar(start: string, end: string) {
       if (error) throw new Error("Failed to load nutrition calendar");
       return data;
     },
+    // Keep the old month on screen while paging to another one.
+    placeholderData: keepPreviousData,
   });
 }
 

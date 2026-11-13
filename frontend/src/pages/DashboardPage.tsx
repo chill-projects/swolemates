@@ -160,6 +160,11 @@ export function DashboardPage() {
   }, [weekStart]);
 
   const calendar = useNutritionCalendar(isoDate(monthStart), isoDate(monthEnd));
+  // The calendar card can page back through earlier months; the hero stays on today.
+  const [monthOffset, setMonthOffset] = useState(0);
+  const viewStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const viewEnd = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0);
+  const viewCalendar = useNutritionCalendar(isoDate(viewStart), isoDate(viewEnd));
   const planned = usePlannedWorkouts(isoDate(weekStart), isoDate(weekEnd));
   const history = useWorkoutHistory(isoDate(weekStart), isoDate(weekEnd));
   const streak = useWorkoutStreak();
@@ -194,10 +199,16 @@ export function DashboardPage() {
 
       <div className="page-body">
         <div className="page-grid page-grid--three">
-          {calendar.isPending && <p className="muted">Loading nutrition…</p>}
-          {calendar.isError && <p className="error">Couldn’t load the nutrition calendar.</p>}
-          {calendar.data && (
-            <NutritionCalendarCard days={calendar.data} today={today} monthStart={monthStart} />
+          {viewCalendar.isPending && <p className="muted">Loading nutrition…</p>}
+          {viewCalendar.isError && <p className="error">Couldn’t load the nutrition calendar.</p>}
+          {viewCalendar.data && (
+            <NutritionCalendarCard
+              days={viewCalendar.data}
+              today={today}
+              monthStart={viewStart}
+              onPrev={() => setMonthOffset((o) => o - 1)}
+              onNext={monthOffset < 0 ? () => setMonthOffset((o) => o + 1) : undefined}
+            />
           )}
 
           {(planned.isPending || history.isPending || streak.isPending) && (
@@ -369,10 +380,15 @@ function NutritionCalendarCard({
   days,
   today,
   monthStart,
+  onPrev,
+  onNext,
 }: {
   days: NutritionCalendarDay[];
   today: Date;
   monthStart: Date;
+  onPrev: () => void;
+  /** Absent on the current month — there's nothing ahead to page to. */
+  onNext?: () => void;
 }) {
   const byDate = useMemo(() => new Map(days.map((d) => [d.date, d])), [days]);
   const { activeKey, style, cellProps } = useDayTooltip(192);
@@ -390,7 +406,25 @@ function NutritionCalendarCard({
   ];
 
   return (
-    <Card title={`${MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()}`}>
+    <Card
+      title={`${MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()}`}
+      meta={
+        <span>
+          <button type="button" className="btn-small" onClick={onPrev} aria-label="Previous month">
+            ‹
+          </button>{" "}
+          <button
+            type="button"
+            className="btn-small"
+            onClick={onNext}
+            disabled={!onNext}
+            aria-label="Next month"
+          >
+            ›
+          </button>
+        </span>
+      }
+    >
       <div className="dash-grid">
         {DOW.map((d, i) => (
           <div key={i} className="dash-dow">{d}</div>
