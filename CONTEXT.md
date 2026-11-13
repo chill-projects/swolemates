@@ -29,6 +29,41 @@ The daily win/miss tracked against whichever Goal is marked the streak target.
 The one-time, re-runnable tool that estimates starting calorie/macro Goals from profile stats and the most recently logged weight, via Mifflin-St Jeor. Never auto-recalculates — it writes ordinary Goals, then the user or coach takes over.
 _Avoid_: goal calculator (fine in UI copy, not in design language)
 
+### Kitchen
+
+**Kitchen**:
+A best-guess record of the food at home, across the fridge, freezer and pantry. Linked partners share one Kitchen; an unlinked user has their own. It records what's in the house, not what anyone ate, so it sits outside the partner privacy rule that covers food logs.
+_Avoid_: fridge (fine in casual UI copy, not in design language), inventory, pantry (that's one Storage Location)
+
+**Kitchen Item**:
+One thing in the Kitchen, with its quantity as bought in plain words ("1 gal"). Quantities are descriptive and never calculated. An item leaves when someone removes it, or by itself a week after its Estimated Expiry.
+_Avoid_: stock, product
+
+**Leftover**:
+A Kitchen Item that is a portion of an already-made meal, so it has its own macros. Logging it as eaten removes it, unless a smaller portion was deliberately planned, in which case the rest stays. Everything else in the Kitchen is an Ingredient.
+
+**Ingredient**:
+A Kitchen Item that is food as bought rather than a made meal. It has no macros of its own.
+_Avoid_: grocery (fine in casual UI copy)
+
+**Storage Location**:
+Where a Kitchen Item is kept: fridge, freezer or pantry. Moving an item to another Storage Location restarts its Estimated Expiry.
+
+**Shelf-Life Category**:
+A kind of food with a known typical shelf life in each Storage Location. It's the basis for an Estimated Expiry, so the same food always gets the same estimate.
+
+**Estimated Expiry**:
+The date a Kitchen Item is probably good until, worked out from its Shelf-Life Category and Storage Location unless someone overrides it, for example with the date printed on the package. It's an estimate, never a food-safety claim. A food with no sensible Shelf-Life Category has no Estimated Expiry and stays until someone removes it.
+_Avoid_: expiration date, best before, use by
+
+**To Use Up**:
+The Kitchen Items someone has starred because they want them eaten. It's always a person's call, for either partner: an Estimated Expiry never puts something here, and the star goes when the item leaves the Kitchen.
+_Avoid_: needs eating, use soon, tray
+
+**Grocery Haul**:
+The Kitchen Items added from one shopping trip, remembered together with their purchase date so a bad read can be undone as a whole and a likely duplicate trip can be flagged.
+_Avoid_: order, shop, trip
+
 ### Workouts
 
 **Exercise**:
